@@ -1,0 +1,49 @@
+# Created by https://www.gitignore.io/api/android,flutter,intellij
+### Android ###
+/local.properties
+/.idea/caches/build-tasks.xml
+/.idea/libraries/
+.DS_Store
+*.iml
+/build
+/captures
+.externalNativeBuild
+.cxx
+/gradle/wrapper/gradle-wrapper.properties
+/gradle/wrapper/gradle-wrapper.jar
+/gradle-cache
+
+### Flutter/Dart ###
+.dart_tool/
+.packages
+/build/
+/ios/.symlinks/
+/ios/.generated/
+/android/.gradle
+/android/local.properties
+/android/app/build/
+/android/app/.cxx/
+/android/app/.externalNativeBuild/
+/android/.idea
+/android/.iml
+/android/gradle.properties
+# Flutter Android build files (specific to your error):
+android/app/build/
+android/app/build/outputs/
+android/app/build/intermediates/
+
+### IntelliJ/Android Studio ###
+.idea/workspace.xml
+.idea/libraries
+.idea/modules.xml
+.idea/runConfigurations
+*.iws
+*.iml
+*.ipr
+*.bak
+*.swp
+*~
+.git
+build
+
+.idea/navigationSettings.xml
