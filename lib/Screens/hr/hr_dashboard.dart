@@ -1,501 +1,573 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../../models/request_model.dart';
-import '../../models/driver_model.dart';
-import '../../services/dispatch_service.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:intl/intl.dart';
+// سنفترض وجود ملف الشاشة الجديد هنا
+import 'hr_reporting_screen.dart'; // تم استيراد شاشة التقارير
 
-class HRDashboard extends StatefulWidget {
+class HrDashboard extends StatelessWidget {
   final String companyId;
-  const HRDashboard({required this.companyId, super.key});
+  const HrDashboard({required this.companyId, super.key});
 
-  @override
-  State<HRDashboard> createState() => _HRDashboardState();
-}
-
-class _HRDashboardState extends State<HRDashboard> {
-  late GoogleMapController mapController;
-  Set<Marker> driverMarkers = {};
-  final DispatchService _dispatchService = DispatchService();
+  // دالة مساعدة للانتقال إلى شاشة التقارير
+  void _navigateToReportingScreen(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => HrReportingScreen(companyId: companyId),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('لوحة الموارد البشرية'),
+        title: const Text('لوحة تحكم الموارد البشرية'),
         backgroundColor: Colors.purple[800],
         foregroundColor: Colors.white,
+        actions: [
+          // زر الانتقال إلى شاشة التقارير (لتلبية متطلبات تقارير السائقين والمشاوير والأقسام)
+          TextButton.icon(
+            onPressed: () => _navigateToReportingScreen(context),
+            icon: const Icon(Icons.analytics_outlined, color: Colors.white),
+            label: const Text('التقارير الشاملة', style: TextStyle(color: Colors.white)),
+          ),
+        ],
       ),
       body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildUrgentRequestsSection(context),
-            const Divider(height: 30),
-            _buildDriversOnlineSection(),
-            const Divider(height: 30),
-            _buildSummaryReportsSection(),
-            const Divider(height: 30),
-            _buildDepartmentsDemandSection(),
-            const Divider(height: 30),
-            _buildDriversMapSection(),
+            // 1. ملخص حالة السائقين
+            _buildSectionTitle('ملخص حالة السائقين'),
+            const SizedBox(height: 12),
+            DriverStatusSummary(companyId: companyId),
+
+            const SizedBox(height: 32),
+
+            // 2. قائمة تتبع الموقع (استبدال الـ Placeholder)
+            _buildSectionTitle('مواقع السائقين المتصلين (القائمة)'),
+            const SizedBox(height: 12),
+            DriverLocationList(companyId: companyId), // الويدجت الجديد
+
+            const SizedBox(height: 32),
+
+            // 3. الطلبات العاجلة وقيد الانتظار (استبدال الـ Placeholder)
+            _buildSectionTitle('الطلبات الجديدة وقيد الموافقة'),
+            const SizedBox(height: 12),
+            PendingRequestsSummary(companyId: companyId), // الويدجت الجديد
+
+            const SizedBox(height: 32),
+
+            // 4. سجل الطلبات الأخيرة
+            _buildSectionTitle('سجل الطلبات الأخيرة'),
+            const SizedBox(height: 12),
+            LatestRideHistory(companyId: companyId),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildUrgentRequestsSection(BuildContext context) {
+  Widget _buildSectionTitle(String title) {
+    return Text(
+      title,
+      style: const TextStyle(
+        fontSize: 20,
+        fontWeight: FontWeight.bold,
+        color: Colors.black87,
+      ),
+    );
+  }
+}
+
+// ===============================================
+// الـ Widget 1: ملخص حالة السائقين (بدون تغيير)
+// ===============================================
+
+class DriverStatusSummary extends StatelessWidget {
+  final String companyId;
+  const DriverStatusSummary({required this.companyId, super.key});
+
+  @override
+  Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('companies')
-          .doc(widget.companyId)
-          .collection('requests')
-          .where('priority', isEqualTo: 'عاجل')
-          .where('status', isEqualTo: 'بانتظار موافقة الموارد البشرية')
+          .doc(companyId)
+          .collection('drivers')
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Padding(
-            padding: EdgeInsets.all(16),
-            child: CircularProgressIndicator(),
-          );
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return const Center(child: Text('خطأ في تحميل بيانات السائقين'));
         }
 
-        if (!snapshot.hasData) {
-          return const Padding(
-            padding: EdgeInsets.all(16),
-            child: Text('خطأ في تحميل البيانات'),
-          );
-        }
+        final drivers = snapshot.data?.docs ?? [];
+        final totalDrivers = drivers.length;
 
-        final requests = snapshot.data!.docs
-            .map((doc) => Request.fromMap(doc.data() as Map<String, dynamic>))
-            .toList();
+        final onlineDrivers = drivers.where(
+              (doc) => (doc.data() as Map<String, dynamic>)['isOnline'] == true,
+        ).length;
 
-        return Padding(
-          padding: const EdgeInsets.all(16),
-          child: ExpansionTile(
-            title: Text(
-              'طلبات عاجلة تحتاج موافقة (${requests.length})',
-              style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+        final offlineDrivers = totalDrivers - onlineDrivers;
+
+        return Column(
+          children: [
+            Row(
+              children: [
+                _buildStatCard(
+                  title: 'إجمالي السائقين',
+                  count: totalDrivers,
+                  icon: Icons.group,
+                  color: Colors.indigo,
+                ),
+                _buildStatCard(
+                  title: 'السائقون المتصلون',
+                  count: onlineDrivers,
+                  icon: Icons.check_circle,
+                  color: Colors.green,
+                ),
+                _buildStatCard(
+                  title: 'السائقون غير المتصلين',
+                  count: offlineDrivers,
+                  icon: Icons.cancel,
+                  color: Colors.red,
+                ),
+              ],
             ),
-            children: requests.isEmpty
-                ? [
-              const Padding(
-                padding: EdgeInsets.all(16),
-                child: Text('لا توجد طلبات عاجلة'),
-              )
-            ]
-                : requests
-                .map((r) => Card(
-              margin: const EdgeInsets.symmetric(vertical: 8),
-              child: ListTile(
-                title: Text(
-                  r.purpose,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                subtitle: Text(
-                  'القسم: ${r.department}\nبواسطة: ${r.requesterName}\nالتفاصيل: ${r.details}',
-                ),
-                isThreeLine: true,
-                trailing: Wrap(
-                  spacing: 8,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.check, color: Colors.green),
-                      tooltip: 'الموافقة',
-                      onPressed: () async {
-                        try {
-                          await FirebaseFirestore.instance
-                              .collection('companies')
-                              .doc(widget.companyId)
-                              .collection('requests')
-                              .doc(r.requestId)
-                              .update({
-                            'status': 'معلق',
-                            'hrApprovalTime': DateTime.now(),
-                          });
-
-                          final approvedRequestSnap =
-                          await FirebaseFirestore.instance
-                              .collection('companies')
-                              .doc(widget.companyId)
-                              .collection('requests')
-                              .doc(r.requestId)
-                              .get();
-
-                          if (approvedRequestSnap.exists) {
-                            final approvedRequest = Request.fromMap(
-                                approvedRequestSnap.data()
-                                as Map<String, dynamic>);
-                            await _dispatchService.autoAssignDriverFair(
-                                widget.companyId, approvedRequest);
-
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                      'تمت الموافقة وتوزيع الطلب على السائق'),
-                                ),
-                              );
-                            }
-                          }
-                        } catch (e) {
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('خطأ: $e'),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
-                          }
-                        }
-                      },
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close, color: Colors.red),
-                      tooltip: 'الرفض',
-                      onPressed: () async {
-                        try {
-                          await FirebaseFirestore.instance
-                              .collection('companies')
-                              .doc(widget.companyId)
-                              .collection('requests')
-                              .doc(r.requestId)
-                              .update({
-                            'status': 'مرفوض',
-                            'rejectionTime': DateTime.now(),
-                          });
-
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('تم رفض الطلب'),
-                              ),
-                            );
-                          }
-                        } catch (e) {
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('خطأ: $e'),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
-                          }
-                        }
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            ))
-                .toList(),
-          ),
+            const SizedBox(height: 16),
+            _buildRatioBar(
+              online: onlineDrivers,
+              offline: offlineDrivers,
+              total: totalDrivers,
+            ),
+          ],
         );
       },
     );
   }
 
-  Widget _buildDriversOnlineSection() {
+  Widget _buildStatCard({
+    required String title,
+    required int count,
+    required IconData icon,
+    required Color color,
+  }) {
+    return Expanded(
+      child: Card(
+        elevation: 4,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, color: color, size: 30),
+              const SizedBox(height: 8),
+              Text(
+                count.toString(),
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Colors.black54,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRatioBar({
+    required int online,
+    required int offline,
+    required int total,
+  }) {
+    if (total == 0) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.grey[100],
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Text('لا يوجد سائقون لإظهار النسبة'),
+      );
+    }
+
+    final onlineRatio = online / total;
+    final offlineRatio = offline / total;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(bottom: 8.0),
+          child: Text('النسبة المئوية للحالة:', style: TextStyle(fontWeight: FontWeight.w600)),
+        ),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: SizedBox(
+            height: 20,
+            child: Row(
+              children: [
+                Flexible(
+                  flex: (onlineRatio * 100).round(),
+                  child: Container(color: Colors.green),
+                ),
+                Flexible(
+                  flex: (offlineRatio * 100).round(),
+                  child: Container(color: Colors.red),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'متصل: ${(onlineRatio * 100).toStringAsFixed(1)}%',
+              style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+            ),
+            Text(
+              'غير متصل: ${(offlineRatio * 100).toStringAsFixed(1)}%',
+              style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+// ===============================================
+// الـ Widget 2: سجل الطلبات الأخيرة (بدون تغيير)
+// ===============================================
+
+class LatestRideHistory extends StatelessWidget {
+  final String companyId;
+  const LatestRideHistory({required this.companyId, super.key});
+
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'Completed':
+        return Colors.green;
+      case 'Pending':
+        return Colors.orange;
+      case 'Cancelled':
+        return Colors.red;
+      default:
+        return Colors.blueGrey;
+    }
+  }
+
+  IconData _getStatusIcon(String status) {
+    switch (status) {
+      case 'Completed':
+        return Icons.check_circle_outline;
+      case 'Pending':
+        return Icons.access_time;
+      case 'Cancelled':
+        return Icons.cancel_outlined;
+      default:
+        return Icons.local_shipping;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
+      // يتم طلب آخر 7 طلبات مرتبة تنازلياً حسب وقت الإنشاء (createdAt)
       stream: FirebaseFirestore.instance
           .collection('companies')
-          .doc(widget.companyId)
+          .doc(companyId)
+          .collection('rides')
+          .orderBy('createdAt', descending: true)
+          .limit(7)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: LinearProgressIndicator());
+        }
+
+        if (snapshot.hasError) {
+          return const Center(child: Text('خطأ في تحميل سجل الطلبات'));
+        }
+
+        final rides = snapshot.data?.docs ?? [];
+
+        if (rides.isEmpty) {
+          return Card(
+            elevation: 1,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Center(
+                child: Text('لا يوجد سجل طلبات حالياً.'),
+              ),
+            ),
+          );
+        }
+
+        return Card(
+          elevation: 4,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: rides.length,
+            itemBuilder: (context, index) {
+              final rideData = rides[index].data() as Map<String, dynamic>;
+
+              final status = rideData['status'] ?? 'غير معروف';
+              final requesterName = rideData['requesterName'] ?? 'طالب خدمة مجهول';
+              final driverName = rideData['driverName'] ?? 'لم يتم التعيين';
+              // نفترض أن createdAt مخزن كـ Timestamp
+              final timestamp = (rideData['createdAt'] is Timestamp) ? (rideData['createdAt'] as Timestamp).toDate() : DateTime.now();
+
+              final formattedTime = DateFormat('yyyy/MM/dd HH:mm').format(timestamp);
+
+              return ListTile(
+                leading: Icon(
+                  _getStatusIcon(status),
+                  color: _getStatusColor(status),
+                ),
+                title: Text(
+                  'طلب من: $requesterName',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                subtitle: Text(
+                  'الحالة: $status | السائق: $driverName',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: Text(
+                  formattedTime,
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                ),
+                onTap: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('عرض تفاصيل الطلب: ${rides[index].id}'),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+}
+
+
+// ===============================================
+// الـ Widget 3: قائمة تتبع مواقع السائقين (DriverLocationList)
+// (استبدال عنصر الخريطة النائب)
+// ===============================================
+
+class DriverLocationList extends StatelessWidget {
+  final String companyId;
+  const DriverLocationList({required this.companyId, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot>(
+      // عرض السائقين المتصلين فقط للحفاظ على التركيز
+      stream: FirebaseFirestore.instance
+          .collection('companies')
+          .doc(companyId)
           .collection('drivers')
           .where('isOnline', isEqualTo: true)
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Padding(
-            padding: EdgeInsets.all(16),
-            child: CircularProgressIndicator(),
-          );
+          return Container(height: 200, child: const Center(child: CircularProgressIndicator()));
         }
 
-        if (!snapshot.hasData) {
-          return const Padding(
-            padding: EdgeInsets.all(16),
-            child: Text('خطأ في تحميل البيانات'),
-          );
+        if (snapshot.hasError) {
+          return const Text('خطأ في تحميل مواقع السائقين');
         }
 
-        final drivers = snapshot.data!.docs
-            .map((doc) => Driver.fromMap(doc.data() as Map<String, dynamic>))
-            .toList();
+        final drivers = snapshot.data?.docs ?? [];
 
-        return Padding(
-          padding: const EdgeInsets.all(16),
-          child: ExpansionTile(
-            title: Text(
-              'السائقون المتصلون (${drivers.length})',
-              style: const TextStyle(fontWeight: FontWeight.bold),
+        if (drivers.isEmpty) {
+          return Container(
+            height: 150,
+            decoration: BoxDecoration(
+              color: Colors.blueGrey[50],
+              borderRadius: BorderRadius.circular(12),
             ),
-            children: drivers.isEmpty
-                ? [
-              const Padding(
-                padding: EdgeInsets.all(16),
-                child: Text('لا يوجد سائقون متصلون'),
-              )
-            ]
-                : drivers
-                .map((d) => Card(
-              margin: const EdgeInsets.symmetric(vertical: 4),
-              child: ListTile(
-                leading: Icon(
-                  d.isAvailable ? Icons.check_circle : Icons.directions_car,
-                  color: d.isAvailable ? Colors.green : Colors.orange,
-                ),
-                title: Text(
-                  d.name,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                subtitle: Text(
-                  'الحالة: ${d.isAvailable ? "متاح" : "مشغول"} | '
-                      'المشاوير: ${d.completedRides} | '
-                      'الأداء: ${d.performanceScore.toStringAsFixed(2)}/5',
-                ),
+            child: const Center(
+              child: Text(
+                'لا يوجد سائقون متصلون حالياً لعرض مواقعهم.',
+                style: TextStyle(color: Colors.blueGrey),
               ),
-            ))
-                .toList(),
+            ),
+          );
+        }
+
+        return Card(
+          elevation: 4,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: Column(
+            children: drivers.map((doc) {
+              final data = doc.data() as Map<String, dynamic>;
+              final driverName = data['name'] ?? 'سائق مجهول';
+              final latitude = data['lastKnownLocation']?['latitude'] ?? 0.0;
+              final longitude = data['lastKnownLocation']?['longitude'] ?? 0.0;
+              final lastUpdate = (data['lastLocationUpdate'] is Timestamp)
+                  ? DateFormat('HH:mm:ss').format((data['lastLocationUpdate'] as Timestamp).toDate())
+                  : 'غير متوفر';
+
+              return ListTile(
+                leading: const Icon(Icons.location_on, color: Colors.blue),
+                title: Text(driverName, style: const TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: Text('Lat: $latitude, Lon: $longitude'),
+                trailing: Text('تحديث: $lastUpdate'),
+              );
+            }).toList(),
           ),
         );
       },
     );
   }
+}
 
-  Widget _buildSummaryReportsSection() {
-    return FutureBuilder<QuerySnapshot>(
-      future: FirebaseFirestore.instance
+
+// ===============================================
+// الـ Widget 4: ملخص الطلبات المعلقة (PendingRequestsSummary)
+// (استبدال عنصر الطلبات العاجلة النائب)
+// ===============================================
+
+class PendingRequestsSummary extends StatelessWidget {
+  final String companyId;
+  const PendingRequestsSummary({required this.companyId, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot>(
+      // جلب الطلبات التي حالتها 'Pending'
+      stream: FirebaseFirestore.instance
           .collection('companies')
-          .doc(widget.companyId)
-          .collection('requests')
-          .get(),
+          .doc(companyId)
+          .collection('requests') // نفترض مجموعة 'requests' للطلبات التي تحتاج موافقة HR
+          .where('status', isEqualTo: 'Pending')
+          .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Padding(
-            padding: EdgeInsets.all(16),
-            child: CircularProgressIndicator(),
-          );
+          return const Center(child: LinearProgressIndicator());
         }
 
-        if (!snapshot.hasData) {
-          return const Padding(
-            padding: EdgeInsets.all(16),
-            child: Text('خطأ في تحميل البيانات'),
-          );
+        if (snapshot.hasError) {
+          return const Center(child: Text('خطأ في تحميل الطلبات المعلقة'));
         }
 
-        final requests = snapshot.data!.docs
-            .map((doc) => Request.fromMap(doc.data() as Map<String, dynamic>))
-            .toList();
+        final pendingRequests = snapshot.data?.docs ?? [];
 
-        final today = DateTime.now();
-        final todayRequests = requests.where((r) {
-          final reqDate = r.requestedTime;
-          return reqDate.year == today.year &&
-              reqDate.month == today.month &&
-              reqDate.day == today.day;
-        }).length;
-
-        final monthRequests = requests.where((r) {
-          final reqDate = r.requestedTime;
-          return reqDate.year == today.year && reqDate.month == today.month;
-        }).length;
-
-        final completedRequests =
-            requests.where((r) => r.status == 'مكتمل').length;
-
-        return Padding(
-          padding: const EdgeInsets.all(16),
-          child: ExpansionTile(
-            title: const Text(
-              'التقارير اليومية والشهرية',
-              style: TextStyle(fontWeight: FontWeight.bold),
+        if (pendingRequests.isEmpty) {
+          return Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: const ListTile(
+              leading: Icon(Icons.thumb_up, color: Colors.green),
+              title: Text('لا توجد طلبات معلقة للموافقة'),
+              subtitle: Text('جميع الطلبات تم التعامل معها أو لا توجد طلبات جديدة.'),
             ),
+          );
+        }
+
+        return Card(
+          elevation: 4,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: Column(
             children: [
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.today, color: Colors.blue),
-                  title: const Text('طلبات اليوم'),
-                  trailing: Text(
-                    todayRequests.toString(),
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue,
+              // عرض عدد الطلبات المعلقة كبطاقة صغيرة فوق القائمة
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'إجمالي الطلبات المعلقة:',
+                      style: TextStyle(fontWeight: FontWeight.bold),
                     ),
-                  ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade100,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        pendingRequests.length.toString(),
+                        style: TextStyle(
+                          color: Colors.orange[800],
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    )
+                  ],
                 ),
               ),
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.calendar_month, color: Colors.green),
-                  title: const Text('طلبات هذا الشهر'),
-                  trailing: Text(
-                    monthRequests.toString(),
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.green,
+              const Divider(height: 1, thickness: 1),
+              // عرض أول 3 طلبات بالتفصيل
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: pendingRequests.length > 3 ? 3 : pendingRequests.length, // عرض أول 3 فقط
+                itemBuilder: (context, index) {
+                  final requestData = pendingRequests[index].data() as Map<String, dynamic>;
+                  final requesterName = requestData['requester_name'] ?? 'مستخدم مجهول';
+                  final priority = requestData['priority'] ?? 'عادي';
+
+                  return ListTile(
+                    leading: Icon(
+                      Icons.warning_amber_rounded,
+                      color: priority == 'High' ? Colors.red : Colors.orange,
                     ),
-                  ),
-                ),
-              ),
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.check_circle, color: Colors.purple),
-                  title: const Text('الطلبات المكتملة'),
-                  trailing: Text(
-                    completedRequests.toString(),
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.purple,
+                    title: Text(
+                      'طلب من: $requesterName',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
-                  ),
-                ),
+                    subtitle: Text('الأولوية: $priority | نوع الغرض: ${requestData['purpose_type'] ?? 'غير محدد'}'),
+                    onTap: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('عرض تفاصيل طلب الموافقة: ${pendingRequests[index].id}'),
+                        ),
+                      );
+                    },
+                  );
+                },
               ),
+              if (pendingRequests.length > 3)
+                TextButton(
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('الانتقال إلى شاشة إدارة الطلبات للموافقة على الكل')),
+                    );
+                  },
+                  child: Text('عرض ${pendingRequests.length - 3} طلب آخر...'),
+                ),
             ],
           ),
         );
       },
-    );
-  }
-
-  Widget _buildDepartmentsDemandSection() {
-    return FutureBuilder<QuerySnapshot>(
-      future: FirebaseFirestore.instance
-          .collection('companies')
-          .doc(widget.companyId)
-          .collection('requests')
-          .get(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Padding(
-            padding: EdgeInsets.all(16),
-            child: CircularProgressIndicator(),
-          );
-        }
-
-        if (!snapshot.hasData) {
-          return const Padding(
-            padding: EdgeInsets.all(16),
-            child: Text('خطأ في تحميل البيانات'),
-          );
-        }
-
-        final requests = snapshot.data!.docs
-            .map((doc) => Request.fromMap(doc.data() as Map<String, dynamic>))
-            .toList();
-
-        final Map<String, int> departmentCounts = {};
-        for (var r in requests) {
-          departmentCounts[r.department] =
-              (departmentCounts[r.department] ?? 0) + 1;
-        }
-
-        final sortedDept = departmentCounts.entries.toList()
-          ..sort((a, b) => b.value.compareTo(a.value));
-
-        return Padding(
-          padding: const EdgeInsets.all(16),
-          child: ExpansionTile(
-            title: const Text(
-              'ملخص طلبات الأقسام',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            children: sortedDept.isEmpty
-                ? [
-              const Padding(
-                padding: EdgeInsets.all(16),
-                child: Text('لا توجد طلبات'),
-              )
-            ]
-                : sortedDept
-                .map((e) => Card(
-              margin: const EdgeInsets.symmetric(vertical: 4),
-              child: ListTile(
-                leading: const Icon(Icons.business, color: Colors.teal),
-                title: Text(e.key),
-                trailing: Text(
-                  '${e.value} طلب',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-              ),
-            ))
-                .toList(),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildDriversMapSection() {
-    return Container(
-      height: 300,
-      padding: const EdgeInsets.all(16),
-      child: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('companies')
-            .doc(widget.companyId)
-            .collection('drivers')
-            .where('isOnline', isEqualTo: true)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(child: Text('لا يوجد سائقون متصلون'));
-          }
-
-          final drivers = snapshot.data!.docs
-              .map((doc) => Driver.fromMap(doc.data() as Map<String, dynamic>))
-              .where((d) => d.currentLocation != null)
-              .toList();
-
-          if (drivers.isEmpty) {
-            return const Center(child: Text('لا توجد بيانات موقع للسائقين'));
-          }
-
-          Set<Marker> markers = {};
-          for (var d in drivers) {
-            markers.add(
-              Marker(
-                markerId: MarkerId(d.driverId),
-                position: LatLng(
-                  d.currentLocation!['lat']!,
-                  d.currentLocation!['lng']!,
-                ),
-                infoWindow: InfoWindow(
-                  title: d.name,
-                  snippet: d.isAvailable ? 'متاح' : 'مشغول',
-                ),
-                icon: BitmapDescriptor.defaultMarkerWithHue(
-                  d.isAvailable
-                      ? BitmapDescriptor.hueGreen
-                      : BitmapDescriptor.hueOrange,
-                ),
-              ),
-            );
-          }
-
-          return GoogleMap(
-            initialCameraPosition: CameraPosition(
-              target: markers.first.position,
-              zoom: 12,
-            ),
-            markers: markers,
-            onMapCreated: (controller) => mapController = controller,
-            myLocationEnabled: false,
-          );
-        },
-      ),
     );
   }
 }

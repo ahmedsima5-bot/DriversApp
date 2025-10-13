@@ -1,16 +1,15 @@
+// File: lib/Screens/requester/new_request_screen.dart
+// Description: شاشة إنشاء طلب خدمة سائق جديد، مع إمكانية تحديد موقعي الالتقاط والتسليم على الخريطة.
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:uuid/uuid.dart';
 import '../../models/request_model.dart';
+import '../../services/database_service.dart';
+import '../map/map_picker_screen.dart'; // تم إضافة استيراد شاشة الخريطة
 
 class NewRequestScreen extends StatefulWidget {
-  final String companyId;
-  final String userId;
-  const NewRequestScreen({
-    required this.companyId,
-    required this.userId,
-    super.key,
-  });
+  const NewRequestScreen({super.key});
 
   @override
   State<NewRequestScreen> createState() => _NewRequestScreenState();
@@ -20,37 +19,83 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
   final _formKey = GlobalKey<FormState>();
   String _requesterName = '';
   String _department = '';
-  String _purpose = '';
+  String _purposeType = '';
   String _details = '';
-  String _priority = 'عادي'; // عادي أو عاجل
-  DateTime _expectedTime = DateTime.now().add(const Duration(hours: 2));
+  String _priority = 'عادي';
+  DateTime _startTimeExpected = DateTime.now().add(const Duration(hours: 2));
   List<String> _departments = [];
   bool _isLoading = false;
+
+  // متغيرات جديدة لتخزين إحداثيات الموقع
+  GeoPoint? _pickupLocation;
+  GeoPoint? _destinationLocation;
+
+  // متغيرات لجلب البيانات من السياق
+  String? _companyId;
+  String? _userId;
 
   @override
   void initState() {
     super.initState();
-    _loadDepartments();
+    _fetchUserDataAndDepartments();
   }
 
-  Future<void> _loadDepartments() async {
+  // دالة لجلب ID الشركة والأقسام واسم المستخدم
+  Future<void> _fetchUserDataAndDepartments() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      // التعامل مع حالة عدم تسجيل الدخول إذا لزم الأمر
+      return;
+    }
+
+    setState(() => _userId = user.uid);
+
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection('companies')
-          .doc(widget.companyId)
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
           .get();
 
-      if (doc.exists) {
-        final data = doc.data()!;
-        final departments = List<String>.from(data['departments'] ?? []);
+      if (userDoc.exists) {
+        final userData = userDoc.data()!;
+        final companyId = userData['companyId'] as String?;
+        final userName = userData['name'] as String? ?? '';
+        final userDepartment = userData['department'] as String? ?? '';
+
+        if (companyId != null) {
+          setState(() {
+            _companyId = companyId;
+            _requesterName = userName;
+            _department = userDepartment;
+          });
+          // استخدمنا DatabaseService لجلب الأقسام
+          _loadDepartments(companyId);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطأ في تحميل بيانات المستخدم: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // دالة تحميل الأقسام باستخدام DatabaseService
+  void _loadDepartments(String companyId) {
+    DatabaseService.getDepartmentsStream(companyId).listen((departments) {
+      if (mounted) {
         setState(() {
           _departments = departments;
-          if (departments.isNotEmpty) {
+          if (_department.isEmpty && departments.isNotEmpty) {
             _department = departments.first;
           }
         });
       }
-    } catch (e) {
+    }).onError((e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -59,86 +104,145 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
           ),
         );
       }
-    }
+    });
   }
 
+  // دالة لاختيار التاريخ والوقت
   Future<void> _selectTime(BuildContext context) async {
     final pickedDate = await showDatePicker(
       context: context,
-      initialDate: _expectedTime,
+      initialDate: _startTimeExpected,
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 30)),
     );
 
-    if (pickedDate != null) {
-      if (mounted) {
-        final pickedTime = await showTimePicker(
-          context: context,
-          initialTime: TimeOfDay.fromDateTime(_expectedTime),
-        );
+    if (pickedDate != null && mounted) {
+      final pickedTime = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay.fromDateTime(_startTimeExpected),
+      );
 
-        if (pickedTime != null) {
-          setState(() {
-            _expectedTime = DateTime(
-              pickedDate.year,
-              pickedDate.month,
-              pickedDate.day,
-              pickedTime.hour,
-              pickedTime.minute,
-            );
-          });
-        }
+      if (pickedTime != null) {
+        setState(() {
+          _startTimeExpected = DateTime(
+            pickedDate.year,
+            pickedDate.month,
+            pickedDate.day,
+            pickedTime.hour,
+            pickedTime.minute,
+          );
+        });
       }
     }
   }
 
+  // دالة لفتح شاشة اختيار الموقع
+  Future<void> _pickLocation(String type) async {
+    final initialLocation = type == 'pickup' ? _pickupLocation : _destinationLocation;
+
+    final result = await Navigator.of(context).push<GeoPoint>(
+      MaterialPageRoute(
+        builder: (ctx) => MapPickerScreen(
+          locationType: type,
+          initialLocation: initialLocation,
+        ),
+      ),
+    );
+
+    if (result != null) {
+      setState(() {
+        if (type == 'pickup') {
+          _pickupLocation = result;
+        } else {
+          _destinationLocation = result;
+        }
+      });
+    }
+  }
+
+
   Future<void> _submitRequest() async {
-    if (!_formKey.currentState!.validate()) return;
+    // التحقق من صحة الفورم والـ IDs والمواقع
+    if (!_formKey.currentState!.validate() || _companyId == null || _userId == null) {
+      // رسالة خطأ عامة
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('الرجاء التأكد من تعبئة جميع الحقول المطلوبة.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
+    // التحقق من تحديد الموقعين
+    if (_pickupLocation == null || _destinationLocation == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('الرجاء تحديد موقعي الالتقاط والتسليم على الخريطة.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    _formKey.currentState!.save();
 
     try {
       setState(() => _isLoading = true);
 
+      // ✨ تم التصحيح: استخدام final بدلاً من const لإنشاء ID في وقت التشغيل
       final requestId = const Uuid().v4();
       final now = DateTime.now();
 
       final request = Request(
         requestId: requestId,
-        requesterId: widget.userId,
+        companyId: _companyId!,
+        requesterId: _userId!,
         requesterName: _requesterName.trim(),
         department: _department,
-        purpose: _purpose.trim(),
+
+        purposeType: _purposeType.trim(),
         details: _details.trim(),
         priority: _priority,
-        status: _priority == 'عاجل'
-            ? 'بانتظار موافقة الموارد البشرية'
-            : 'معلق',
-        requestedTime: now,
-        expectedTime: _expectedTime,
+
+        // استخدام الإحداثيات المختارة
+        pickupLocation: _pickupLocation!,
+        destinationLocation: _destinationLocation!,
+
+        startTimeExpected: _startTimeExpected,
+        status: 'PENDING',
+
+        createdAt: now,
       );
 
-      await FirebaseFirestore.instance
-          .collection('companies')
-          .doc(widget.companyId)
-          .collection('requests')
-          .doc(requestId)
-          .set(request.toMap());
+      // استخدام DatabaseService لإضافة الطلب
+      await DatabaseService.addRequest(request);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
               _priority == 'عاجل'
-                  ? 'تم إرسال الطلب للموافقة من قبل الموارد البشرية'
-                  : 'تم إنشاء الطلب وسيتم توزيعه على سائق',
+                  ? 'تم إرسال الطلب للموافقة من قبل الموارد البشرية (PENDING)'
+                  : 'تم إنشاء الطلب (PENDING) وسيتم توزيعه على سائق بعد الموافقة',
             ),
             backgroundColor: Colors.green,
           ),
         );
 
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted) {
-            Navigator.pop(context);
-          }
+        // إعادة تعيين الحالة (Reset Form)
+        _formKey.currentState!.reset();
+        setState(() {
+          _purposeType = '';
+          _details = '';
+          _priority = 'عادي';
+          _startTimeExpected = DateTime.now().add(const Duration(hours: 2));
+          _pickupLocation = null; // إعادة تعيين المواقع
+          _destinationLocation = null; // إعادة تعيين المواقع
         });
       }
     } catch (e) {
@@ -155,6 +259,50 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
     }
   }
 
+  // ويدجت مساعدة لعرض تفاصيل الموقع
+  Widget _buildLocationCard(String title, GeoPoint? location, String type) {
+    String subtitle = location == null
+        ? 'اضغط للاختيار على الخريطة'
+        : 'Lat: ${location.latitude.toStringAsFixed(4)}, Lng: ${location.longitude.toStringAsFixed(4)}';
+
+    return InkWell(
+      onTap: () => _pickLocation(type),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          border: Border.all(color: location == null ? Colors.orange : Colors.green),
+          borderRadius: BorderRadius.circular(8),
+          color: location == null ? Colors.orange.shade50 : Colors.green.shade50,
+        ),
+        child: Row(
+          children: [
+            Icon(
+              type == 'pickup' ? Icons.directions_walk : Icons.location_pin,
+              color: location == null ? Colors.orange : Colors.green,
+            ),
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  subtitle,
+                  style: TextStyle(fontSize: 12, color: location == null ? Colors.red : Colors.grey[700]),
+                ),
+              ],
+            ),
+            const Spacer(),
+            Icon(Icons.map, color: Colors.blueGrey),
+          ],
+        ),
+      ),
+    );
+  }
+
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -163,7 +311,9 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
         backgroundColor: Colors.green[700],
         foregroundColor: Colors.white,
       ),
-      body: SingleChildScrollView(
+      body: _companyId == null
+          ? const Center(child: CircularProgressIndicator(value: null, color: Colors.green))
+          : SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Form(
           key: _formKey,
@@ -177,6 +327,8 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
               ),
               const SizedBox(height: 8),
               TextFormField(
+                initialValue: _requesterName,
+                readOnly: true,
                 decoration: InputDecoration(
                   hintText: 'أدخل اسمك الكامل',
                   border: OutlineInputBorder(
@@ -186,7 +338,7 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
                 ),
                 validator: (val) =>
                 val == null || val.isEmpty ? 'الاسم مطلوب' : null,
-                onChanged: (val) => _requesterName = val,
+                onSaved: (val) => _requesterName = val!,
               ),
               const SizedBox(height: 20),
 
@@ -207,7 +359,9 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
                 child: const Text('لا توجد أقسام متاحة'),
               )
                   : DropdownButtonFormField<String>(
-                value: _department,
+                value: _department.isEmpty
+                    ? (_departments.isNotEmpty ? _departments.first : null)
+                    : _department,
                 decoration: InputDecoration(
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
@@ -226,7 +380,7 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
                   }
                 },
                 validator: (val) =>
-                val == null ? 'اختر القسم' : null,
+                val == null || val.isEmpty ? 'اختر القسم' : null,
               ),
               const SizedBox(height: 20),
 
@@ -246,7 +400,7 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
                 ),
                 validator: (val) =>
                 val == null || val.isEmpty ? 'غرض الطلب مطلوب' : null,
-                onChanged: (val) => _purpose = val,
+                onSaved: (val) => _purposeType = val!,
               ),
               const SizedBox(height: 20),
 
@@ -265,7 +419,7 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
                   prefixIcon: const Icon(Icons.description),
                 ),
                 maxLines: 3,
-                onChanged: (val) => _details = val,
+                onSaved: (val) => _details = val!,
               ),
               const SizedBox(height: 20),
 
@@ -305,6 +459,21 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
               ),
               const SizedBox(height: 20),
 
+              // اختيار المواقع
+              Text(
+                'موقع الالتقاط والتسليم',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 8),
+
+              // كرت موقع الالتقاط
+              _buildLocationCard('موقع الالتقاط (البداية)', _pickupLocation, 'pickup'),
+              const SizedBox(height: 12),
+
+              // كرت موقع التسليم
+              _buildLocationCard('موقع التسليم (الوجهة)', _destinationLocation, 'destination'),
+              const SizedBox(height: 20),
+
               // الوقت المتوقع
               Text(
                 'الوقت المتوقع للتنفيذ',
@@ -331,8 +500,8 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
                             style: TextStyle(fontSize: 12, color: Colors.grey),
                           ),
                           Text(
-                            '${_expectedTime.day}/${_expectedTime.month}/${_expectedTime.year} - '
-                                '${_expectedTime.hour}:${_expectedTime.minute.toString().padLeft(2, '0')}',
+                            '${_startTimeExpected.day}/${_startTimeExpected.month}/${_startTimeExpected.year} - '
+                                '${_startTimeExpected.hour}:${_startTimeExpected.minute.toString().padLeft(2, '0')}',
                             style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                         ],
