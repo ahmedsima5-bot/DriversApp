@@ -2,94 +2,96 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 class Request {
   final String requestId;
+  final String companyId;
   final String requesterId;
   final String requesterName;
-  final String department;
-  final String purpose;
+  final String? department;
+
+  // ✨ تم تعديل الحقول لتتوافق مع شاشة العرض
+  final String purposeType; // هذا هو 'purpose'
   final String details;
-  final String priority;
-  final String status;
-  final DateTime requestedTime;
-  final DateTime expectedTime;
+  final String priority; // ✨ حقل جديد للأولوية (مثلاً: Urgent, Normal)
   final String? assignedDriverId;
-  final String? assignedDriverName;
-  final String? hrApproverId;
-  final DateTime? hrApprovalTime;
-  final DateTime? rejectionTime;
-  final DateTime? completedTime;
-  final double? rating;
+  final String? assignedDriverName; // ✨ حقل جديد لاسم السائق المعين
+
+  final GeoPoint pickupLocation;
+  final GeoPoint destinationLocation;
+  final DateTime startTimeExpected; // هذا هو 'expectedTime'
+  final String status; // PENDING, HR_APPROVED, DISPATCHED, COMPLETED, REJECTED
+
+  final DateTime createdAt;
 
   Request({
     required this.requestId,
+    required this.companyId,
     required this.requesterId,
     required this.requesterName,
-    required this.department,
-    required this.purpose,
+    this.department,
+    required this.purposeType,
     required this.details,
-    required this.priority,
-    required this.status,
-    required this.requestedTime,
-    required this.expectedTime,
+    required this.priority, // ✨ حقل جديد
     this.assignedDriverId,
-    this.assignedDriverName,
-    this.hrApproverId,
-    this.hrApprovalTime,
-    this.rejectionTime,
-    this.completedTime,
-    this.rating,
+    this.assignedDriverName, // ✨ حقل جديد
+    required this.pickupLocation,
+    required this.destinationLocation,
+    required this.startTimeExpected,
+    required this.status,
+    required this.createdAt,
   });
+
+  // ========== Getters Helpers ==========
+
+  // ✨ حل خطأ 'purpose' (نستخدم purposeType كـ purpose)
+  String get purpose => purposeType;
+
+  // ✨ حل خطأ 'expectedTime' (نستخدم startTimeExpected كـ expectedTime)
+  DateTime get expectedTime => startTimeExpected;
+
+  // ========== Constructor & Map Conversion ==========
+
+  factory Request.fromMap(Map<String, dynamic> data) {
+    return Request(
+      requestId: data['requestId'] ?? '',
+      companyId: data['companyId'] ?? '',
+      requesterId: data['requesterId'] ?? '',
+      requesterName: data['requesterName'] ?? 'غير معروف',
+      department: data['department'],
+
+      purposeType: data['purposeType'] ?? 'Normal',
+      details: data['details'] ?? '',
+      priority: data['priority'] ?? 'Normal', // ✨ قراءة الحقل الجديد
+      assignedDriverId: data['assignedDriverId'],
+      assignedDriverName: data['assignedDriverName'], // ✨ قراءة الحقل الجديد
+
+      pickupLocation: data['pickupLocation'] as GeoPoint? ?? const GeoPoint(0, 0),
+      destinationLocation: data['destinationLocation'] as GeoPoint? ?? const GeoPoint(0, 0),
+      startTimeExpected: (data['startTimeExpected'] as Timestamp).toDate(),
+      status: data['status'] ?? 'PENDING',
+
+      createdAt: (data['createdAt'] as Timestamp).toDate(),
+    );
+  }
 
   Map<String, dynamic> toMap() {
     return {
       'requestId': requestId,
+      'companyId': companyId,
       'requesterId': requesterId,
       'requesterName': requesterName,
       'department': department,
-      'purpose': purpose,
-      'details': details,
-      'priority': priority,
-      'status': status,
-      'requestedTime': Timestamp.fromDate(requestedTime),
-      'expectedTime': Timestamp.fromDate(expectedTime),
-      'assignedDriverId': assignedDriverId,
-      'assignedDriverName': assignedDriverName,
-      'hrApproverId': hrApproverId,
-      'hrApprovalTime': hrApprovalTime != null ? Timestamp.fromDate(hrApprovalTime!) : null,
-      'rejectionTime': rejectionTime != null ? Timestamp.fromDate(rejectionTime!) : null,
-      'completedTime': completedTime != null ? Timestamp.fromDate(completedTime!) : null,
-      'rating': rating,
-    };
-  }
 
-  factory Request.fromMap(Map<String, dynamic> map) {
-    return Request(
-      requestId: map['requestId']?.toString() ?? '',
-      requesterId: map['requesterId']?.toString() ?? '',
-      requesterName: map['requesterName']?.toString() ?? 'مستخدم',
-      department: map['department']?.toString() ?? 'غير محدد',
-      purpose: map['purpose']?.toString() ?? 'غير محدد',
-      details: map['details']?.toString() ?? 'لا توجد تفاصيل',
-      priority: map['priority']?.toString() ?? 'عادي',
-      status: map['status']?.toString() ?? 'معلق',
-      requestedTime: map['requestedTime'] != null
-          ? (map['requestedTime'] as Timestamp).toDate()
-          : DateTime.now(),
-      expectedTime: map['expectedTime'] != null
-          ? (map['expectedTime'] as Timestamp).toDate()
-          : DateTime.now().add(Duration(hours: 2)),
-      assignedDriverId: map['assignedDriverId']?.toString(),
-      assignedDriverName: map['assignedDriverName']?.toString(),
-      hrApproverId: map['hrApproverId']?.toString(),
-      hrApprovalTime: map['hrApprovalTime'] != null
-          ? (map['hrApprovalTime'] as Timestamp).toDate()
-          : null,
-      rejectionTime: map['rejectionTime'] != null
-          ? (map['rejectionTime'] as Timestamp).toDate()
-          : null,
-      completedTime: map['completedTime'] != null
-          ? (map['completedTime'] as Timestamp).toDate()
-          : null,
-      rating: map['rating']?.toDouble(),
-    );
+      'purposeType': purposeType,
+      'details': details,
+      'priority': priority, // ✨ كتابة الحقل الجديد
+      'assignedDriverId': assignedDriverId,
+      'assignedDriverName': assignedDriverName, // ✨ كتابة الحقل الجديد
+
+      'pickupLocation': pickupLocation,
+      'destinationLocation': destinationLocation,
+      'startTimeExpected': Timestamp.fromDate(startTimeExpected),
+      'status': status,
+
+      'createdAt': Timestamp.fromDate(createdAt),
+    };
   }
 }

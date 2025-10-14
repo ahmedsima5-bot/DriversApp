@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../services/auth_service.dart';
+import 'requester/new_request_screen.dart'; // إضافة استيراد الصفحة
+import 'requester/my_requests_screen.dart'; // إذا كانت موجودة
+import 'requester/requester_dashboard.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -9,160 +12,72 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  String? _selectedCompanyId = 'default-company';
-  String _selectedRole = 'مدير موارد بشرية';
-  bool _isLoading = false;
+  int _currentIndex = 0;
+
+  final List<Widget> _screens = [
+    const RequesterDashboard(),
+    const MyRequestsScreen(), // أو _buildMyRequestsScreen() إذا لم تكن موجودة
+    const NewRequestScreen(),
+  ];
+
+  void _logout(BuildContext context) async {
+    try {
+      await AuthService().signOut();
+      if (context.mounted) {
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          '/',
+              (Route<dynamic> route) => false,
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('خطأ في تسجيل الخروج: $e')),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('نظام إدارة السائقين'),
-        backgroundColor: Colors.blue[800],
+        title: const Text('نظام طلبات النقل'),
+        backgroundColor: Colors.indigo,
         foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            tooltip: 'تسجيل الخروج',
+            onPressed: () => _logout(context),
+          ),
+        ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // بطاقة ترحيبية
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  children: [
-                    const Icon(Icons.directions_car, size: 60, color: Colors.blue),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'مرحباً بك في نظام إدارة السائقين',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'الدور: $_selectedRole',
-                      style: const TextStyle(
-                        color: Colors.grey,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // أزرار التنقل الرئيسية
-            if (_selectedRole == 'مدير موارد بشرية') ...[
-              _buildNavigationButton(
-                'لوحة الموارد البشرية',
-                Icons.dashboard,
-                Colors.purple,
-                    () => _navigateToHRDashboard(context),
-              ),
-              const SizedBox(height: 12),
-              _buildNavigationButton(
-                'الموافقات العاجلة',
-                Icons.approval,
-                Colors.red,
-                    () => _navigateToApprovals(context),
-              ),
-            ],
-            const SizedBox(height: 12),
-            _buildNavigationButton(
-              'طلباتي',
-              Icons.list_alt,
-              Colors.orange,
-                  () => _navigateToMyRequests(context),
-            ),
-            const SizedBox(height: 12),
-            _buildNavigationButton(
-              'طلب جديد',
-              Icons.add_circle,
-              Colors.green,
-                  () => _navigateToNewRequest(context),
-            ),
-            const SizedBox(height: 12),
-            _buildNavigationButton(
-              'إعدادات الشركة',
-              Icons.settings,
-              Colors.blue,
-                  () => _navigateToCompanySettings(context),
-            ),
-
-            const Spacer(),
-
-            // معلومات النظام
-            Card(
-              color: Colors.grey[100],
-              child: const Padding(
-                padding: EdgeInsets.all(12.0),
-                child: Text(
-                  'نظام توزيع عادل للمشاوير يراعي عدد المشاوير اليومية والأداء',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
+      body: _screens[_currentIndex],
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentIndex,
+        onTap: (index) {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.dashboard),
+            label: 'الرئيسية',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.list_alt),
+            label: 'طلباتي',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.add_circle),
+            label: 'طلب جديد',
+          ),
+        ],
+        selectedItemColor: Colors.indigo,
+        unselectedItemColor: Colors.grey,
       ),
-    );
-  }
-
-  Widget _buildNavigationButton(String title, IconData icon, Color color, VoidCallback onPressed) {
-    return ElevatedButton.icon(
-      onPressed: onPressed,
-      icon: Icon(icon),
-      label: Text(title),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: color,
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(vertical: 16),
-      ),
-    );
-  }
-
-  void _navigateToHRDashboard(BuildContext context) {
-    // سيتم تنفيذها لاحقاً
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('سيتم فتح لوحة الموارد البشرية')),
-    );
-  }
-
-  void _navigateToApprovals(BuildContext context) {
-    // سيتم تنفيذها لاحقاً
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('سيتم فتح شاشة الموافقات العاجلة')),
-    );
-  }
-
-  void _navigateToMyRequests(BuildContext context) {
-    // سيتم تنفيذها لاحقاً
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('سيتم فتح شاشة طلباتي')),
-    );
-  }
-
-  void _navigateToNewRequest(BuildContext context) {
-    // سيتم تنفيذها لاحقاً
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('سيتم فتح شاشة طلب جديد')),
-    );
-  }
-
-  void _navigateToCompanySettings(BuildContext context) {
-    // سيتم تنفيذها لاحقاً
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('سيتم فتح إعدادات الشركة')),
     );
   }
 }
