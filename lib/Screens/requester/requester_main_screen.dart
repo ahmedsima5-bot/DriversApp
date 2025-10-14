@@ -1,74 +1,63 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import '../role_router_screen.dart';
-import 'new_request_screen.dart'; // صفحة طلب جديد
-import 'my_requests_screen.dart'; // صفحة طلباتي السابقة
+import '../../services/auth_service.dart';
+import 'new_request_screen.dart';
+import 'my_requests_screen.dart';
+import 'requester_dashboard.dart';
 
-class RequesterMainScreen extends StatefulWidget {
+class RequesterMainScreen extends StatelessWidget {
   const RequesterMainScreen({super.key});
 
-  @override
-  State<RequesterMainScreen> createState() => _RequesterMainScreenState();
-}
-
-class _RequesterMainScreenState extends State<RequesterMainScreen> {
-  int _selectedIndex = 0;
-
-  final List<Widget> _screens = [
-    // 1. طلب جديد
-    const NewRequestScreen(),
-    // 2. طلباتي السابقة / الطلب الحالي
-    const MyRequestsScreen(),
-  ];
-
-  void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
+  void _logout(BuildContext context) async {
+    try {
+      await AuthService().signOut();
+      if (context.mounted) {
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          '/',
+              (Route<dynamic> route) => false,
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('خطأ في تسجيل الخروج: $e')),
+        );
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('نظام طلب المركبات'),
-        backgroundColor: Colors.blueGrey,
-        foregroundColor: Colors.white,
-        actions: [
-          // زر تسجيل الخروج
-          IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: 'تسجيل الخروج',
-            onPressed: () async {
-              await FirebaseAuth.instance.signOut();
-              if (mounted) {
-                Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (context) => const RoleRouterScreen()),
-                      (Route<dynamic> route) => false,
-                );
-              }
-            },
-          ),
-        ],
-      ),
-      body: _screens[_selectedIndex],
-      bottomNavigationBar: Directionality(
-        textDirection: TextDirection.rtl,
-        child: BottomNavigationBar(
-          items: const <BottomNavigationBarItem>[
-            BottomNavigationBarItem(
-              icon: Icon(Icons.add_location_alt),
-              label: 'طلب جديد',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.history),
-              label: 'طلباتي السابقة',
+    return DefaultTabController(
+      length: 3,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('نظام طلبات النقل'),
+          backgroundColor: Colors.indigo,
+          foregroundColor: Colors.white,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.logout),
+              tooltip: 'تسجيل الخروج',
+              onPressed: () => _logout(context),
             ),
           ],
-          currentIndex: _selectedIndex,
-          selectedItemColor: Colors.blueGrey,
-          unselectedItemColor: Colors.grey,
-          onTap: _onItemTapped,
+          bottom: const TabBar(
+            tabs: [
+              Tab(icon: Icon(Icons.dashboard), text: 'الرئيسية'),
+              Tab(icon: Icon(Icons.list_alt), text: 'طلباتي'),
+              Tab(icon: Icon(Icons.add_circle), text: 'طلب جديد'),
+            ],
+            indicatorColor: Colors.white,
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white70,
+          ),
+        ),
+        body: const TabBarView(
+          children: [
+            RequesterDashboard(),
+            MyRequestsScreen(),
+            NewRequestScreen(),
+          ],
         ),
       ),
     );

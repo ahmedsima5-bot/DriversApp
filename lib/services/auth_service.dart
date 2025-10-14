@@ -1,28 +1,29 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-// فئة خدمة المصادقة للتعامل مع Firebase Auth وقراءة دور المستخدم
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // ********* 1. دالة تسجيل الدخول بالبريد وكلمة المرور *********
   Future<User?> signIn(String email, String password) async {
     try {
+      print('🔐 محاولة تسجيل الدخول: $email');
       UserCredential result = await _auth.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
+      print('✅ تسجيل الدخول ناجح: ${result.user?.uid}');
       return result.user;
-    } on FirebaseAuthException {
+    } on FirebaseAuthException catch (e) {
+      print('❌ خطأ في تسجيل الدخول: ${e.code} - ${e.message}');
       rethrow;
     } catch (e) {
-      print('AuthService Error during sign in: $e');
+      print('❌ AuthService Error during sign in: $e');
       return null;
     }
   }
 
-  // ********* 2. دالة تسجيل مستخدم جديد (Sign Up) *********
+  // ✅ إضافة دالة signUp المفقودة
   Future<User?> signUp(
       String email,
       String password,
@@ -32,6 +33,7 @@ class AuthService {
       String companyId,
       ) async {
     try {
+      print('👤 محاولة إنشاء حساب: $email');
       UserCredential result = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
@@ -43,52 +45,66 @@ class AuthService {
         // تحديث اسم العرض للمستخدم في Firebase Auth
         await user.updateDisplayName(name);
 
-        // حفظ الدور والقسم والاسم في Firestore
+        // حفظ البيانات في Firestore
         await _firestore.collection('users').doc(user.uid).set({
           'user_id': user.uid,
           'email': email,
           'display_name': name,
-          'role': role, // الدور: HR, Driver, Requester
-          'department': department, // القسم الذي اختاره
-          'company_id': companyId, // معرّف الشركة
+          'role': role,
+          'department': department,
+          'company_id': companyId,
           'created_at': FieldValue.serverTimestamp(),
         });
+
+        print('✅ إنشاء حساب ناجح: ${user.uid}');
+        print('📋 بيانات المستخدم: {role: $role, department: $department, company: $companyId}');
       }
 
       return user;
-    } on FirebaseAuthException {
+    } on FirebaseAuthException catch (e) {
+      print('❌ خطأ في إنشاء الحساب: ${e.code} - ${e.message}');
       rethrow;
     } catch (e) {
-      print('AuthService Error during sign up: $e');
+      print('❌ AuthService Error during sign up: $e');
       return null;
     }
   }
 
-  // ********* 3. دالة الحصول على دور المستخدم ومعرّف الشركة والقسم *********
   Future<Map<String, dynamic>?> getUserRoleAndCompanyId(String userId) async {
     try {
+      print('🔍 جلب بيانات المستخدم: $userId');
       DocumentSnapshot userDoc = await _firestore.collection('users').doc(userId).get();
 
       if (userDoc.exists) {
         final data = userDoc.data() as Map<String, dynamic>;
+        print('📋 بيانات المستخدم: $data');
+
         return {
-          'role': data['role'] as String,
-          'company_id': data['company_id'] as String,
-          'department': data['department'] as String, // تم إضافة القسم
+          'role': data['role'] as String? ?? 'Requester',
+          'company_id': data['company_id'] as String? ?? 'C001',
+          'department': data['department'] as String? ?? 'عام',
         };
+      } else {
+        print('❌ المستخدم غير موجود في Firestore');
+        return null;
       }
-      return null;
     } catch (e) {
-      print('AuthService Error fetching user role: $e');
+      print('❌ AuthService Error fetching user role: $e');
       return null;
     }
   }
 
-  // ********* 4. دالة تسجيل الخروج *********
   Future<void> signOut() async {
-    await _auth.signOut();
+    try {
+      await _auth.signOut();
+      print('✅ تسجيل الخروج ناجح');
+    } catch (e) {
+      print('❌ خطأ في تسجيل الخروج: $e');
+      rethrow;
+    }
   }
 
-  // ********* 5. دفق حالة المصادقة *********
   Stream<User?> get user => _auth.authStateChanges();
+
+  User? get currentUser => _auth.currentUser;
 }

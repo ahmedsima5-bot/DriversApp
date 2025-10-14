@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../services/auth_service.dart';
 import '../role_router_screen.dart';
-import 'register_screen.dart'; // 🚨 تأكد أن هذا السطر موجود وصحيح
+import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -26,7 +26,6 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  // مفتاح النموذج للتحقق من صحة الإدخالات
   final _formKey = GlobalKey<FormState>();
 
   Future<void> _login() async {
@@ -44,10 +43,24 @@ class _LoginScreenState extends State<LoginScreen> {
         _emailController.text.trim(),
         _passwordController.text.trim(),
       );
+
+      // ✅ التوجيه بعد تسجيل الدخول الناجح
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (context) => const RoleRouterScreen()),
+        );
+      }
+
     } on FirebaseAuthException catch (e) {
       String message;
       if (e.code == 'user-not-found' || e.code == 'wrong-password') {
         message = 'بريد إلكتروني أو كلمة مرور غير صحيحة.';
+      } else if (e.code == 'invalid-email') {
+        message = 'البريد الإلكتروني غير صالح.';
+      } else if (e.code == 'user-disabled') {
+        message = 'هذا الحساب معطل.';
+      } else if (e.code == 'too-many-requests') {
+        message = 'محاولات تسجيل دخول كثيرة. حاول مرة أخرى لاحقاً.';
       } else {
         message = 'خطأ في تسجيل الدخول: ${e.message}';
       }
@@ -86,7 +99,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   color: Colors.blue,
                 ),
                 const SizedBox(height: 40),
-                // حقل البريد الإلكتروني
                 TextFormField(
                   controller: _emailController,
                   decoration: const InputDecoration(
@@ -96,14 +108,16 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   keyboardType: TextInputType.emailAddress,
                   validator: (value) {
-                    if (value == null || !value.contains('@')) {
+                    if (value == null || value.isEmpty) {
+                      return 'يرجى إدخال البريد الإلكتروني.';
+                    }
+                    if (!value.contains('@')) {
                       return 'أدخل بريد إلكتروني صالح.';
                     }
                     return null;
                   },
                 ),
                 const SizedBox(height: 15),
-                // حقل كلمة المرور
                 TextFormField(
                   controller: _passwordController,
                   obscureText: true,
@@ -113,7 +127,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     prefixIcon: Icon(Icons.lock),
                   ),
                   validator: (value) {
-                    if (value == null || value.length < 6) {
+                    if (value == null || value.isEmpty) {
+                      return 'يرجى إدخال كلمة المرور.';
+                    }
+                    if (value.length < 6) {
                       return 'يجب أن لا تقل كلمة المرور عن 6 أحرف.';
                     }
                     return null;
@@ -131,7 +148,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
 
-                // زر تسجيل الدخول
                 ElevatedButton(
                   onPressed: _isLoading ? null : _login,
                   style: ElevatedButton.styleFrom(
@@ -157,9 +173,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 const SizedBox(height: 15),
 
-                // رابط لإنشاء حساب جديد
                 TextButton(
-                  onPressed: () {
+                  onPressed: _isLoading
+                      ? null
+                      : () {
                     Navigator.of(context).push(
                       MaterialPageRoute(builder: (context) => const RegisterScreen()),
                     );

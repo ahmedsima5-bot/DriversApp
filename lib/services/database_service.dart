@@ -6,21 +6,15 @@ import '../models/user_model.dart';
 class DatabaseService {
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  // **********************************************
-  //              Company Settings
-  // **********************************************
-
-  // جلب إعدادات الشركة (الرول، الأقسام)
   static Stream<DocumentSnapshot> getCompanySettings(String companyId) {
     return _db.collection('artifacts/$companyId/public/data/company_settings').doc('settings').snapshots();
   }
 
-  // تحديث إعدادات الشركة
   static Future<void> updateCompanySettings(String companyId, Map<String, dynamic> data) async {
     try {
       await _db.collection('artifacts/$companyId/public/data/company_settings').doc('settings').set(
         data,
-        SetOptions(merge: true), // دمج البيانات الموجودة
+        SetOptions(merge: true),
       );
     } catch (e) {
       if (kDebugMode) {
@@ -30,7 +24,6 @@ class DatabaseService {
     }
   }
 
-  // إضافة قسم جديد
   static Future<void> addDepartment(String companyId, String departmentName) async {
     try {
       await _db.collection('artifacts/$companyId/public/data/departments').doc(departmentName).set({
@@ -45,7 +38,6 @@ class DatabaseService {
     }
   }
 
-  // جلب قائمة الأقسام
   static Stream<List<String>> getDepartmentsStream(String companyId) {
     return _db.collection('artifacts/$companyId/public/data/departments')
         .orderBy('name')
@@ -55,11 +47,6 @@ class DatabaseService {
     });
   }
 
-  // **********************************************
-  //              User Management
-  // **********************************************
-
-  // جلب بيانات مستخدم واحد
   static Future<UserModel?> getUser(String userId) async {
     try {
       final doc = await _db.collection('users').doc(userId).get();
@@ -74,14 +61,8 @@ class DatabaseService {
     return null;
   }
 
-  // **********************************************
-  //              Request Management (Requester & HR Functions)
-  // **********************************************
-
-  // ✨ دالة جديدة: لإضافة طلب نقل جديد إلى Firestore
   static Future<void> addRequest(Request request) async {
     try {
-      // نستخدم المسار الصحيح المعتمد على companyId
       await _db.collection('artifacts/${request.companyId}/public/data/requests').doc(request.requestId).set(
         request.toMap(),
       );
@@ -93,7 +74,6 @@ class DatabaseService {
     }
   }
 
-  // جلب طلبات مستخدم معين
   static Stream<List<Request>> getUserRequests(String companyId, String userId) {
     return _db.collection('artifacts/$companyId/public/data/requests')
         .where('requesterId', isEqualTo: userId)
@@ -104,7 +84,6 @@ class DatabaseService {
     });
   }
 
-  // جلب طلبات النقل العاجلة المعلقة للموافقة
   static Stream<QuerySnapshot> getUrgentPendingRequests(String companyId) {
     return _db.collection('artifacts/$companyId/public/data/requests')
         .where('status', isEqualTo: 'PENDING')
@@ -113,7 +92,6 @@ class DatabaseService {
         .snapshots();
   }
 
-  // تحديث حالة الطلب بعد موافقة/رفض HR
   static Future<void> updateRequestStatusAndApprover({
     required String companyId,
     required String requestId,

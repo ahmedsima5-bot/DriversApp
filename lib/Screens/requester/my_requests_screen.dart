@@ -1,149 +1,76 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import '../../models/request_model.dart';
-import '../../services/database_service.dart';
 
-class MyRequestsScreen extends StatefulWidget {
+class MyRequestsScreen extends StatelessWidget {
   const MyRequestsScreen({super.key});
 
   @override
-  State<MyRequestsScreen> createState() => _MyRequestsScreenState();
-}
-
-class _MyRequestsScreenState extends State<MyRequestsScreen> {
-  // final DatabaseService _databaseService = DatabaseService(); // ✨ تم حذف هذا المتغير
-  final String? _currentUserId = FirebaseAuth.instance.currentUser?.uid;
-  String? _companyId;
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _fetchCompanyId();
-  }
-
-  Future<void> _fetchCompanyId() async {
-    if (_currentUserId == null) return;
-
-    try {
-      final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(_currentUserId!)
-          .get();
-
-      if (userDoc.exists) {
-        setState(() {
-          _companyId = userDoc.data()?['companyId'] as String?;
-          _isLoading = false;
-        });
-      } else {
-        setState(() => _isLoading = false);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطأ في تحميل بيانات الشركة: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (_companyId == null || _currentUserId == null) {
-      return const Center(
-        child: Text('خطأ في تحديد هوية المستخدم أو الشركة.'),
-      );
-    }
-
     return Scaffold(
       appBar: AppBar(
-        title: const Text('طلباتي السابقة'),
-        backgroundColor: Colors.blueGrey,
+        title: const Text('طلباتي'),
+        backgroundColor: Colors.indigo,
         foregroundColor: Colors.white,
       ),
-      body: StreamBuilder<List<Request>>(
-        // ✨ تصحيح الخطأ: استخدام اسم الفئة DatabaseService مباشرة
-        stream: DatabaseService.getUserRequests(_companyId!, _currentUserId!),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          if (snapshot.hasError) {
-            return Center(child: Text('خطأ في تحميل البيانات: ${snapshot.error}'));
-          }
-
-          final requests = snapshot.data ?? [];
-          if (requests.isEmpty) {
-            return const Center(child: Text('لا توجد طلبات سابقة'));
-          }
-
-          return ListView.builder(
-            itemCount: requests.length,
-            itemBuilder: (context, index) {
-              final request = requests[index];
-              return Card(
-                margin: const EdgeInsets.all(10),
-                child: ListTile(
-                  title: Text('غرض الطلب: ${request.purpose}'),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('القسم: ${request.department}'),
-                      Text('الأولوية: ${request.priority}'),
-                      // استخدام دالة مساعدة لتلوين الحالة
-                      _buildStatusText('الحالة: ${request.status}', request.status),
-                      if (request.status == 'مُعين للسائق' || request.status == 'قيد التنفيذ')
-                        Text('السائق: ${request.assignedDriverName ?? "لم يتم التوزيع بعد"}'),
-                      Text('موعد التنفيذ: ${_formatDateTime(request.expectedTime)}'),
-                    ],
-                  ),
-                  trailing: _buildStatusIcon(request.status),
-                ),
-              );
-            },
-          );
+      body: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: 5,
+        itemBuilder: (context, index) {
+          return _buildRequestCard(index);
         },
       ),
     );
   }
 
-  // دالة مساعدة لتلوين حالة الطلب
-  Widget _buildStatusText(String status, String rawStatus) {
-    Color color = Colors.grey;
-    if (rawStatus == 'مكتمل') {
-      color = Colors.green;
-    } else if (rawStatus == 'مرفوض' || rawStatus == 'ملغي') {
-      color = Colors.red;
-    } else if (rawStatus == 'قيد التنفيذ' || rawStatus == 'مُعين للسائق') {
-      color = Colors.blue;
-    }
-    return Text(status, style: TextStyle(color: color, fontWeight: FontWeight.bold));
-  }
+  Widget _buildRequestCard(int index) {
+    final requests = [
+      {'type': 'عاجل', 'status': 'مقبول', 'color': Colors.green, 'date': '2024-01-15'},
+      {'type': 'عادي', 'status': 'قيد الانتظار', 'color': Colors.orange, 'date': '2024-01-14'},
+      {'type': 'مهم', 'status': 'مرفوض', 'color': Colors.red, 'date': '2024-01-13'},
+      {'type': 'عادي', 'status': 'مكتمل', 'color': Colors.blue, 'date': '2024-01-12'},
+      {'type': 'عاجل', 'status': 'قيد الانتظار', 'color': Colors.orange, 'date': '2024-01-11'},
+    ];
 
-  // دالة مساعدة لعرض الأيقونة المناسبة
-  Widget _buildStatusIcon(String status) {
-    if (status == 'مكتمل') {
-      return const Icon(Icons.check_circle, color: Colors.green);
-    } else if (status == 'قيد التنفيذ' || status == 'مُعين للسائق') {
-      return const Icon(Icons.directions_car, color: Colors.blue);
-    } else if (status == 'مرفوض' || status == 'ملغي') {
-      return const Icon(Icons.cancel, color: Colors.red);
-    }
-    return const Icon(Icons.hourglass_empty, color: Colors.grey);
-  }
+    final request = requests[index];
 
-  String _formatDateTime(DateTime dateTime) {
-    return '${dateTime.day}/${dateTime.month}/${dateTime.year} - ${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')}';
+    return Card(
+      elevation: 2,
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'طلب نقل ${index + 1}',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: request['color'] as Color,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    request['status'] as String,
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text('النوع: ${request['type']}'),
+            Text('التاريخ: ${request['date']}'),
+            const SizedBox(height: 8),
+            const Text(
+              'نقل موظفين من المقر الرئيسي إلى فرع المدينة',
+              style: TextStyle(color: Colors.grey),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

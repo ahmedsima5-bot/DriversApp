@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../services/auth_service.dart';
-import '../../services/database_service.dart'; // استيراد خدمة قاعدة البيانات
+import '../../services/database_service.dart';
 import '../role_router_screen.dart';
 
-// 🚨 تأكد أن اسم الفئة هنا هو RegisterScreen بالضبط (حرف الـ R والـ S كبير)
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
 
@@ -17,7 +16,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _passwordController = TextEditingController();
   final _nameController = TextEditingController();
   final AuthService _authService = AuthService();
-  // final DatabaseService _databaseService = DatabaseService(); // ✨ تم حذف هذا المتغير لأنه غير ضروري
 
   bool _isLoading = false;
   String? _errorMessage;
@@ -39,20 +37,24 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   void initState() {
     super.initState();
-    _fetchDepartments(); // بدء جلب الأقسام عند تهيئة الشاشة
+    _fetchDepartments();
   }
 
   // جلب الأقسام من Firestore باستخدام Stream
   void _fetchDepartments() {
-    // ✨ التعديل هنا: استخدام اسم الفئة مباشرة بدلاً من المتغير
     DatabaseService.getDepartmentsStream(_companyId).listen((departments) {
       if (mounted) {
         setState(() {
           _departmentOptions = departments;
-          // إذا لم تكن هناك أقسام، قد لا يستطيع المستخدم التسجيل حتى يضيف مسؤول الـ HR قسماً واحداً على الأقل.
           if (departments.isEmpty) {
             _errorMessage = "لا توجد أقسام متاحة حاليًا. يرجى التواصل مع مسؤول الموارد البشرية.";
           }
+        });
+      }
+    }, onError: (error) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = "خطأ في تحميل الأقسام: $error";
         });
       }
     });
@@ -70,12 +72,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
   String _getDisplayRole(String value) {
     switch (value) {
       case 'HR':
-        return 'موارد بشرية (إداري)';
+        return 'إداري';
       case 'Driver':
         return 'سائق';
       case 'Requester':
       default:
-        return 'طالب خدمة (موظف)';
+        return 'موظف';
     }
   }
 
@@ -91,7 +93,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
-    // منع التسجيل إذا لم يكن هناك أقسام
     if (_departmentOptions.isEmpty) {
       setState(() {
         _errorMessage = 'لا يمكن التسجيل حاليًا. لا توجد أقسام متاحة.';
@@ -119,6 +120,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (context) => const RoleRouterScreen()),
         );
+      } else {
+        setState(() {
+          _errorMessage = 'فشل في إنشاء الحساب.';
+        });
       }
     } on FirebaseAuthException catch (e) {
       String message;
@@ -126,12 +131,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
         message = 'كلمة المرور ضعيفة جداً.';
       } else if (e.code == 'email-already-in-use') {
         message = 'هذا البريد الإلكتروني مُسجل بالفعل.';
+      } else if (e.code == 'invalid-email') {
+        message = 'البريد الإلكتروني غير صالح.';
+      } else if (e.code == 'operation-not-allowed') {
+        message = 'عملية التسجيل غير مسموحة حالياً.';
       } else {
         message = 'خطأ في التسجيل: ${e.message}';
       }
-      _errorMessage = message;
+      setState(() {
+        _errorMessage = message;
+      });
     } catch (e) {
-      _errorMessage = 'خطأ عام: $e';
+      setState(() {
+        _errorMessage = 'خطأ عام: $e';
+      });
     } finally {
       if (mounted) {
         setState(() {
@@ -165,12 +178,63 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
                 const SizedBox(height: 30),
 
-                // حقول الإدخال (الاسم، البريد، كلمة المرور)
-                TextFormField(controller: _nameController, decoration: const InputDecoration(labelText: 'الاسم الكامل', border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))), prefixIcon: Icon(Icons.person)), validator: (value) => (value == null || value.isEmpty) ? 'يُرجى إدخال الاسم.' : null),
+                // حقل الاسم
+                TextFormField(
+                  controller: _nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'الاسم الكامل',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
+                    prefixIcon: Icon(Icons.person),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'يُرجى إدخال الاسم.';
+                    }
+                    return null;
+                  },
+                ),
                 const SizedBox(height: 15),
-                TextFormField(controller: _emailController, decoration: const InputDecoration(labelText: 'البريد الإلكتروني', border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))), prefixIcon: Icon(Icons.email)), keyboardType: TextInputType.emailAddress, validator: (value) => (value == null || !value.contains('@')) ? 'أدخل بريد إلكتروني صالح.' : null),
+
+                // حقل البريد الإلكتروني
+                TextFormField(
+                  controller: _emailController,
+                  decoration: const InputDecoration(
+                    labelText: 'البريد الإلكتروني',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
+                    prefixIcon: Icon(Icons.email),
+                  ),
+                  keyboardType: TextInputType.emailAddress,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'يرجى إدخال البريد الإلكتروني.';
+                    }
+                    if (!value.contains('@')) {
+                      return 'أدخل بريد إلكتروني صالح.';
+                    }
+                    return null;
+                  },
+                ),
                 const SizedBox(height: 15),
-                TextFormField(controller: _passwordController, obscureText: true, decoration: const InputDecoration(labelText: 'كلمة المرور (6 أحرف على الأقل)', border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))), prefixIcon: Icon(Icons.lock)), validator: (value) => (value == null || value.length < 6) ? 'يجب أن لا تقل كلمة المرور عن 6 أحرف.' : null),
+
+                // حقل كلمة المرور
+                TextFormField(
+                  controller: _passwordController,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'كلمة المرور (6 أحرف على الأقل)',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
+                    prefixIcon: Icon(Icons.lock),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'يرجى إدخال كلمة المرور.';
+                    }
+                    if (value.length < 6) {
+                      return 'يجب أن لا تقل كلمة المرور عن 6 أحرف.';
+                    }
+                    return null;
+                  },
+                ),
 
                 const SizedBox(height: 25),
 
@@ -181,10 +245,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        if (!_isLoading) // عرض مؤشر التحميل فقط إذا لم يكن يحاول التسجيل
-                          const CircularProgressIndicator(color: Colors.teal),
+                        const CircularProgressIndicator(color: Colors.teal),
                         const SizedBox(width: 10),
-                        Text(_departmentOptions.isEmpty && _errorMessage == null ? 'جاري تحميل الأقسام...' : 'لا توجد أقسام متاحة'),
+                        Text(
+                          _errorMessage ?? 'جاري تحميل الأقسام...',
+                          style: TextStyle(
+                            color: _errorMessage != null ? Colors.red : Colors.grey,
+                          ),
+                        ),
                       ],
                     ),
                   )
@@ -198,7 +266,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     value: _selectedDepartment,
                     hint: const Text('اختر قسمك'),
                     items: _departmentOptions.map((String value) {
-                      return DropdownMenuItem<String>(value: value, child: Text(value));
+                      return DropdownMenuItem<String>(
+                        value: value,
+                        child: Text(value),
+                      );
                     }).toList(),
                     onChanged: (String? newValue) {
                       setState(() {
@@ -244,6 +315,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
                   ),
 
+                // زر إنشاء الحساب
                 ElevatedButton(
                   onPressed: _isLoading ? null : _register,
                   style: ElevatedButton.styleFrom(
@@ -254,15 +326,26 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     elevation: 5,
                   ),
                   child: _isLoading
-                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                  )
                       : const Text('إنشاء الحساب', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 ),
                 const SizedBox(height: 15),
+
+                // رابط العودة لتسجيل الدخول
                 TextButton(
-                  onPressed: () {
-                    Navigator.pop(context); // العودة لشاشة تسجيل الدخول
+                  onPressed: _isLoading
+                      ? null
+                      : () {
+                    Navigator.pop(context);
                   },
-                  child: const Text('لدي حساب بالفعل؟ تسجيل الدخول', style: TextStyle(color: Colors.blueGrey)),
+                  child: const Text(
+                    'لدي حساب بالفعل؟ تسجيل الدخول',
+                    style: TextStyle(color: Colors.blueGrey),
+                  ),
                 ),
               ],
             ),
