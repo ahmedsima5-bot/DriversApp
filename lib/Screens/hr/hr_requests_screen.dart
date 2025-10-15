@@ -27,7 +27,8 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
 
   Future<void> _loadRequests() async {
     try {
-      // جلب الطلبات من Firebase
+      print('🔄 جلب الطلبات من الشركة: ${widget.companyId}');
+
       final requestsSnapshot = await FirebaseFirestore.instance
           .collection('companies')
           .doc(widget.companyId)
@@ -35,23 +36,42 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
           .orderBy('createdAt', descending: true)
           .get();
 
+      print('✅ عدد المستندات المستلمة: ${requestsSnapshot.docs.length}');
+
       setState(() {
         _requests = requestsSnapshot.docs.map((doc) {
           final data = doc.data();
+
+          // ✨ معالجة createdAt بأنواعه المختلفة
+          DateTime createdAt;
+          if (data['createdAt'] is Timestamp) {
+            createdAt = (data['createdAt'] as Timestamp).toDate();
+          } else if (data['createdAt'] is String) {
+            createdAt = DateTime.parse(data['createdAt']);
+          } else {
+            createdAt = DateTime.now();
+            print('⚠️  نوع createdAt غير معروف: ${data['createdAt']}');
+          }
+
+          print('📄 معالجة طلب ${doc.id}: $createdAt');
+
           return {
             'id': doc.id,
             'department': data['department'] ?? 'غير محدد',
             'destination': data['toLocation'] ?? 'غير محدد',
-            'status': _translateStatus(data['status']),
+            'status': _translateStatus(data['status'] ?? 'PENDING'),
             'priority': data['priority'] == 'Urgent' ? 'عاجل' : 'عادي',
             'assignedDriver': data['assignedDriverName'],
             'requesterName': data['requesterName'] ?? 'غير معروف',
-            'createdAt': (data['createdAt'] as Timestamp).toDate(),
-            'firebaseData': data, // حفظ البيانات الأصلية
+            'createdAt': createdAt, // ✨ استخدام التاريخ المعالج
+            'firebaseData': data,
           };
         }).toList();
         _loading = false;
       });
+
+      print('🎯 الطلبات المحملة بنجاح: ${_requests.length}');
+
     } catch (e) {
       print('❌ خطأ في جلب الطلبات: $e');
       setState(() { _loading = false; });
@@ -72,14 +92,15 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
 
   List<Map<String, dynamic>> get _filteredRequests {
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final todayStart = DateTime(now.year, now.month, now.day);
+    final todayEnd = DateTime(now.year, now.month, now.day, 23, 59, 59);
 
     return _requests.where((request) {
       final requestDate = request['createdAt'];
 
       switch (_filter) {
         case 'اليوم':
-          return requestDate.isAfter(today);
+          return requestDate.isAfter(todayStart) && requestDate.isBefore(todayEnd);
         case 'العاجلة':
           return request['priority'] == 'عاجل' &&
               ['معلقة', 'بانتظار الموارد البشرية'].contains(request['status']);

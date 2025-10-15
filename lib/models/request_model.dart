@@ -52,30 +52,56 @@ class Request {
   DateTime get expectedTime => startTimeExpected;
 
   factory Request.fromMap(Map<String, dynamic> data) {
+    // دالة مساعدة لتحويل أي قيمة إلى DateTime
+    DateTime _parseDateTime(dynamic value) {
+      if (value == null) return DateTime.now().add(Duration(hours: 1));
+      if (value is Timestamp) return value.toDate();
+      if (value is DateTime) return value;
+      if (value is String) {
+        try {
+          return DateTime.parse(value);
+        } catch (e) {
+          return DateTime.now().add(Duration(hours: 1));
+        }
+      }
+      return DateTime.now().add(Duration(hours: 1));
+    }
+
+    // دالة مساعدة لتحويل أي قيمة إلى GeoPoint
+    GeoPoint _parseGeoPoint(dynamic value) {
+      if (value == null) return const GeoPoint(24.7136, 46.6753); // الرياض
+      if (value is GeoPoint) return value;
+      if (value is Map && value['latitude'] != null && value['longitude'] != null) {
+        return GeoPoint(
+          (value['latitude'] as num).toDouble(),
+          (value['longitude'] as num).toDouble(),
+        );
+      }
+      return const GeoPoint(24.7136, 46.6753);
+    }
+
     return Request(
-      requestId: data['requestId'] ?? '',
-      companyId: data['companyId'] ?? '',
-      requesterId: data['requesterId'] ?? '',
-      requesterName: data['requesterName'] ?? 'غير معروف',
-      department: data['department'],
-      purposeType: data['purposeType'] ?? 'Normal',
-      details: data['details'] ?? '',
-      priority: data['priority'] ?? 'Normal',
-      assignedDriverId: data['assignedDriverId'],
-      assignedDriverName: data['assignedDriverName'],
+      requestId: data['requestId']?.toString() ?? '',
+      companyId: data['companyId']?.toString() ?? 'C001',
+      requesterId: data['requesterId']?.toString() ?? '',
+      requesterName: data['requesterName']?.toString() ?? 'غير معروف',
+      department: data['department']?.toString(),
+      purposeType: data['purposeType']?.toString() ?? 'عمل',
+      details: data['details']?.toString() ?? '',
+      priority: data['priority']?.toString() ?? 'Normal',
+      assignedDriverId: data['assignedDriverId']?.toString(),
+      assignedDriverName: data['assignedDriverName']?.toString(),
 
-      hrApproverId: data['hrApproverId'],
-      hrApproverName: data['hrApproverName'],
-      hrApprovalTime: data['hrApprovalTime'] != null
-          ? (data['hrApprovalTime'] as Timestamp).toDate()
-          : null,
-      rejectionReason: data['rejectionReason'],
+      hrApproverId: data['hrApproverId']?.toString(),
+      hrApproverName: data['hrApproverName']?.toString(),
+      hrApprovalTime: data['hrApprovalTime'] != null ? _parseDateTime(data['hrApprovalTime']) : null,
+      rejectionReason: data['rejectionReason']?.toString(),
 
-      pickupLocation: data['pickupLocation'] as GeoPoint? ?? const GeoPoint(0, 0),
-      destinationLocation: data['destinationLocation'] as GeoPoint? ?? const GeoPoint(0, 0),
-      startTimeExpected: (data['startTimeExpected'] as Timestamp).toDate(),
-      status: data['status'] ?? 'PENDING',
-      createdAt: (data['createdAt'] as Timestamp).toDate(),
+      pickupLocation: _parseGeoPoint(data['pickupLocation']),
+      destinationLocation: _parseGeoPoint(data['destinationLocation']),
+      startTimeExpected: _parseDateTime(data['startTimeExpected']),
+      status: data['status']?.toString() ?? 'NEW',
+      createdAt: _parseDateTime(data['createdAt']),
     );
   }
 
@@ -105,5 +131,22 @@ class Request {
       'status': status,
       'createdAt': Timestamp.fromDate(createdAt),
     };
+  }
+
+  // دالة مساعدة للتشخيص
+  void printDebugInfo() {
+    print('''
+📋 معلومات الطلب:
+   - ID: $requestId
+   - الشركة: $companyId
+   - مقدم الطلب: $requesterName
+   - الحالة: $status
+   - الأولوية: $priority
+   - الوقت المتوقع: $startTimeExpected
+   - وقت الإنشاء: $createdAt
+   - السائق المعين: $assignedDriverName
+   - من: (${pickupLocation.latitude}, ${pickupLocation.longitude})
+   - إلى: (${destinationLocation.latitude}, ${destinationLocation.longitude})
+''');
   }
 }

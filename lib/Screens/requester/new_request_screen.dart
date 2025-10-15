@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class NewRequestScreen extends StatefulWidget {
   const NewRequestScreen({super.key});
@@ -11,13 +13,10 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
   final _formKey = GlobalKey<FormState>();
   final _detailsController = TextEditingController();
   final _responsiblePhoneController = TextEditingController();
+  final _destinationController = TextEditingController(); // ✨ حقل جديد للوجهة
 
-  // ✅ التصحيح: تغيير القيمة الافتراضية لتتوافق مع القائمة
-  String _selectedType = 'طلب'; // كانت 'عاجل' ولكن القائمة تحتوي على 'طلب' و 'طلب عاجل'
-
+  String _selectedType = 'طلب';
   DateTime _selectedDate = DateTime.now();
-
-  // ... باقي الدوال تبقى كما هي
 
   @override
   Widget build(BuildContext context) {
@@ -40,11 +39,10 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
               ),
               const SizedBox(height: 20),
 
-              // نوع الطلب - ✅ التصحيح هنا
+              // نوع الطلب
               const Text('نوع الطلب:', style: TextStyle(fontWeight: FontWeight.bold)),
               DropdownButtonFormField<String>(
                 value: _selectedType,
-                // ✅ التأكد من أن القائمة تحتوي على القيمة الافتراضية
                 items: ['طلب', 'طلب عاجل'].map((String value) {
                   return DropdownMenuItem<String>(
                     value: value,
@@ -62,7 +60,30 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
                 ),
               ),
 
-              // ... باقي الكود يبقى كما هو
+              const SizedBox(height: 20),
+
+              // ✨ حقل الوجهة الجديد - مطلوب للـ HR
+              const Text('الوجهة:', style: TextStyle(fontWeight: FontWeight.bold)),
+              TextFormField(
+                controller: _destinationController,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  hintText: 'أدخل الوجهة أو الموقع النهائي',
+                  prefixIcon: Icon(Icons.location_on),
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'يرجى إدخال الوجهة';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 5),
+              const Text(
+                'هذا الحقل مطلوب لعرض الطلب في إدارة الموارد البشرية',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+
               const SizedBox(height: 20),
 
               // تاريخ الطلب
@@ -91,7 +112,7 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
               const SizedBox(height: 20),
 
               // اختيار الموقع من الخرائط
-              const Text('الموقع:', style: TextStyle(fontWeight: FontWeight.bold)),
+              const Text('موقع الالتقاء:', style: TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 10),
               ElevatedButton.icon(
                 onPressed: _openMapPicker,
@@ -102,7 +123,7 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
                   side: BorderSide(color: Colors.blue.shade200),
                 ),
                 icon: const Icon(Icons.location_on),
-                label: const Text('اختيار الموقع من الخرائط'),
+                label: const Text('اختيار موقع الالتقاء من الخرائط'),
               ),
               const SizedBox(height: 5),
               const Text(
@@ -136,13 +157,13 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
               const SizedBox(height: 20),
 
               // تفاصيل الطلب
-              const Text('تفاصيل الطلب:', style: TextStyle(fontWeight: FontWeight.bold)),
+              const Text('تفاصيل إضافية:', style: TextStyle(fontWeight: FontWeight.bold)),
               TextFormField(
                 controller: _detailsController,
                 maxLines: 4,
                 decoration: const InputDecoration(
                   border: OutlineInputBorder(),
-                  hintText: 'أدخل تفاصيل الطلب (يرجى اضافة الموقع وتفاصيل التسليم او الشحنة او وصف المشوار)',
+                  hintText: 'أدخل تفاصيل إضافية عن الطلب (الأشخاص، المعدات، المتطلبات الخاصة)',
                 ),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
@@ -191,20 +212,112 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
   }
 
   void _openMapPicker() {
-    // TODO: فتح خرائط جوجل لاختيار الموقع
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('سيتم فتح خرائط جوجل لاختيار الموقع')),
     );
   }
 
-  void _submitRequest() {
+  void _submitRequest() async {
     if (_formKey.currentState!.validate()) {
-      // TODO: تنفيذ إرسال الطلب إلى Firebase
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم إرسال الطلب بنجاح')),
-      );
-      _detailsController.clear();
-      _responsiblePhoneController.clear();
+      try {
+        // إظهار تحميل
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const Center(
+            child: CircularProgressIndicator(),
+          ),
+        );
+
+        // جلب بيانات المستخدم الحالي
+        final user = FirebaseAuth.instance.currentUser;
+        if (user == null) {
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('يجب تسجيل الدخول أولاً')),
+          );
+          return;
+        }
+
+        // جلب بيانات المستخدم الإضافية
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
+
+        final userData = userDoc.data();
+        final companyId = userData?['company_id'] ?? 'unknown';
+        final userName = userData?['name'] ?? 'غير معروف';
+        final department = userData?['department'] ?? 'غير محدد';
+
+        // تحديد الأولوية بناءً على نوع الطلب
+        final priority = _selectedType == 'طلب عاجل' ? 'Urgent' : 'Normal';
+
+        // ✨ إنشاء الطلب مع الحقول المطلوبة للـ HR
+        final requestData = {
+          'companyId': companyId,
+          'requesterId': user.uid,
+          'requesterName': userName,
+          'department': department,
+
+          // الحقول الأساسية للـ HR
+          'toLocation': _destinationController.text, // ✨ الحقل الجديد المهم
+          'fromLocation': 'المقر الرئيسي',
+
+          // الحقول الإضافية
+          'purposeType': _selectedType,
+          'details': _detailsController.text,
+          'priority': priority,
+          'responsiblePhone': _responsiblePhoneController.text,
+          'status': priority == 'Urgent' ? 'HR_PENDING' : 'PENDING',
+          'expectedTime': Timestamp.fromDate(_selectedDate),
+          'createdAt': FieldValue.serverTimestamp(),
+        };
+
+        print('📤 إرسال الطلب إلى Firebase: $requestData');
+
+        // إرسال الطلب لـ Firebase
+        await FirebaseFirestore.instance
+            .collection('companies')
+            .doc(companyId)
+            .collection('requests')
+            .add(requestData);
+
+        // إغلاق التحمل
+        Navigator.pop(context);
+
+        // رسالة نجاح
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تم إرسال الطلب بنجاح - سيظهر في إدارة الطلبات'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 3),
+          ),
+        );
+
+        // تنظيف الحقول
+        _detailsController.clear();
+        _responsiblePhoneController.clear();
+        _destinationController.clear(); // ✨ تنظيف الحقل الجديد
+        setState(() {
+          _selectedType = 'طلب';
+          _selectedDate = DateTime.now();
+        });
+
+        // العودة للصفحة السابقة بعد ثانيتين
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) Navigator.pop(context);
+        });
+
+      } catch (e) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطأ في إرسال الطلب: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -212,6 +325,7 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
   void dispose() {
     _detailsController.dispose();
     _responsiblePhoneController.dispose();
+    _destinationController.dispose(); // ✨ تنظيف الحقل الجديد
     super.dispose();
   }
 }

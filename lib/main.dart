@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'services/firebase_options.dart';
 import 'screens/auth/login_screen.dart';
+import 'services/dispatch_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -11,10 +12,28 @@ void main() async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
     print('✅ Firebase initialized successfully');
+
+    // 🎯 تفعيل نظام التوزيع التلقائي - صححت الشركة لـ C001
+    initializeDispatchSystem();
+
     runApp(const MyApp());
   } catch (e) {
     print("❌ Firebase Initialization Error: $e");
     runApp(const ErrorApp());
+  }
+}
+
+// ✨ دالة تفعيل نظام التوزيع - صححت الشركة
+void initializeDispatchSystem() {
+  try {
+    final dispatchService = DispatchService();
+
+    // 🔥 التصحيح: استخدم C001 بدل default_company
+    dispatchService.startListening('C001');
+
+    print('🎯 نظام التوزيع التلقائي مفعل للشركة: C001');
+  } catch (e) {
+    print('❌ خطأ في تفعيل نظام التوزيع: $e');
   }
 }
 
@@ -26,11 +45,11 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'نظام إدارة النقل',
       theme: ThemeData(
-        primarySwatch: Colors.blue,
+        primarySwatch: Colors.orange,
         fontFamily: 'Tajawal',
         useMaterial3: true,
       ),
-      home: const LoginScreen(), // يبدأ من شاشة تسجيل الدخول
+      home: const LoginScreen(),
       debugShowCheckedModeBanner: false,
     );
   }

@@ -5,70 +5,181 @@ class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
+  // Stream لتتبع حالة المستخدم
+  Stream<User?> get user {
+    return _auth.authStateChanges();
+  }
+
+  // الحصول على المستخدم الحالي
+  User? get currentUser {
+    return _auth.currentUser;
+  }
+
+  // 🔐 تسجيل الدخول
+  Future<User?> signIn(String email, String password) async {
+    try {
+      UserCredential result = await _auth.signInWithEmailAndPassword(
+        email: email.trim(),
+        password: password.trim(),
+      );
+
+      User? user = result.user;
+      if (user != null) {
+        print('✅ تم تسجيل الدخول بنجاح: ${user.email}');
+      }
+
+      return user;
+    } on FirebaseAuthException catch (e) {
+      print('❌ خطأ في تسجيل الدخول: ${e.code} - ${e.message}');
+      rethrow;
+    } catch (e) {
+      print('❌ خطأ غير متوقع في تسجيل الدخول: $e');
+      rethrow;
+    }
+  }
+
+  // 📝 التسجيل
   Future<User?> signUp(
       String email,
       String password,
       String name,
       String role,
       String department,
-      String companyId,
+      String companyId
       ) async {
     try {
       UserCredential result = await _auth.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
+          email: email.trim(),
+          password: password.trim()
       );
 
-      await _firestore.collection('users').doc(result.user!.uid).set({
-        'email': email,
-        'name': name,
-        'role': role,
-        'department': department,
-        'company_id': companyId,
-        'user_id': result.user!.uid,
-        'created_at': FieldValue.serverTimestamp(),
-      });
+      User? user = result.user;
 
-      return result.user;
+      if (user != null) {
+        // تحديث الملف الشخصي
+        await user.updateDisplayName(name);
+
+        // إضافة بيانات المستخدم إلى Firestore
+        await _firestore
+            .collection('companies')
+            .doc(companyId)
+            .collection('users')
+            .doc(user.uid)
+            .set({
+          'uid': user.uid,
+          'name': name,
+          'email': email,
+          'role': role,
+          'department': department,
+          'companyId': companyId,
+          'createdAt': FieldValue.serverTimestamp(),
+          'lastLogin': FieldValue.serverTimestamp(),
+        });
+
+        print('✅ تم إنشاء حساب المستخدم: ${user.uid} - الدور: $role');
+        return user;
+      }
+
+      return null;
+    } on FirebaseAuthException catch (e) {
+      print('❌ خطأ في التسجيل: ${e.code} - ${e.message}');
+      rethrow;
     } catch (e) {
+      print('❌ خطأ غير متوقع في التسجيل: $e');
       rethrow;
     }
   }
 
-  Stream<User?> get user => _auth.authStateChanges();
-  User? get currentUser => _auth.currentUser;
-
-  Future<User?> signIn(String email, String password) async {
+  // 🚪 تسجيل الخروج
+  Future<void> signOut() async {
     try {
-      UserCredential result = await _auth.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-      return result.user;
+      await _auth.signOut();
+      print('✅ تم تسجيل الخروج بنجاح');
     } catch (e) {
+      print('❌ خطأ في تسجيل الخروج: $e');
       rethrow;
     }
   }
 
-  Future<Map<String, dynamic>> getUserRoleAndCompanyId(String uid) async {
+  // 🔄 إعادة تعيين كلمة المرور
+  Future<void> resetPassword(String email) async {
     try {
-      DocumentSnapshot userDoc = await _firestore.collection('users').doc(uid).get();
+      await _auth.sendPasswordResetEmail(email: email.trim());
+      print('✅ تم إرسال رابط إعادة تعيين كلمة المرور إلى: $email');
+    } on FirebaseAuthException catch (e) {
+      print('❌ خطأ في إعادة تعيين كلمة المرور: ${e.code} - ${e.message}');
+      rethrow;
+    } catch (e) {
+      print('❌ خطأ غير متوقع في إعادة تعيين كلمة المرور: $e');
+      rethrow;
+    }
+  }
 
-      if (userDoc.exists) {
-        Map<String, dynamic> data = userDoc.data() as Map<String, dynamic>;
-        return {
-          'role': data['role'] ?? 'Requester',
-          'company_id': data['company_id'] ?? 'C001',
-        };
-      } else {
-        throw Exception('User document not found');
+  // 👤 تحديث الملف الشخصي
+  Future<void> updateProfile(String name, String? phone) async {
+    try {
+      User? user = _auth.currentUser;
+      if (user != null) {
+        await user.updateDisplayName(name);
+        if (phone != null && phone.isNotEmpty) {
+          // يمكن إضافة تحديث رقم الهاتف إذا كان مدعوماً
+        }
+        print('✅ تم تحديث الملف الشخصي: $name');
       }
     } catch (e) {
+      print('❌ خطأ في تحديث الملف الشخصي: $e');
       rethrow;
     }
   }
 
-  Future<void> signOut() async {
-    await _auth.signOut();
+  // 🔍 الحصول على بيانات المستخدم من Firestore
+  Future<Map<String, dynamic>?> getUserData(String userId, String companyId) async {
+    try {
+      DocumentSnapshot userDoc = await _firestore
+          .collection('companies')
+          .doc(companyId)
+          .collection('users')
+          .doc(userId)
+          .get();
+
+      if (userDoc.exists) {
+        return userDoc.data() as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      print('❌ خطأ في جلب بيانات المستخدم: $e');
+      return null;
+    }
   }
+
+  // 🎯 الحصول على دور المستخدم
+  Future<String?> getUserRole(String userId, String companyId) async {
+    try {
+      Map<String, dynamic>? userData = await getUserData(userId, companyId);
+      return userData?['role'] as String?;
+    } catch (e) {
+      print('❌ خطأ في جلب دور المستخدم: $e');
+      return null;
+    }
+  }
+
+  // 📧 التحقق من حالة البريد الإلكتروني
+  Future<bool> isEmailVerified() async {
+    User? user = _auth.currentUser;
+    if (user != null) {
+      await user.reload();
+      return user.emailVerified;
+    }
+    return false;
+  }
+
+  // ✉️ إرسال تحقق البريد الإلكتروني
+  Future<void> sendEmailVerification() async {
+    User? user = _auth.currentUser;
+    if (user != null && !user.emailVerified) {
+      await user.sendEmailVerification();
+      print('✅ تم إرسال رابط التحقق إلى: ${user.email}');
+    }
+  }
+
 }

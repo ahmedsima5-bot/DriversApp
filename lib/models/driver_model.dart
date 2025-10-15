@@ -2,56 +2,101 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 class Driver {
   final String driverId;
-  final String companyId;
   final String name;
   final String email;
   final String phone;
   final bool isOnline;
   final bool isAvailable;
+  final bool isActive;
   final int completedRides;
-  final double performanceScore;
-  final DateTime lastStatusUpdate;
+  final DateTime? lastStatusUpdate;
+  final String? currentVehicle;
+  final String? licenseNumber;
 
   Driver({
     required this.driverId,
-    required this.companyId,
     required this.name,
     required this.email,
     required this.phone,
     required this.isOnline,
     required this.isAvailable,
+    required this.isActive,
     required this.completedRides,
-    required this.performanceScore,
-    required this.lastStatusUpdate,
+    this.lastStatusUpdate,
+    this.currentVehicle,
+    this.licenseNumber,
   });
 
   factory Driver.fromMap(Map<String, dynamic> data) {
+    // دالة مساعدة لتحويل أي قيمة إلى DateTime
+    DateTime? _parseDateTime(dynamic value) {
+      if (value == null) return null;
+      if (value is Timestamp) return value.toDate();
+      if (value is DateTime) return value;
+      if (value is String) {
+        try {
+          return DateTime.parse(value);
+        } catch (e) {
+          return null;
+        }
+      }
+      return null;
+    }
+
+    // دالة مساعدة لتحويل أي قيمة إلى int
+    int _parseInt(dynamic value) {
+      if (value == null) return 0;
+      if (value is int) return value;
+      if (value is double) return value.toInt();
+      if (value is String) {
+        try {
+          return int.parse(value);
+        } catch (e) {
+          return 0;
+        }
+      }
+      return 0;
+    }
+
+    // دالة مساعدة لتحويل أي قيمة إلى bool
+    bool _parseBool(dynamic value) {
+      if (value == null) return false;
+      if (value is bool) return value;
+      if (value is String) return value.toLowerCase() == 'true';
+      if (value is int) return value > 0;
+      return false;
+    }
+
     return Driver(
-      driverId: data['driverId'] ?? '',
-      companyId: data['companyId'] ?? '',
-      name: data['name'] ?? '',
-      email: data['email'] ?? '',
-      phone: data['phone'] ?? '',
-      isOnline: data['isOnline'] ?? false,
-      isAvailable: data['isAvailable'] ?? false,
-      completedRides: data['completedRides'] ?? 0,
-      performanceScore: (data['performanceScore'] ?? 0.0).toDouble(),
-      lastStatusUpdate: (data['lastStatusUpdate'] as Timestamp).toDate(),
+      driverId: data['driverId']?.toString() ?? '',
+      name: data['name']?.toString() ?? 'سائق غير معروف',
+      email: data['email']?.toString() ?? '',
+      phone: data['phone']?.toString() ?? '',
+      isOnline: _parseBool(data['isOnline']),
+      isAvailable: _parseBool(data['isAvailable']),
+      isActive: _parseBool(data['isActive']),
+      completedRides: _parseInt(data['completedRides']),
+      lastStatusUpdate: _parseDateTime(data['lastStatusUpdate']),
+      currentVehicle: data['currentVehicle']?.toString(),
+      licenseNumber: data['licenseNumber']?.toString(),
     );
   }
 
   Map<String, dynamic> toMap() {
     return {
       'driverId': driverId,
-      'companyId': companyId,
       'name': name,
       'email': email,
       'phone': phone,
       'isOnline': isOnline,
       'isAvailable': isAvailable,
+      'isActive': isActive,
       'completedRides': completedRides,
-      'performanceScore': performanceScore,
-      'lastStatusUpdate': Timestamp.fromDate(lastStatusUpdate),
+      'lastStatusUpdate': lastStatusUpdate != null
+          ? Timestamp.fromDate(lastStatusUpdate!)
+          : null,
+      'currentVehicle': currentVehicle,
+      'licenseNumber': licenseNumber,
     };
   }
 }

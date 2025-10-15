@@ -1,15 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/auth_service.dart';
 import 'auth/login_screen.dart';
 import 'hr/hr_main_screen.dart';
 import 'requester/requester_dashboard.dart';
 import 'driver/driver_dashboard.dart';
-
-// استيراد شاشات جميع الأدوار
-import 'hr/hr_main_screen.dart';
-import 'requester/requester_dashboard.dart'; // استخدم RequesterDashboard بدلاً من HomeScreen
-// import 'driver/driver_dashboard.dart'; // إذا كان لديك شاشات للسائقين
 
 class RoleRouterScreen extends StatefulWidget {
   const RoleRouterScreen({super.key});
@@ -20,6 +16,7 @@ class RoleRouterScreen extends StatefulWidget {
 
 class _RoleRouterScreenState extends State<RoleRouterScreen> {
   final AuthService _authService = AuthService();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   User? _user;
   bool _isDataLoaded = false;
   Map<String, dynamic>? _userData;
@@ -61,6 +58,60 @@ class _RoleRouterScreenState extends State<RoleRouterScreen> {
     }
   }
 
+  // 🔍 دالة محسنة لجلب دور المستخدم ورقم الشركة
+  Future<Map<String, dynamic>> _getUserRoleAndCompanyId(String userId) async {
+    try {
+      // البحث في جميع الشركات عن المستخدم
+      final companiesSnapshot = await _firestore.collection('companies').get();
+
+      for (var companyDoc in companiesSnapshot.docs) {
+        final companyId = companyDoc.id;
+        final userDoc = await _firestore
+            .collection('companies')
+            .doc(companyId)
+            .collection('users')
+            .doc(userId)
+            .get();
+
+        if (userDoc.exists) {
+          final userData = userDoc.data() as Map<String, dynamic>;
+          return {
+            'role': userData['role'] ?? 'Requester',
+            'company_id': companyId,
+            'name': userData['name'] ?? 'مستخدم',
+            'department': userData['department'] ?? 'غير محدد',
+          };
+        }
+      }
+
+      // إذا لم يتم العثور على المستخدم، البحث في collection السائقين
+      for (var companyDoc in companiesSnapshot.docs) {
+        final companyId = companyDoc.id;
+        final driversSnapshot = await _firestore
+            .collection('companies')
+            .doc(companyId)
+            .collection('drivers')
+            .where('email', isEqualTo: _user?.email)
+            .get();
+
+        if (driversSnapshot.docs.isNotEmpty) {
+          final driverData = driversSnapshot.docs.first.data();
+          return {
+            'role': 'Driver',
+            'company_id': companyId,
+            'name': driverData['name'] ?? 'سائق',
+            'department': driverData['department'] ?? 'السائقين',
+          };
+        }
+      }
+
+      throw Exception('لم يتم العثور على بيانات المستخدم');
+    } catch (e) {
+      print('❌ خطأ في جلب دور المستخدم ورقم الشركة: $e');
+      rethrow;
+    }
+  }
+
   Future<void> _fetchUserRole(String userId) async {
     try {
       setState(() {
@@ -68,7 +119,7 @@ class _RoleRouterScreenState extends State<RoleRouterScreen> {
         _error = null;
       });
 
-      final userData = await _authService.getUserRoleAndCompanyId(userId);
+      final userData = await _getUserRoleAndCompanyId(userId);
 
       if (mounted) {
         setState(() {
@@ -107,8 +158,9 @@ class _RoleRouterScreenState extends State<RoleRouterScreen> {
 
     final role = _userData!['role'] as String;
     final companyId = _userData!['company_id'] as String;
+    final userName = _userData!['name'] as String;
 
-    print('🎯 توجيه المستخدم إلى: $role - الشركة: $companyId');
+    print('🎯 توجيه المستخدم إلى: $role - الشركة: $companyId - الاسم: $userName');
 
     // التوجيه حسب الدور
     switch (role) {
@@ -116,10 +168,10 @@ class _RoleRouterScreenState extends State<RoleRouterScreen> {
         return HRMainScreen(companyId: companyId);
 
       case 'Requester':
-        return const RequesterDashboard(); // استخدام RequesterDashboard بدلاً من HomeScreen
+        return const RequesterDashboard();
 
       case 'Driver':
-        return DriverDashboard(userName: _userData!['name'] ?? 'السائق');
+        return DriverDashboard(userName: userName);
 
       default:
         return _buildUnsupportedRoleScreen(role);
@@ -194,52 +246,6 @@ class _RoleRouterScreenState extends State<RoleRouterScreen> {
             ElevatedButton(
               onPressed: () => _authService.signOut(),
               child: const Text('العودة لتسجيل الدخول'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // شاشة السائق (يمكن استبدالها بشاشة حقيقية)
-  Widget _buildDriverScreen() {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('لوحة السائق'),
-        backgroundColor: Colors.orange.shade700,
-        foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () => _authService.signOut(),
-          ),
-        ],
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.directions_car, size: 80, color: Colors.orange),
-            const SizedBox(height: 20),
-            const Text(
-              'مرحباً بك أيها السائق',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              'هنا ستظهر طلبات النقل المخصصة لك',
-              style: TextStyle(fontSize: 16, color: Colors.grey),
-            ),
-            const SizedBox(height: 30),
-            ElevatedButton(
-              onPressed: () {
-                // TODO: الانتقال لصفحة طلبات السائق
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orange,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('عرض طلباتي'),
             ),
           ],
         ),

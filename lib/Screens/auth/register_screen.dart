@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../services/auth_service.dart';
 import '../../services/database_service.dart';
 import '../role_router_screen.dart';
@@ -15,10 +16,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _nameController = TextEditingController();
+  final _phoneController = TextEditingController();
+
   final AuthService _authService = AuthService();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   bool _isLoading = false;
-  bool _isLoadingDepartments = true; // ✅ إضافة حالة تحميل للأقسام
+  bool _isLoadingDepartments = true;
   String? _errorMessage;
 
   List<String> _departmentOptions = [];
@@ -36,7 +40,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _fetchDepartments();
   }
 
-  // ✅ تحسين دالة جلب الأقسام
   void _fetchDepartments() async {
     try {
       setState(() {
@@ -44,7 +47,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
         _errorMessage = null;
       });
 
-      // استخدام Future بدلاً من Stream لتجنب المشاكل
       final departments = await DatabaseService.getDepartments(_companyId);
 
       if (mounted) {
@@ -73,6 +75,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _emailController.dispose();
     _passwordController.dispose();
     _nameController.dispose();
+    _phoneController.dispose();
     super.dispose();
   }
 
@@ -88,19 +91,70 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
 
+  // 🚗 دالة محسنة لإضافة السائق إلى Firestore
+  Future<void> _addDriverToFirestore(User user, String fullName) async {
+    try {
+      final driverData = {
+        'driverId': user.uid,
+        'uid': user.uid,
+        'name': fullName,
+        'email': user.email,
+        'phone': _phoneController.text.isNotEmpty ? _phoneController.text : '+966000000000',
+        'isOnline': true,
+        'isAvailable': true,
+        'isActive': true,
+        'completedRides': 0,
+        'department': 'السائقين',
+        'role': 'driver',
+        'companyId': _companyId,
+        'vehicleInfo': {
+          'type': 'سيارة',
+          'model': '2024',
+          'plate': 'غير محدد'
+        },
+        'createdAt': FieldValue.serverTimestamp(),
+        'lastUpdated': FieldValue.serverTimestamp(),
+      };
+
+      // ✅ إضافة إلى collection السائقين العام
+      await _firestore.collection('drivers').doc(user.uid).set(driverData);
+
+      // ✅ إضافة إلى سائقين الشركة
+      await _firestore
+          .collection('companies')
+          .doc(_companyId)
+          .collection('drivers')
+          .doc(user.uid)
+          .set(driverData);
+
+      debugPrint('✅ تم إضافة السائق إلى Firestore بنجاح: ${user.uid}');
+    } catch (e) {
+      debugPrint('❌ خطأ في إضافة السائق إلى Firestore: $e');
+      throw e;
+    }
+  }
+
+  // 🎯 دالة محسنة للتسجيل
   Future<void> _register() async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
 
-    if (_selectedDepartment == null || _selectedRole == null) {
+    if (_selectedRole == null) {
       setState(() {
-        _errorMessage = 'يجب اختيار القسم والدور.';
+        _errorMessage = 'يجب اختيار الدور.';
       });
       return;
     }
 
-    if (_departmentOptions.isEmpty) {
+    if (_selectedRole != 'Driver' && _selectedDepartment == null) {
+      setState(() {
+        _errorMessage = 'يجب اختيار القسم.';
+      });
+      return;
+    }
+
+    if (_selectedRole != 'Driver' && _departmentOptions.isEmpty) {
       setState(() {
         _errorMessage = 'لا يمكن التسجيل حاليًا. لا توجد أقسام متاحة.';
       });
@@ -113,16 +167,37 @@ class _RegisterScreenState extends State<RegisterScreen> {
     });
 
     try {
+      final department = _selectedRole == 'Driver' ? 'السائقين' : _selectedDepartment!;
+
       User? user = await _authService.signUp(
         _emailController.text.trim(),
         _passwordController.text.trim(),
         _nameController.text.trim(),
         _selectedRole!,
-        _selectedDepartment!,
+        department,
         _companyId,
       );
 
       if (user != null && mounted) {
+        // ✅ إذا كان سائقاً، أضفه إلى Firestore
+        if (_selectedRole == 'Driver') {
+          await _addDriverToFirestore(user, _nameController.text.trim());
+        }
+
+        // ✅ إضافة بيانات المستخدم العامة
+        await _firestore.collection('users').doc(user.uid).set({
+          'uid': user.uid,
+          'name': _nameController.text.trim(),
+          'email': user.email,
+          'phone': _phoneController.text.trim(),
+          'role': _selectedRole,
+          'department': department,
+          'companyId': _companyId,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+
+        debugPrint('✅ تم إنشاء حساب المستخدم: ${user.uid} - الدور: $_selectedRole');
+
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (context) => const RoleRouterScreen()),
         );
@@ -242,17 +317,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   },
                 ),
 
-                const SizedBox(height: 25),
-
-                // ✅ تحسين عرض الأقسام
-                if (_isLoadingDepartments)
-                  _buildLoadingDepartments()
-                else if (_departmentOptions.isEmpty)
-                  _buildNoDepartmentsError()
-                else
-                  _buildDepartmentDropdown(),
-
                 const SizedBox(height: 15),
+
+                // حقل رقم الهاتف (اختياري)
+                TextFormField(
+                  controller: _phoneController,
+                  decoration: const InputDecoration(
+                    labelText: 'رقم الهاتف (اختياري)',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
+                    prefixIcon: Icon(Icons.phone),
+                  ),
+                  keyboardType: TextInputType.phone,
+                ),
+
+                const SizedBox(height: 25),
 
                 // اختيار الدور
                 DropdownButtonFormField<String>(
@@ -272,13 +350,56 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   onChanged: (String? newValue) {
                     setState(() {
                       _selectedRole = newValue;
+                      if (newValue == 'Driver') {
+                        _selectedDepartment = null;
+                      }
                     });
                   },
                   validator: (value) => value == null ? 'يُرجى اختيار الدور.' : null,
                 ),
 
+                const SizedBox(height: 15),
+
+                // اختيار القسم (لغير السائقين)
+                if (_selectedRole != 'Driver' && _selectedRole != null) ...[
+                  if (_isLoadingDepartments)
+                    _buildLoadingDepartments()
+                  else if (_departmentOptions.isEmpty)
+                    _buildNoDepartmentsError()
+                  else
+                    _buildDepartmentDropdown(),
+                  const SizedBox(height: 15),
+                ],
+
+                // رسالة معلومات للسائقين
+                if (_selectedRole == 'Driver')
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      border: Border.all(color: Colors.blue.shade200),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info, color: Colors.blue.shade600, size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'سيتم إضافتك تلقائياً إلى قائمة السائقين',
+                            style: TextStyle(
+                              color: Colors.blue.shade800,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
                 const SizedBox(height: 25),
 
+                // رسالة الخطأ
                 if (_errorMessage != null)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 10),
@@ -291,7 +412,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                 // زر إنشاء الحساب
                 ElevatedButton(
-                  onPressed: (_isLoading || _isLoadingDepartments || _departmentOptions.isEmpty) ? null : _register,
+                  onPressed: (_isLoading ||
+                      (_selectedRole != 'Driver' && _isLoadingDepartments) ||
+                      (_selectedRole != 'Driver' && _departmentOptions.isEmpty))
+                      ? null : _register,
                   style: ElevatedButton.styleFrom(
                     minimumSize: const Size(double.infinity, 50),
                     backgroundColor: Colors.teal,
@@ -309,7 +433,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
                 const SizedBox(height: 15),
 
-                // رابط العودة لتسجيل الدخول
+                // زر تسجيل الدخول
                 TextButton(
                   onPressed: _isLoading ? null : () => Navigator.pop(context),
                   child: const Text(
@@ -325,7 +449,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // ✅ Widget لتحميل الأقسام
   Widget _buildLoadingDepartments() {
     return Column(
       children: [
@@ -339,7 +462,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // ✅ Widget لعدم وجود أقسام
   Widget _buildNoDepartmentsError() {
     return Column(
       children: [
@@ -380,7 +502,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // ✅ Widget لاختيار القسم
   Widget _buildDepartmentDropdown() {
     return DropdownButtonFormField<String>(
       decoration: const InputDecoration(
