@@ -15,7 +15,7 @@ dependencies:
   cloud_firestore: ^4.15.4
   firebase_auth: ^4.17.0
   uuid: ^4.2.1
-  
+  connectivity_plus: ^5.0.2
   intl: ^0.18.1
 
   image_picker: any

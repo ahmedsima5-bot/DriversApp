@@ -1,102 +1,110 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-// ⚠️ تم تغيير الاستيراد إلى الأسماء الصحيحة:
-import 'hr_admin_dashboard.dart'; // لوحة التحكم (التقارير والموافقات)
-import '../requester/new_request_screen.dart'; // صفحة طلب جديد (يمكن لـ HR استخدامها)
-import 'company_settings.dart'; // إعدادات الشركة
+import 'hr_requests_screen.dart';
+import 'hr_drivers_management.dart'; // أضف هذا
+import 'hr_reports_screen.dart'; // أضف هذا
 
-// شاشة إدارة الموارد البشرية الرئيسية - تستخدم علامات تبويب
 class HRMainScreen extends StatefulWidget {
   final String companyId;
-  const HRMainScreen({required this.companyId, super.key});
+
+  const HRMainScreen({
+    super.key,
+    required this.companyId,
+  });
 
   @override
   State<HRMainScreen> createState() => _HRMainScreenState();
 }
 
 class _HRMainScreenState extends State<HRMainScreen> {
-  int _selectedIndex = 0; // لتبويب التنقل السفلي
-
-  // ⚠️ تم تعريف قائمة الشاشات بـ 'late final' كما في الكود المرسل.
-  late final List<Widget> _screens;
-
-  @override
-  void initState() {
-    super.initState();
-    // تهيئة قائمة الشاشات بمرور companyId
-    _screens = [
-      // 1. لوحة الموارد البشرية (تم تصحيح اسم الفئة إلى HrAdminDashboard)
-      HrAdminDashboard(companyId: widget.companyId),
-      // 2. طلب جديد (ملاحظة: NewRequestScreen قد تحتاج companyId لاحقاً)
-      const NewRequestScreen(),
-      // 3. إعدادات الشركة (تم تصحيح اسم الفئة إلى CompanySettingsScreen وإزالة const)
-      CompanySettingsScreen(),
-    ];
-  }
-
-  void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
-  }
-
-  // دالة مساعدة لترجمة العناوين (يمكن استخدامها في AppBar الخاص بكل شاشة فرعية بدلاً من هنا)
-  String _getTitle() {
-    switch (_selectedIndex) {
-      case 0:
-        return 'لوحة تحكم الموارد البشرية';
-      case 1:
-        return 'إرسال طلب جديد';
-      case 2:
-        return 'إعدادات الشركة والأقسام';
-      default:
-        return 'إدارة النقل';
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    // يمكنك استخدام FirebaseAuth للتحقق من حالة المصادقة
     return Scaffold(
-      // استخدام AppBar هنا لعرض العنوان العام والـ Logout
       appBar: AppBar(
-        title: Text(_getTitle()),
-        backgroundColor: Colors.purple.shade700,
+        title: Text('لوحة الموارد البشرية - ${widget.companyId}'),
+        backgroundColor: Colors.blue.shade800,
         foregroundColor: Colors.white,
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () {
-              // TODO: Implement logout logic using FirebaseAuth
-              // FirebaseAuth.instance.signOut();
-            },
-          ),
-        ],
       ),
-      // عرض الشاشة المختارة
-      body: _screens[_selectedIndex],
-      bottomNavigationBar: Directionality(
-        textDirection: TextDirection.rtl, // لضمان عرض أيقونات BottomNav بشكل صحيح من اليمين
-        child: BottomNavigationBar(
-          items: const <BottomNavigationBarItem>[
-            BottomNavigationBarItem(
-              icon: Icon(Icons.dashboard),
-              label: 'الرئيسية/التقارير',
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.people, size: 80, color: Colors.blue),
+            const SizedBox(height: 20),
+            const Text(
+              'مرحباً بك في لوحة الموارد البشرية',
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.add_task),
-              label: 'طلب جديد',
+            const SizedBox(height: 10),
+            Text(
+              'معرف الشركة: ${widget.companyId}',
+              style: const TextStyle(fontSize: 16, color: Colors.grey),
             ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.business_center),
-              label: 'إعدادات الشركة',
+            const SizedBox(height: 30),
+
+            // زر إدارة الطلبات
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => HRRequestsScreen(companyId: widget.companyId),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(200, 50),
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text(
+                'إدارة الطلبات',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+
+            const SizedBox(height: 15),
+
+            // زر إدارة السائقين - محدث
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => HRDriversManagement(companyId: widget.companyId),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(200, 50),
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text(
+                'إدارة السائقين',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+
+            const SizedBox(height: 15),
+
+            // زر التقارير - محدث
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => HRReportsScreen(companyId: widget.companyId),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(200, 50),
+                backgroundColor: Colors.purple,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text(
+                'التقارير والإحصائيات',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
             ),
           ],
-          currentIndex: _selectedIndex,
-          selectedItemColor: Colors.purple[800],
-          unselectedItemColor: Colors.grey,
-          onTap: _onItemTapped,
         ),
       ),
     );

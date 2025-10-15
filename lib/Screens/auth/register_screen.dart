@@ -18,20 +18,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final AuthService _authService = AuthService();
 
   bool _isLoading = false;
+  bool _isLoadingDepartments = true; // ✅ إضافة حالة تحميل للأقسام
   String? _errorMessage;
 
-  // قائمة الأقسام ستُجلب من Firestore
   List<String> _departmentOptions = [];
-  // الخيارات الثابتة للأدوار
   final List<String> _roleOptions = ['Requester', 'Driver', 'HR'];
 
   String? _selectedDepartment;
   String? _selectedRole;
 
-  // مفتاح النموذج للتحقق من صحة الإدخالات
   final _formKey = GlobalKey<FormState>();
-
-  // قيمة ثابتة مؤقتة لمعرّف الشركة (نستخدمها لجلب الأقسام)
   static const String _companyId = 'C001';
 
   @override
@@ -40,24 +36,36 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _fetchDepartments();
   }
 
-  // جلب الأقسام من Firestore باستخدام Stream
-  void _fetchDepartments() {
-    DatabaseService.getDepartmentsStream(_companyId).listen((departments) {
+  // ✅ تحسين دالة جلب الأقسام
+  void _fetchDepartments() async {
+    try {
+      setState(() {
+        _isLoadingDepartments = true;
+        _errorMessage = null;
+      });
+
+      // استخدام Future بدلاً من Stream لتجنب المشاكل
+      final departments = await DatabaseService.getDepartments(_companyId);
+
       if (mounted) {
         setState(() {
           _departmentOptions = departments;
+          _isLoadingDepartments = false;
+
           if (departments.isEmpty) {
-            _errorMessage = "لا توجد أقسام متاحة حاليًا. يرجى التواصل مع مسؤول الموارد البشرية.";
+            _errorMessage = "لا توجد أقسام متاحة. تأكد من وجود شركة C001 في قاعدة البيانات.";
           }
         });
       }
-    }, onError: (error) {
+    } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = "خطأ في تحميل الأقسام: $error";
+          _isLoadingDepartments = false;
+          _errorMessage = "خطأ في تحميل الأقسام: $e";
+          _departmentOptions = [];
         });
       }
-    });
+    }
   }
 
   @override
@@ -68,7 +76,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
-  // دالة مساعدة لترجمة الدور للعرض
   String _getDisplayRole(String value) {
     switch (value) {
       case 'HR':
@@ -116,7 +123,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
       );
 
       if (user != null && mounted) {
-        // التوجيه إلى شاشة التوزيع بعد النجاح
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (context) => const RoleRouterScreen()),
         );
@@ -238,46 +244,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                 const SizedBox(height: 25),
 
-                // اختيار القسم
-                if (_departmentOptions.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8.0),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const CircularProgressIndicator(color: Colors.teal),
-                        const SizedBox(width: 10),
-                        Text(
-                          _errorMessage ?? 'جاري تحميل الأقسام...',
-                          style: TextStyle(
-                            color: _errorMessage != null ? Colors.red : Colors.grey,
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
+                // ✅ تحسين عرض الأقسام
+                if (_isLoadingDepartments)
+                  _buildLoadingDepartments()
+                else if (_departmentOptions.isEmpty)
+                  _buildNoDepartmentsError()
                 else
-                  DropdownButtonFormField<String>(
-                    decoration: const InputDecoration(
-                      labelText: 'اختيار القسم',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
-                      prefixIcon: Icon(Icons.apartment),
-                    ),
-                    value: _selectedDepartment,
-                    hint: const Text('اختر قسمك'),
-                    items: _departmentOptions.map((String value) {
-                      return DropdownMenuItem<String>(
-                        value: value,
-                        child: Text(value),
-                      );
-                    }).toList(),
-                    onChanged: (String? newValue) {
-                      setState(() {
-                        _selectedDepartment = newValue;
-                      });
-                    },
-                    validator: (value) => value == null ? 'يُرجى اختيار القسم.' : null,
-                  ),
+                  _buildDepartmentDropdown(),
+
                 const SizedBox(height: 15),
 
                 // اختيار الدور
@@ -317,7 +291,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                 // زر إنشاء الحساب
                 ElevatedButton(
-                  onPressed: _isLoading ? null : _register,
+                  onPressed: (_isLoading || _isLoadingDepartments || _departmentOptions.isEmpty) ? null : _register,
                   style: ElevatedButton.styleFrom(
                     minimumSize: const Size(double.infinity, 50),
                     backgroundColor: Colors.teal,
@@ -337,11 +311,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                 // رابط العودة لتسجيل الدخول
                 TextButton(
-                  onPressed: _isLoading
-                      ? null
-                      : () {
-                    Navigator.pop(context);
-                  },
+                  onPressed: _isLoading ? null : () => Navigator.pop(context),
                   child: const Text(
                     'لدي حساب بالفعل؟ تسجيل الدخول',
                     style: TextStyle(color: Colors.blueGrey),
@@ -352,6 +322,86 @@ class _RegisterScreenState extends State<RegisterScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  // ✅ Widget لتحميل الأقسام
+  Widget _buildLoadingDepartments() {
+    return Column(
+      children: [
+        const LinearProgressIndicator(color: Colors.teal),
+        const SizedBox(height: 8),
+        Text(
+          'جاري تحميل الأقسام...',
+          style: TextStyle(color: Colors.grey.shade600),
+        ),
+      ],
+    );
+  }
+
+  // ✅ Widget لعدم وجود أقسام
+  Widget _buildNoDepartmentsError() {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.red.shade50,
+            border: Border.all(color: Colors.red.shade200),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            children: [
+              const Icon(Icons.error_outline, color: Colors.red),
+              const SizedBox(height: 8),
+              const Text(
+                'لا توجد أقسام متاحة',
+                style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _errorMessage ?? 'تأكد من وجود شركة C001 في قاعدة البيانات',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.red, fontSize: 12),
+              ),
+              const SizedBox(height: 8),
+              ElevatedButton(
+                onPressed: _fetchDepartments,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('إعادة المحاولة'),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ✅ Widget لاختيار القسم
+  Widget _buildDepartmentDropdown() {
+    return DropdownButtonFormField<String>(
+      decoration: const InputDecoration(
+        labelText: 'اختيار القسم',
+        border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
+        prefixIcon: Icon(Icons.apartment),
+      ),
+      value: _selectedDepartment,
+      hint: const Text('اختر قسمك'),
+      items: _departmentOptions.map((String value) {
+        return DropdownMenuItem<String>(
+          value: value,
+          child: Text(value),
+        );
+      }).toList(),
+      onChanged: (String? newValue) {
+        setState(() {
+          _selectedDepartment = newValue;
+        });
+      },
+      validator: (value) => value == null ? 'يُرجى اختيار القسم.' : null,
     );
   }
 }

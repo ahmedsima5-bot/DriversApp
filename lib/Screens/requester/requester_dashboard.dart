@@ -1,95 +1,139 @@
 import 'package:flutter/material.dart';
-import 'new_request_screen.dart'; // إضافة استيراد الصفحة
+import 'new_request_screen.dart';
+import 'my_requests_screen.dart';
+import '../../services/auth_service.dart';
+import '../auth/login_screen.dart';
 
-class RequesterDashboard extends StatelessWidget {
+class RequesterDashboard extends StatefulWidget {
   const RequesterDashboard({super.key});
+
+  @override
+  State<RequesterDashboard> createState() => _RequesterDashboardState();
+}
+
+class _RequesterDashboardState extends State<RequesterDashboard> {
+  final AuthService _authService = AuthService();
+
+  Future<void> _signOut(BuildContext context) async {
+    // تأكيد تسجيل الخروج
+    final shouldLogout = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('تسجيل الخروج'),
+        content: const Text('هل أنت متأكد أنك تريد تسجيل الخروج؟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('إلغاء'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('نعم', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldLogout == true) {
+      // تسجيل الخروج
+      await _authService.signOut();
+
+      // ✅ العودة مباشرة لشاشة تسجيل الدخول
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (context) => const LoginScreen()),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'لوحة التحكم',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 20),
-
-            // بطاقة ترحيبية
-            Card(
-              elevation: 4,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    const Icon(Icons.person, size: 60, color: Colors.indigo),
-                    const SizedBox(height: 10),
-                    const Text(
-                      'مرحباً بك',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 10),
-                    const Text('يمكنك إنشاء طلبات نقل جديدة ومتابعة طلباتك السابقة'),
-                    const SizedBox(height: 20),
-                    ElevatedButton(
-                      onPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(builder: (context) => const NewRequestScreen()),
-                        );
-                      },
-                      child: const Text('إنشاء طلب جديد'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-            // إحصائيات سريعة
-            GridView.count(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisCount: 2,
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
-              children: [
-                _buildStatCard('الطلبات النشطة', '5', Colors.blue),
-                _buildStatCard('الطلبات المكتملة', '12', Colors.green),
-                _buildStatCard('في الانتظار', '3', Colors.orange),
-                _buildStatCard('ملغاة', '2', Colors.red),
-              ],
-            ),
-          ],
-        ),
+      appBar: AppBar(
+        title: const Text('لوحة مقدم الطلبات'),
+        backgroundColor: Colors.green.shade800,
+        foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () => _signOut(context),
+            tooltip: 'تسجيل الخروج',
+          ),
+        ],
       ),
-    );
-  }
-
-  Widget _buildStatCard(String title, String value, Color color) {
-    return Card(
-      elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
+      body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: color,
+            const Icon(Icons.add_task, size: 80, color: Colors.green),
+            const SizedBox(height: 20),
+            const Text(
+              'مرحباً بك في لوحة تقديم الطلبات',
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'يمكنك إنشاء ومتابعة طلبات النقل',
+              style: TextStyle(fontSize: 16, color: Colors.grey),
+            ),
+            const SizedBox(height: 30),
+
+            // زر إنشاء طلب جديد
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const NewRequestScreen(),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(200, 50),
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text(
+                'إنشاء طلب جديد',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
             ),
-            const SizedBox(height: 5),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 14),
+
+            const SizedBox(height: 15),
+
+            // زر متابعة الطلبات
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const MyRequestsScreen(),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(200, 50),
+                backgroundColor: Colors.blue.shade800,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text(
+                'متابعة طلباتي',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            // زر تسجيل خروج إضافي في الجسم
+            TextButton(
+              onPressed: () => _signOut(context),
+              child: const Text(
+                'تسجيل الخروج',
+                style: TextStyle(
+                  color: Colors.red,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           ],
         ),

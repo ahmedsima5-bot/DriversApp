@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
 import 'auth/login_screen.dart';
+import 'hr/hr_main_screen.dart';
+import 'requester/requester_dashboard.dart';
+import 'driver/driver_dashboard.dart';
 
 // استيراد شاشات جميع الأدوار
 import 'hr/hr_main_screen.dart';
@@ -116,7 +119,7 @@ class _RoleRouterScreenState extends State<RoleRouterScreen> {
         return const RequesterDashboard(); // استخدام RequesterDashboard بدلاً من HomeScreen
 
       case 'Driver':
-        return _buildDriverScreen();
+        return DriverDashboard(userName: _userData!['name'] ?? 'السائق');
 
       default:
         return _buildUnsupportedRoleScreen(role);

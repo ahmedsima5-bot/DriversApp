@@ -2,75 +2,56 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 class Driver {
   final String driverId;
+  final String companyId;
   final String name;
+  final String email;
   final String phone;
-  final String vehicleType;
-  final String vehicleNumber;
   final bool isOnline;
   final bool isAvailable;
-  final DateTime? lastStatusUpdate;
-  final Map<String, double>? currentLocation;
   final int completedRides;
   final double performanceScore;
-  final String? department;
-  final String companyId;
+  final DateTime lastStatusUpdate;
 
   Driver({
     required this.driverId,
+    required this.companyId,
     required this.name,
+    required this.email,
     required this.phone,
-    required this.vehicleType,
-    required this.vehicleNumber,
     required this.isOnline,
     required this.isAvailable,
-    this.lastStatusUpdate,
-    this.currentLocation,
-    this.completedRides = 0,
-    this.performanceScore = 0.0,
-    this.department,
-    required this.companyId,
+    required this.completedRides,
+    required this.performanceScore,
+    required this.lastStatusUpdate,
   });
+
+  factory Driver.fromMap(Map<String, dynamic> data) {
+    return Driver(
+      driverId: data['driverId'] ?? '',
+      companyId: data['companyId'] ?? '',
+      name: data['name'] ?? '',
+      email: data['email'] ?? '',
+      phone: data['phone'] ?? '',
+      isOnline: data['isOnline'] ?? false,
+      isAvailable: data['isAvailable'] ?? false,
+      completedRides: data['completedRides'] ?? 0,
+      performanceScore: (data['performanceScore'] ?? 0.0).toDouble(),
+      lastStatusUpdate: (data['lastStatusUpdate'] as Timestamp).toDate(),
+    );
+  }
 
   Map<String, dynamic> toMap() {
     return {
       'driverId': driverId,
+      'companyId': companyId,
       'name': name,
+      'email': email,
       'phone': phone,
-      'vehicleType': vehicleType,
-      'vehicleNumber': vehicleNumber,
       'isOnline': isOnline,
       'isAvailable': isAvailable,
-      'lastStatusUpdate': lastStatusUpdate != null ? Timestamp.fromDate(lastStatusUpdate!) : null,
-      'currentLocation': currentLocation,
       'completedRides': completedRides,
       'performanceScore': performanceScore,
-      'department': department,
-      'companyId': companyId,
+      'lastStatusUpdate': Timestamp.fromDate(lastStatusUpdate),
     };
-  }
-
-  factory Driver.fromMap(Map<String, dynamic> map) {
-    DateTime? lastUpdate;
-    if (map['lastStatusUpdate'] != null && map['lastStatusUpdate'] is Timestamp) {
-      lastUpdate = (map['lastStatusUpdate'] as Timestamp).toDate();
-    }
-
-    return Driver(
-      driverId: map['driverId'] ?? '',
-      name: map['name'] ?? '',
-      phone: map['phone'] ?? '',
-      vehicleType: map['vehicleType'] ?? '',
-      vehicleNumber: map['vehicleNumber'] ?? '',
-      isOnline: map['isOnline'] ?? false,
-      isAvailable: map['isAvailable'] ?? false,
-      lastStatusUpdate: lastUpdate,
-      currentLocation: map['currentLocation'] != null
-          ? Map<String, double>.from(map['currentLocation'])
-          : null,
-      completedRides: map['completedRides'] ?? 0,
-      performanceScore: (map['performanceScore'] ?? 0.0).toDouble(),
-      department: map['department']?.toString(),
-      companyId: map['companyId'] ?? '',
-    );
   }
 }
