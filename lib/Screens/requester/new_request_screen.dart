@@ -1,195 +1,361 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
+import 'dart:io';
 
-class NewRequestScreen extends StatefulWidget {
-  const NewRequestScreen({super.key});
+class NewTransferRequestScreen extends StatefulWidget {
+  final String companyId;
+  final String userId;
+  final String userName;
+
+  const NewTransferRequestScreen({
+    super.key,
+    required this.companyId,
+    required this.userId,
+    required this.userName,
+  });
 
   @override
-  State<NewRequestScreen> createState() => _NewRequestScreenState();
+  State<NewTransferRequestScreen> createState() => _NewTransferRequestScreenState();
 }
 
-class _NewRequestScreenState extends State<NewRequestScreen> {
+class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _detailsController = TextEditingController();
-  final _responsiblePhoneController = TextEditingController();
-  final _destinationController = TextEditingController(); // ✨ حقل جديد للوجهة
+  final TextEditingController _requestTitleController = TextEditingController(text: 'طلب نقل');
+  final TextEditingController _descriptionController = TextEditingController();
+  final TextEditingController _responsibleNameController = TextEditingController();
+  final TextEditingController _responsiblePhoneController = TextEditingController();
+  final TextEditingController _additionalDetailsController = TextEditingController();
+  final TextEditingController _locationController = TextEditingController();
 
-  String _selectedType = 'طلب';
-  DateTime _selectedDate = DateTime.now();
+  // متغيرات جديدة لإدارة الأولوية
+  String _selectedPriority = 'MEDIUM'; // MEDIUM, HIGH
+  bool _isUrgent = false;
+
+  File? _selectedImage;
+  final ImagePicker _picker = ImagePicker();
+
+  // دالة لاختيار الصورة
+  Future<void> _pickImage() async {
+    try {
+      final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
+      if (image != null) {
+        setState(() {
+          _selectedImage = File(image.path);
+        });
+      }
+    } catch (e) {
+      print('Error picking image: $e');
+    }
+  }
+
+  // دالة لفتح حوار الموقع
+  void _openLocationDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('إدخال الموقع'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextFormField(
+              controller: _locationController,
+              decoration: const InputDecoration(
+                labelText: 'أدخل العنوان أو الموقع',
+                border: OutlineInputBorder(),
+                hintText: 'مثال: الرياض - حي الملز - شارع الملك فهد',
+              ),
+              maxLines: 3,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('إلغاء'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (_locationController.text.isNotEmpty) {
+                setState(() {});
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('تم حفظ الموقع بنجاح'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              }
+            },
+            child: const Text('حفظ'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // دالة إرسال الطلب
+  void _submitRequest() {
+    if (_formKey.currentState!.validate()) {
+      _showPriorityConfirmationDialog();
+    }
+  }
+
+  // حوار تأكيد الأولوية
+  void _showPriorityConfirmationDialog() {
+    String message = _isUrgent
+        ? '⚠️ هذا الطلب عاجل وسيتم إرساله إلى إدارة الموارد البشرية للموافقة عليه أولاً قبل تعيينه للسائقين.'
+        : '✅ هذا الطلب عادي وسيتم تعيينه تلقائياً للسائقين المتاحين حسب أدائهم وعدد مشاويرهم.';
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(
+              _isUrgent ? Icons.warning_amber : Icons.check_circle,
+              color: _isUrgent ? Colors.orange : Colors.green,
+            ),
+            const SizedBox(width: 8),
+            Text(_isUrgent ? 'طلب عاجل' : 'طلب عادي'),
+          ],
+        ),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('تعديل'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _saveRequestToFirestore();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _isUrgent ? Colors.orange : Colors.green,
+            ),
+            child: Text(_isUrgent ? 'تأكيد كطلب عاجل' : 'تأكيد كطلب عادي'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // دالة حفظ الطلب في Firestore
+  Future<void> _saveRequestToFirestore() async {
+    try {
+      // تحديد حالة الطلب بناءً على الأولوية
+      String status = _isUrgent ? 'PENDING_HR_APPROVAL' : 'ASSIGNING_DRIVER';
+      String priority = _isUrgent ? 'HIGH' : 'MEDIUM';
+
+      // تحديد المسار بناءً على الأولوية
+      String collectionPath = _isUrgent
+          ? 'artifacts/${widget.companyId}/public/data/hr_pending_requests'
+          : 'artifacts/${widget.companyId}/public/data/active_requests';
+
+      await FirebaseFirestore.instance
+          .collection(collectionPath)
+          .add({
+        'title': _requestTitleController.text,
+        'description': _descriptionController.text,
+        'responsibleName': _responsibleNameController.text.isEmpty ? null : _responsibleNameController.text,
+        'responsiblePhone': _responsiblePhoneController.text.isEmpty ? null : _responsiblePhoneController.text,
+        'location': _locationController.text.isEmpty ? null : _locationController.text,
+        'additionalDetails': _additionalDetailsController.text.isEmpty ? null : _additionalDetailsController.text,
+
+        // الحقول الأساسية
+        'status': status,
+        'priority': priority,
+        'isUrgent': _isUrgent,
+        'createdAt': Timestamp.now(),
+        'userId': widget.userId,
+        'userName': widget.userName,
+        'companyId': widget.companyId,
+
+        // معلومات إضافية للتتبع
+        'assignedDepartment': _isUrgent ? 'HR' : 'OPERATIONS',
+        'requiredApproval': _isUrgent,
+        'autoAssign': !_isUrgent,
+
+        // معلومات الأداء (للتوزيع العادل)
+        'assignmentScore': 0, // سيتم حسابه عند التوزيع
+        'estimatedCompletionTime': _isUrgent ? 2 : 24, // ساعات
+      });
+
+      // أيضًا حفظ في السجل العام
+      await FirebaseFirestore.instance
+          .collection('artifacts/${widget.companyId}/public/data/requests')
+          .add({
+        'title': _requestTitleController.text,
+        'description': _descriptionController.text,
+        'location': _locationController.text.isEmpty ? null : _locationController.text,
+        'status': status,
+        'priority': priority,
+        'isUrgent': _isUrgent,
+        'createdAt': Timestamp.now(),
+        'userId': widget.userId,
+        'userName': widget.userName,
+        'assignedDepartment': _isUrgent ? 'HR' : 'OPERATIONS',
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _isUrgent
+                ? 'تم إرسال الطلب العاجل للموارد البشرية للموافقة'
+                : 'تم إرسال الطلب وسيتم تعيينه للسائقين قريباً',
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      Navigator.pop(context);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('خطأ في إرسال الطلب: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('طلب نقل جديد'),
-        backgroundColor: Colors.indigo,
+        backgroundColor: Colors.blue[800],
         foregroundColor: Colors.white,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(16),
         child: Form(
           key: _formKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'نموذج طلب النقل',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
+              // عنوان الطلب
+              _buildSectionTitle('طلب نقل جديد'),
+              _buildReadOnlyField('عنوان الطلب', _requestTitleController),
               const SizedBox(height: 20),
 
-              // نوع الطلب
-              const Text('نوع الطلب:', style: TextStyle(fontWeight: FontWeight.bold)),
-              DropdownButtonFormField<String>(
-                value: _selectedType,
-                items: ['طلب', 'طلب عاجل'].map((String value) {
-                  return DropdownMenuItem<String>(
-                    value: value,
-                    child: Text(value),
-                  );
-                }).toList(),
-                onChanged: (String? newValue) {
-                  setState(() {
-                    _selectedType = newValue!;
-                  });
-                },
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  contentPadding: EdgeInsets.symmetric(horizontal: 10),
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              // ✨ حقل الوجهة الجديد - مطلوب للـ HR
-              const Text('الوجهة:', style: TextStyle(fontWeight: FontWeight.bold)),
-              TextFormField(
-                controller: _destinationController,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  hintText: 'أدخل الوجهة أو الموقع النهائي',
-                  prefixIcon: Icon(Icons.location_on),
-                ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'يرجى إدخال الوجهة';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 5),
-              const Text(
-                'هذا الحقل مطلوب لعرض الطلب في إدارة الموارد البشرية',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-
-              const SizedBox(height: 20),
-
-              // تاريخ الطلب
-              const Text('التاريخ المطلوب:', style: TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 10),
-              InkWell(
-                onTap: () => _selectDate(context),
-                child: InputDecorator(
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    contentPadding: EdgeInsets.all(12),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              // مستوى الأولوية
+              _buildSectionTitle('مستوى الأولوية'),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        "${_selectedDate.day}/${_selectedDate.month}/${_selectedDate.year}",
-                        style: const TextStyle(fontSize: 16),
+                      const Text(
+                        'اختر مستوى الأولوية',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                       ),
-                      const Icon(Icons.calendar_today),
+                      const SizedBox(height: 10),
+
+                      // خيار الطلب العادي
+                      _buildPriorityOption(
+                        title: 'طلب عادي',
+                        subtitle: 'سيتم تعيينه تلقائياً للسائقين حسب الأداء والعدالة',
+                        icon: Icons.timelapse,
+                        color: Colors.blue,
+                        isSelected: !_isUrgent,
+                        onTap: () {
+                          setState(() {
+                            _isUrgent = false;
+                            _selectedPriority = 'MEDIUM';
+                          });
+                        },
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      // خيار الطلب العاجل
+                      _buildPriorityOption(
+                        title: 'طلب عاجل ⚡',
+                        subtitle: 'يتطلب موافقة إدارة الموارد البشرية أولاً',
+                        icon: Icons.warning_amber,
+                        color: Colors.orange,
+                        isSelected: _isUrgent,
+                        onTap: () {
+                          setState(() {
+                            _isUrgent = true;
+                            _selectedPriority = 'HIGH';
+                          });
+                        },
+                      ),
                     ],
                   ),
                 ),
               ),
-
               const SizedBox(height: 20),
 
-              // اختيار الموقع من الخرائط
-              const Text('موقع الالتقاء:', style: TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 10),
-              ElevatedButton.icon(
-                onPressed: _openMapPicker,
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 50),
-                  backgroundColor: Colors.blue.shade50,
-                  foregroundColor: Colors.blue.shade800,
-                  side: BorderSide(color: Colors.blue.shade200),
-                ),
-                icon: const Icon(Icons.location_on),
-                label: const Text('اختيار موقع الالتقاء من الخرائط'),
-              ),
-              const SizedBox(height: 5),
-              const Text(
-                'اضغط لاختيار موقع الالتقاء من خرائط جوجل',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-
-              const SizedBox(height: 20),
-
-              // رقم الشخص المسؤول
-              const Text('رقم الهاتف المسؤول:', style: TextStyle(fontWeight: FontWeight.bold)),
-              TextFormField(
-                controller: _responsiblePhoneController,
-                keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  hintText: 'أدخل رقم الهاتف للشخص المسؤول',
-                  prefixText: '+966 ',
-                ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'يرجى إدخال رقم الهاتف';
-                  }
-                  if (value.length < 9) {
-                    return 'رقم الهاتف يجب أن يكون 9 أرقام على الأقل';
-                  }
-                  return null;
-                },
-              ),
-
-              const SizedBox(height: 20),
-
-              // تفاصيل الطلب
-              const Text('تفاصيل إضافية:', style: TextStyle(fontWeight: FontWeight.bold)),
-              TextFormField(
-                controller: _detailsController,
+              // وصف الطلب
+              _buildSectionTitle('وصف الطلب'),
+              _buildTextField(
+                controller: _descriptionController,
+                label: 'وصف الطلب',
+                hintText: 'أدخل وصف الطلب هنا',
                 maxLines: 4,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  hintText: 'أدخل تفاصيل إضافية عن الطلب (الأشخاص، المعدات، المتطلبات الخاصة)',
-                ),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
-                    return 'يرجى إدخال تفاصيل الطلب';
+                    return 'يرجى إدخال وصف الطلب';
                   }
                   return null;
                 },
               ),
-              const SizedBox(height: 5),
-              const Text(
-                'اذكر أسماء الأشخاص، المعدات، المتطلبات الخاصة، وأي تفاصيل أخرى مهمة',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
-              ),
+              const SizedBox(height: 20),
 
+              // التاريخ
+              _buildSectionTitle('التاريخ'),
+              _buildReadOnlyField('التاريخ', TextEditingController(text: _getCurrentDate())),
+              const SizedBox(height: 20),
+
+              // اختيار الموقع
+              _buildSectionTitle('موقع الأهداف'),
+              _buildLocationSection(),
+              const SizedBox(height: 20),
+
+              // المسؤول - خانات اختيارية
+              _buildSectionTitle('المسؤول'),
+              Row(
+                children: [
+                  Expanded(
+                    flex: 2,
+                    child: _buildTextField(
+                      controller: _responsibleNameController,
+                      label: 'اسم المسؤول (اختياري)',
+                      hintText: 'أدخل اسم المسؤول',
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    flex: 2,
+                    child: _buildTextField(
+                      controller: _responsiblePhoneController,
+                      label: 'رقم الهاتف (اختياري)',
+                      hintText: 'أدخل رقم الهاتف',
+                      keyboardType: TextInputType.phone,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              // تفاصيل إضافية
+              _buildSectionTitle('تفاصيل إضافية'),
+              _buildTextField(
+                controller: _additionalDetailsController,
+                label: 'التفاصيل الإضافية (اختياري)',
+                hintText: 'أدخل تفاصيل إضافية عن الطلب (الأشخاص، المعدات، المتطلبات الخاصة)',
+                maxLines: 4,
+              ),
               const SizedBox(height: 30),
 
-              // زر الإرسال
-              ElevatedButton(
-                onPressed: _submitRequest,
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 50),
-                  backgroundColor: Colors.indigo,
-                  foregroundColor: Colors.white,
-                ),
-                child: const Text('إرسال الطلب', style: TextStyle(fontSize: 18)),
-              ),
+              // زر إرسال الطلب
+              _buildSubmitButton(),
             ],
           ),
         ),
@@ -197,135 +363,248 @@ class _NewRequestScreenState extends State<NewRequestScreen> {
     );
   }
 
-  Future<void> _selectDate(BuildContext context) async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: _selectedDate,
-      firstDate: DateTime.now(),
-      lastDate: DateTime(2101),
+  // واجهة خيار الأولوية
+  Widget _buildPriorityOption({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color color,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isSelected ? color.withOpacity(0.1) : Colors.grey[50],
+          border: Border.all(
+            color: isSelected ? color : Colors.grey[300]!,
+            width: isSelected ? 2 : 1,
+          ),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: isSelected ? color : Colors.grey, size: 24),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: isSelected ? color : Colors.grey[700],
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: isSelected ? color : Colors.grey[600],
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (isSelected)
+              Icon(Icons.check_circle, color: color, size: 24),
+          ],
+        ),
+      ),
     );
-    if (picked != null && picked != _selectedDate) {
-      setState(() {
-        _selectedDate = picked;
-      });
-    }
   }
 
-  void _openMapPicker() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('سيتم فتح خرائط جوجل لاختيار الموقع')),
+  // قسم الموقع
+  Widget _buildLocationSection() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'الموقع',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            const SizedBox(height: 10),
+
+            // زر إدخال الموقع
+            ElevatedButton.icon(
+              onPressed: _openLocationDialog,
+              icon: const Icon(Icons.location_on),
+              label: const Text('إدخال الموقع'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue[50],
+                foregroundColor: Colors.blue[800],
+                minimumSize: const Size(double.infinity, 50),
+              ),
+            ),
+            const SizedBox(height: 10),
+
+            // الموقع المدخل
+            if (_locationController.text.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.green[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.green[200]!),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.check_circle, color: Colors.green, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _locationController.text,
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.edit, size: 18),
+                      onPressed: _openLocationDialog,
+                    ),
+                  ],
+                ),
+              )
+            else
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey[300]!),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.info, color: Colors.grey, size: 20),
+                    SizedBox(width: 8),
+                    Text(
+                      'لم يتم إدخال موقع',
+                      style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 
-  void _submitRequest() async {
-    if (_formKey.currentState!.validate()) {
-      try {
-        // إظهار تحميل
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => const Center(
-            child: CircularProgressIndicator(),
+  // زر الإرسال
+  Widget _buildSubmitButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 55,
+      child: ElevatedButton(
+        onPressed: _submitRequest,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: _isUrgent ? Colors.orange : Colors.green,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
           ),
-        );
-
-        // جلب بيانات المستخدم الحالي
-        final user = FirebaseAuth.instance.currentUser;
-        if (user == null) {
-          Navigator.pop(context);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('يجب تسجيل الدخول أولاً')),
-          );
-          return;
-        }
-
-        // جلب بيانات المستخدم الإضافية
-        final userDoc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .get();
-
-        final userData = userDoc.data();
-        final companyId = userData?['company_id'] ?? 'unknown';
-        final userName = userData?['name'] ?? 'غير معروف';
-        final department = userData?['department'] ?? 'غير محدد';
-
-        // تحديد الأولوية بناءً على نوع الطلب
-        final priority = _selectedType == 'طلب عاجل' ? 'Urgent' : 'Normal';
-
-        // ✨ إنشاء الطلب مع الحقول المطلوبة للـ HR
-        final requestData = {
-          'companyId': companyId,
-          'requesterId': user.uid,
-          'requesterName': userName,
-          'department': department,
-
-          // الحقول الأساسية للـ HR
-          'toLocation': _destinationController.text, // ✨ الحقل الجديد المهم
-          'fromLocation': 'المقر الرئيسي',
-
-          // الحقول الإضافية
-          'purposeType': _selectedType,
-          'details': _detailsController.text,
-          'priority': priority,
-          'responsiblePhone': _responsiblePhoneController.text,
-          'status': priority == 'Urgent' ? 'HR_PENDING' : 'PENDING',
-          'expectedTime': Timestamp.fromDate(_selectedDate),
-          'createdAt': FieldValue.serverTimestamp(),
-        };
-
-        print('📤 إرسال الطلب إلى Firebase: $requestData');
-
-        // إرسال الطلب لـ Firebase
-        await FirebaseFirestore.instance
-            .collection('companies')
-            .doc(companyId)
-            .collection('requests')
-            .add(requestData);
-
-        // إغلاق التحمل
-        Navigator.pop(context);
-
-        // رسالة نجاح
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('تم إرسال الطلب بنجاح - سيظهر في إدارة الطلبات'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 3),
-          ),
-        );
-
-        // تنظيف الحقول
-        _detailsController.clear();
-        _responsiblePhoneController.clear();
-        _destinationController.clear(); // ✨ تنظيف الحقل الجديد
-        setState(() {
-          _selectedType = 'طلب';
-          _selectedDate = DateTime.now();
-        });
-
-        // العودة للصفحة السابقة بعد ثانيتين
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted) Navigator.pop(context);
-        });
-
-      } catch (e) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطأ في إرسال الطلب: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
+          elevation: 2,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(_isUrgent ? Icons.warning_amber : Icons.send),
+            const SizedBox(width: 8),
+            Text(
+              _isUrgent ? 'إرسال كطلب عاجل' : 'إرسال كطلب عادي',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
-  @override
-  void dispose() {
-    _detailsController.dispose();
-    _responsiblePhoneController.dispose();
-    _destinationController.dispose(); // ✨ تنظيف الحقل الجديد
-    super.dispose();
+  String _getCurrentDate() {
+    final now = DateTime.now();
+    final formatter = DateFormat('yyyy-MM-dd');
+    return formatter.format(now);
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Text(
+      title,
+      style: TextStyle(
+        fontSize: 18,
+        fontWeight: FontWeight.bold,
+        color: Colors.blue[800],
+      ),
+    );
+  }
+
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required String hintText,
+    int maxLines = 1,
+    TextInputType keyboardType = TextInputType.text,
+    String? Function(String?)? validator,
+  }) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            TextFormField(
+              controller: controller,
+              maxLines: maxLines,
+              keyboardType: keyboardType,
+              validator: validator,
+              decoration: InputDecoration(
+                hintText: hintText,
+                border: const OutlineInputBorder(),
+                contentPadding: const EdgeInsets.all(12),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReadOnlyField(String label, TextEditingController controller) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            TextFormField(
+              controller: controller,
+              readOnly: true,
+              decoration: InputDecoration(
+                border: const OutlineInputBorder(),
+                contentPadding: const EdgeInsets.all(12),
+                filled: true,
+                fillColor: Colors.grey[100],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

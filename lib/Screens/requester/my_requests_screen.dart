@@ -1,189 +1,107 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
+import 'new_request_screen.dart';
 
 class MyRequestsScreen extends StatefulWidget {
-  const MyRequestsScreen({super.key});
+  final String companyId;
+  final String userId; // تحتاج userId لعرض طلبات المستخدم الحالي
+  final String? userName;
+
+  const MyRequestsScreen({
+    super.key,
+    required this.companyId,
+    required this.userId,
+    this.userName,
+  });
 
   @override
   State<MyRequestsScreen> createState() => _MyRequestsScreenState();
 }
 
 class _MyRequestsScreenState extends State<MyRequestsScreen> {
-  String _selectedFilter = 'الكل';
-  final List<String> _filters = ['الكل', 'قيد الانتظار', 'مقبول', 'مرفوض', 'مكتمل'];
+  List<Map<String, dynamic>> _requests = [];
+  bool _isLoading = true;
+  String _errorMessage = '';
 
-  final List<Map<String, dynamic>> _allRequests = [
-    {
-      'type': 'طلب عاجل',
-      'status': 'مقبول',
-      'color': Colors.green,
-      'date': '2024-01-15',
-      'details': 'نقل موظفين من المقر الرئيسي إلى فرع المدينة',
-      'location': 'الرياض - المقر الرئيسي'
-    },
-    {
-      'type': 'طلب',
-      'status': 'قيد الانتظار',
-      'color': Colors.orange,
-      'date': '2024-01-14',
-      'details': 'نقل معدات مكتبية إلى الفرع الجديد',
-      'location': 'جدة - الفرع الجديد'
-    },
-    {
-      'type': 'طلب عاجل',
-      'status': 'مرفوض',
-      'color': Colors.red,
-      'date': '2024-01-13',
-      'details': 'نقل وثائق مهمة للاجتماع',
-      'location': 'الدمام - مركز المؤتمرات'
-    },
-    {
-      'type': 'طلب',
-      'status': 'مكتمل',
-      'color': Colors.blue,
-      'date': '2024-01-12',
-      'details': 'نقل فريق العمل لموقع المشروع',
-      'location': 'الرياض - موقع المشروع'
-    },
-    {
-      'type': 'طلب عاجل',
-      'status': 'قيد الانتظار',
-      'color': Colors.orange,
-      'date': '2024-01-11',
-      'details': 'نقل عينات للمختبر المركزي',
-      'location': 'الرياض - المختبر المركزي'
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _loadMyRequests();
+  }
 
-  List<Map<String, dynamic>> get _filteredRequests {
-    if (_selectedFilter == 'الكل') {
-      return _allRequests;
+  Future<void> _loadMyRequests() async {
+    try {
+      final QuerySnapshot snapshot = await FirebaseFirestore.instance
+          .collection('requests')
+          .where('companyId', isEqualTo: widget.companyId)
+          .where('userId', isEqualTo: widget.userId) // فلترة حسب المستخدم الحالي
+          .orderBy('createdAt', descending: true) // ترتيب من الأحدث للأقدم
+          .get();
+
+      setState(() {
+        _requests = snapshot.docs.map((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          return {
+            'id': doc.id,
+            ...data,
+          };
+        }).toList();
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'خطأ في تحميل الطلبات: $e';
+        _isLoading = false;
+      });
     }
-    return _allRequests.where((request) => request['status'] == _selectedFilter).toList();
   }
 
-  void _refreshData() {
-    setState(() {
-      // محاكاة تحديث البيانات
-      // في التطبيق الحقيقي، هنا ستجلب البيانات من Firebase
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('تم تحديث البيانات'),
-        duration: Duration(seconds: 1),
-      ),
-    );
+  String _getStatusText(String status) {
+    switch (status) {
+      case 'PENDING':
+        return 'قيد الانتظار';
+      case 'APPROVED':
+        return 'مقبول';
+      case 'REJECTED':
+        return 'مرفوض';
+      case 'IN_PROGRESS':
+        return 'قيد التنفيذ';
+      case 'COMPLETED':
+        return 'مكتمل';
+      default:
+        return status;
+    }
   }
 
-  void _showFilterDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('تصفية الطلبات'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: _filters.map((filter) {
-            return RadioListTile<String>(
-              title: Text(filter),
-              value: filter,
-              groupValue: _selectedFilter,
-              onChanged: (value) {
-                setState(() {
-                  _selectedFilter = value!;
-                });
-                Navigator.pop(context);
-              },
-            );
-          }).toList(),
-        ),
-      ),
-    );
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'PENDING':
+        return Colors.orange;
+      case 'APPROVED':
+        return Colors.green;
+      case 'REJECTED':
+        return Colors.red;
+      case 'IN_PROGRESS':
+        return Colors.blue;
+      case 'COMPLETED':
+        return Colors.green.shade700;
+      default:
+        return Colors.grey;
+    }
   }
 
-  Widget _buildRequestCard(int index) {
-    final request = _filteredRequests[index];
-
-    return Card(
-      elevation: 2,
-      margin: const EdgeInsets.only(bottom: 10),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Text(
-                    '${request['type']}',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                        color: Colors.indigo
-                    ),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: request['color'] as Color,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    request['status'] as String,
-                    style: const TextStyle(color: Colors.white, fontSize: 12),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                const Icon(Icons.calendar_today, size: 16, color: Colors.grey),
-                const SizedBox(width: 4),
-                Text('${request['date']}'),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                const Icon(Icons.location_on, size: 16, color: Colors.grey),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    '${request['location']}',
-                    style: const TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '${request['details']}',
-              style: const TextStyle(color: Colors.grey),
-            ),
-            const SizedBox(height: 8),
-            if (request['status'] == 'مقبول') ...[
-              const Divider(),
-              Row(
-                children: [
-                  const Icon(Icons.directions_car, size: 16, color: Colors.green),
-                  const SizedBox(width: 4),
-                  const Text('السائق: أحمد محمد'),
-                  const Spacer(),
-                  TextButton(
-                    onPressed: () {
-                      // TODO: الاتصال بالسائق
-                    },
-                    child: const Text('اتصال'),
-                  ),
-                ],
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
+  Color _getPriorityColor(String priority) {
+    switch (priority) {
+      case 'HIGH':
+        return Colors.red;
+      case 'MEDIUM':
+        return Colors.orange;
+      case 'LOW':
+        return Colors.blue;
+      default:
+        return Colors.grey;
+    }
   }
 
   @override
@@ -191,109 +109,263 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('طلباتي'),
-        backgroundColor: Colors.indigo,
+        backgroundColor: Colors.blue.shade800,
         foregroundColor: Colors.white,
         actions: [
-          // زر التصفية
-          IconButton(
-            icon: const Icon(Icons.filter_list),
-            onPressed: _showFilterDialog,
-            tooltip: 'تصفية الطلبات',
-          ),
-          // زر التحديث
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: _refreshData,
-            tooltip: 'تحديث البيانات',
+            onPressed: _loadMyRequests,
+            tooltip: 'تحديث',
           ),
         ],
       ),
-      body: Column(
-        children: [
-          // شريط الفلاتر السريعة
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-            color: Colors.grey.shade50,
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: _filters.map((filter) {
-                  final isSelected = _selectedFilter == filter;
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: FilterChip(
-                      label: Text(filter),
-                      selected: isSelected,
-                      onSelected: (bool selected) {
-                        setState(() {
-                          _selectedFilter = selected ? filter : 'الكل';
-                        });
-                      },
-                      selectedColor: Colors.indigo.shade100,
-                      checkmarkColor: Colors.indigo,
-                      labelStyle: TextStyle(
-                        color: isSelected ? Colors.indigo : Colors.grey.shade700,
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                      ),
-                    ),
-                  );
-                }).toList(),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _errorMessage.isNotEmpty
+          ? Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, size: 64, color: Colors.red),
+            const SizedBox(height: 16),
+            Text(
+              _errorMessage,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 16, color: Colors.red),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _loadMyRequests,
+              child: const Text('إعادة المحاولة'),
+            ),
+          ],
+        ),
+      )
+          : _requests.isEmpty
+          ? const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.inbox_outlined, size: 80, color: Colors.grey),
+            SizedBox(height: 16),
+            Text(
+              'لا توجد طلبات',
+              style: TextStyle(fontSize: 18, color: Colors.grey),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'سيظهر هنا الطلبات التي تقوم بإنشائها',
+              style: TextStyle(fontSize: 14, color: Colors.grey),
+            ),
+          ],
+        ),
+      )
+          : RefreshIndicator(
+        onRefresh: _loadMyRequests,
+        child: ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: _requests.length,
+          itemBuilder: (context, index) {
+            final request = _requests[index];
+            return _buildRequestCard(request);
+          },
+        ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          // الانتقال لشاشة إنشاء طلب جديد
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => NewTransferRequestScreen(
+                companyId: widget.companyId,
+                userId: widget.userId,
+                userName: 'اسم المستخدم', // ✅ إضافة userName
               ),
             ),
-          ),
+          ).then((_) => _loadMyRequests()); // إعادة تحميل الطلبات بعد العودة
+        },
+        backgroundColor: Colors.blue.shade800,
+        foregroundColor: Colors.white,
+        child: const Icon(Icons.add),
+      ),
+    );
+  }
 
-          // عدد النتائج
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
+  Widget _buildRequestCard(Map<String, dynamic> request) {
+    final createdAt = request['createdAt'] is Timestamp
+        ? (request['createdAt'] as Timestamp).toDate()
+        : DateTime.now();
+
+    final isUrgent = request['priority'] == 'HIGH';
+    final status = request['status'] ?? 'PENDING';
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // العنوان والحالة
+            Row(
               children: [
-                Text(
-                  'عدد الطلبات: ${_filteredRequests.length}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey,
+                // علامة عاجل
+                if (isUrgent) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      border: Border.all(color: Colors.red),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.warning, size: 14, color: Colors.red),
+                        SizedBox(width: 4),
+                        Text(
+                          'عاجل',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.red,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+
+                // العنوان
+                Expanded(
+                  child: Text(
+                    request['title'] ?? 'طلب نقل',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                const Spacer(),
-                if (_selectedFilter != 'الكل')
-                  TextButton(
-                    onPressed: () {
-                      setState(() {
-                        _selectedFilter = 'الكل';
-                      });
-                    },
-                    child: const Text('إلغاء التصفية'),
+
+                // حالة الطلب
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: _getStatusColor(status).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: _getStatusColor(status)),
                   ),
+                  child: Text(
+                    _getStatusText(status),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: _getStatusColor(status),
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
               ],
             ),
-          ),
 
-          // قائمة الطلبات
-          Expanded(
-            child: _filteredRequests.isEmpty
-                ? const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+            const SizedBox(height: 12),
+
+            // التاريخ
+            Row(
+              children: [
+                const Icon(Icons.calendar_today, size: 16, color: Colors.grey),
+                const SizedBox(width: 8),
+                Text(
+                  DateFormat('yyyy-MM-dd').format(createdAt),
+                  style: const TextStyle(color: Colors.grey),
+                ),
+                const Spacer(),
+                const Icon(Icons.access_time, size: 16, color: Colors.grey),
+                const SizedBox(width: 8),
+                Text(
+                  DateFormat('HH:mm').format(createdAt),
+                  style: const TextStyle(color: Colors.grey),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 12),
+
+            // الوصف
+            if (request['description'] != null && request['description'].toString().isNotEmpty) ...[
+              Text(
+                request['description'].toString(),
+                style: const TextStyle(fontSize: 14),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 8),
+            ],
+
+            // الموقع
+            if (request['location'] != null) ...[
+              Row(
                 children: [
-                  Icon(Icons.inbox, size: 64, color: Colors.grey),
-                  SizedBox(height: 16),
-                  Text(
-                    'لا توجد طلبات',
-                    style: TextStyle(fontSize: 18, color: Colors.grey),
-                  ),
-                  Text(
-                    'جرب تغيير عوامل التصفية',
-                    style: TextStyle(color: Colors.grey),
+                  const Icon(Icons.location_on, size: 16, color: Colors.grey),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'الموقع: ${request['location']}',
+                      style: const TextStyle(fontSize: 14, color: Colors.grey),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ],
               ),
-            )
-                : ListView.builder(
-              padding: const EdgeInsets.only(bottom: 16),
-              itemCount: _filteredRequests.length,
-              itemBuilder: (context, index) {
-                return _buildRequestCard(index);
-              },
+              const SizedBox(height: 8),
+            ],
+
+            // خط فاصل
+            const Divider(height: 20),
+
+            // معلومات إضافية
+            Row(
+              children: [
+                // نوع الطلب
+                if (request['type'] != null) ...[
+                  _buildInfoChip('النوع: ${request['type']}', Icons.category),
+                  const SizedBox(width: 8),
+                ],
+
+                // الأولوية
+                _buildInfoChip(
+                  'الأولوية: ${request['priority'] == 'HIGH' ? 'عالي' : request['priority'] == 'MEDIUM' ? 'متوسط' : 'منخفض'}',
+                  Icons.flag,
+                  color: _getPriorityColor(request['priority'] ?? 'LOW'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoChip(String text, IconData icon, {Color? color}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: (color ?? Colors.blue).withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color ?? Colors.blue),
+          const SizedBox(width: 4),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 10,
+              color: color ?? Colors.blue,
             ),
           ),
         ],

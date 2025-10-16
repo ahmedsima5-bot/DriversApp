@@ -5,7 +5,16 @@ import '../../services/auth_service.dart';
 import '../auth/login_screen.dart';
 
 class RequesterDashboard extends StatefulWidget {
-  const RequesterDashboard({super.key});
+  final String companyId;
+  final String userId;
+  final String userName; // إضافة userName
+
+  const RequesterDashboard({
+    super.key,
+    required this.companyId,
+    required this.userId,
+    required this.userName, // إضافة userName
+  });
 
   @override
   State<RequesterDashboard> createState() => _RequesterDashboardState();
@@ -52,7 +61,7 @@ class _RequesterDashboardState extends State<RequesterDashboard> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('لوحة مقدم الطلبات'),
-        backgroundColor: Colors.green.shade800,
+        backgroundColor: Colors.green[800],
         foregroundColor: Colors.white,
         actions: [
           IconButton(
@@ -73,9 +82,9 @@ class _RequesterDashboardState extends State<RequesterDashboard> {
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 10),
-            const Text(
-              'يمكنك إنشاء ومتابعة طلبات النقل',
-              style: TextStyle(fontSize: 16, color: Colors.grey),
+            Text(
+              'معرف الشركة: ${widget.companyId}',
+              style: const TextStyle(fontSize: 16, color: Colors.grey),
             ),
             const SizedBox(height: 30),
 
@@ -84,7 +93,11 @@ class _RequesterDashboardState extends State<RequesterDashboard> {
               onPressed: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (context) => const NewRequestScreen(),
+                    builder: (context) => NewTransferRequestScreen(
+                      companyId: widget.companyId,
+                      userId: widget.userId, // ✅ إضافة userId
+                      userName: widget.userName, // ✅ إضافة userName
+                    ),
                   ),
                 );
               },
@@ -106,13 +119,17 @@ class _RequesterDashboardState extends State<RequesterDashboard> {
               onPressed: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (context) => const MyRequestsScreen(),
+                    builder: (context) => MyRequestsScreen(
+                      companyId: widget.companyId,
+                      userId: widget.userId,
+                      userName: widget.userName, // ✅ إضافة userName
+                    ),
                   ),
                 );
               },
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size(200, 50),
-                backgroundColor: Colors.blue.shade800,
+                backgroundColor: Colors.blue[800],
                 foregroundColor: Colors.white,
               ),
               child: const Text(
@@ -122,6 +139,31 @@ class _RequesterDashboardState extends State<RequesterDashboard> {
             ),
 
             const SizedBox(height: 20),
+
+            // معلومات المستخدم
+            Container(
+              margin: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.grey[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey[300]!),
+              ),
+              child: Column(
+                children: [
+                  const Text(
+                    'معلومات المستخدم',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green),
+                  ),
+                  const SizedBox(height: 8),
+                  Text('معرف المستخدم: ${widget.userId}'),
+                  Text('اسم المستخدم: ${widget.userName}'), // ✅ إضافة اسم المستخدم
+                  Text('معرف الشركة: ${widget.companyId}'),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 10),
 
             // زر تسجيل خروج إضافي في الجسم
             TextButton(

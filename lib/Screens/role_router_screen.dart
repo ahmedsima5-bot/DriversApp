@@ -159,6 +159,7 @@ class _RoleRouterScreenState extends State<RoleRouterScreen> {
     final role = _userData!['role'] as String;
     final companyId = _userData!['company_id'] as String;
     final userName = _userData!['name'] as String;
+    final userId = _user?.uid ?? '';
 
     print('🎯 توجيه المستخدم إلى: $role - الشركة: $companyId - الاسم: $userName');
 
@@ -168,7 +169,11 @@ class _RoleRouterScreenState extends State<RoleRouterScreen> {
         return HRMainScreen(companyId: companyId);
 
       case 'Requester':
-        return const RequesterDashboard();
+        return RequesterDashboard( // ✅ إزالة const وإضافة المعاملات
+          companyId: companyId,
+          userId: userId,
+          userName: userName ?? 'مستخدم', // ✅ إضافة userName مع قيمة افتراضية
+        );
 
       case 'Driver':
         return DriverDashboard(userName: userName);

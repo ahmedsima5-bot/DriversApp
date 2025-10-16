@@ -14,7 +14,7 @@ class CompanySettings extends StatelessWidget {
           child: Text('إعدادات الشركة', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         ),
 
-        _buildSettingField('اسم الشركة', 'شركة النقل المتقن'),
+        _buildSettingField('اسم الشركة', 'الصمنع العالمي للمفروضات والصناعات الخضبية'),
         _buildSettingField('وقت الدوام الرسمي', '08:00 ص - 05:00 م'),
         _buildSettingField('عدد السائقين', '15 سائق'),
         _buildSettingField('الإيميل الرسمي', 'hr@company.com'),
