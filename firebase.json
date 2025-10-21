@@ -1,1 +1,39 @@
-{"flutter":{"platforms":{"dart":{"lib/firebase_options.dart":{"projectId":"dra-logistics","configurations":{"android":"1:271222119081:android:36a2a09e3f3130c06967b8","ios":"1:271222119081:ios:b97b95d4d4b4fe1b6967b8","macos":"1:271222119081:ios:b97b95d4d4b4fe1b6967b8","web":"1:271222119081:web:2161b7f7d279b4b36967b8","windows":"1:271222119081:web:b910d5154bf248986967b8"}}},"android":{"default":{"projectId":"dra-logistics","appId":"1:271222119081:android:36a2a09e3f3130c06967b8","fileOutput":"android/app/google-services.json"}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "dra-logistics",
+          "configurations": {
+            "android": "1:271222119081:android:36a2a09e3f3130c06967b8",
+            "ios": "1:271222119081:ios:b97b95d4d4b4fe1b6967b8",
+            "macos": "1:271222119081:ios:b97b95d4d4b4fe1b6967b8",
+            "web": "1:271222119081:web:2161b7f7d279b4b36967b8",
+            "windows": "1:271222119081:web:b910d5154bf248986967b8"
+          }
+        }
+      },
+      "android": {
+        "default": {
+          "projectId": "dra-logistics",
+          "appId": "1:271222119081:android:36a2a09e3f3130c06967b8",
+          "fileOutput": "android/app/google-services.json"
+        }
+      }
+    }
+  },
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}
