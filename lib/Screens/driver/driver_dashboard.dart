@@ -252,49 +252,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
     }
   }
 
-  Future<void> _createTestRequest() async {
-    try {
-      final requestId = 'test_${DateTime.now().millisecondsSinceEpoch}';
-      final companyId = 'C001';
-
-      await _firestore
-          .collection('companies')
-          .doc(companyId)
-          .collection('requests')
-          .doc(requestId)
-          .set({
-        'requestId': requestId,
-        'companyId': companyId,
-        'customerName': 'عميل تجريبي',
-        'fromLocation': 'الرياض - حي الملز',
-        'toLocation': 'الرياض - حي العليا',
-        'priority': 'Normal',
-        'status': 'NEW',
-        'createdTime': FieldValue.serverTimestamp(),
-        'lastUpdated': FieldValue.serverTimestamp(),
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('تم إنشاء طلب تجريبي: $requestId'),
-          backgroundColor: Colors.green,
-        ),
-      );
-
-      debugPrint('✅ تم إنشاء طلب تجريبي: $requestId');
-      _loadDriverRequests();
-
-    } catch (e) {
-      debugPrint('❌ خطأ في إنشاء الطلب: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('خطأ في إنشاء الطلب: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
   // 🚗 بدء الرحلة
   Future<void> _startRide(String requestId) async {
     try {
@@ -368,39 +325,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('خطأ في إنهاء الرحلة: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-  // 🔄 إعادة تعيين السائق كمتاح
-  Future<void> _resetDriverAvailability() async {
-    try {
-      await _firestore
-          .collection('companies')
-          .doc(_companyId)
-          .collection('drivers')
-          .doc(_driverId)
-          .update({
-        'isAvailable': true,
-        'lastStatusUpdate': FieldValue.serverTimestamp(),
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('🔄 تم إعادة تعيين السائق كمتاح'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-
-      debugPrint('🔄 تم إعادة تعيين السائق كمتاح');
-      _loadDriverRequests();
-    } catch (e) {
-      debugPrint('❌ خطأ في إعادة التعيين: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('خطأ في إعادة التعيين: $e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -516,18 +440,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
             children: [
               const Text('لا توجد طلبات مخصصة لك حالياً.'),
               const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  _createTestRequest();
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange,
-                  foregroundColor: Colors.white,
-                ),
-                child: const Text('إنشاء طلب تجريبي'),
-              ),
-              const SizedBox(height: 8),
               if (!_driverProfileExists)
                 ElevatedButton(
                   onPressed: () {
@@ -803,12 +715,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
                       const Icon(Icons.inbox_outlined, size: 60, color: Colors.grey),
                       const SizedBox(height: 16),
                       const Text('لا توجد طلبات', style: TextStyle(fontSize: 18, color: Colors.grey)),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: _createTestRequest,
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-                        child: const Text('إنشاء طلب تجريبي'),
-                      ),
                     ],
                   ),
                 )
@@ -949,7 +855,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
               ),
             ),
 
-          // 🔥 زر تشخيص نظام التوزيع
+          // 🔥 زر تشخيص نظام التوزيع (للتطوير فقط)
           Container(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
             child: ElevatedButton(
@@ -962,21 +868,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
               child: const Text('تشخيص نظام التوزيع'),
             ),
           ),
-
-          // زر إعادة تعيين السائق كمتاح
-          if (_driverProfileExists)
-            Container(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: ElevatedButton(
-                onPressed: _resetDriverAvailability,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange,
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size(double.infinity, 50),
-                ),
-                child: const Text('إعادة تعيين كمتاح'),
-              ),
-            ),
 
           // باقي الواجهة...
           Expanded(
@@ -998,12 +889,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
                     'سيتم عرض الطلبات هنا عندما يتم تخصيصها لك',
                     style: TextStyle(fontSize: 14, color: Colors.grey),
                     textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 20),
-                  ElevatedButton(
-                    onPressed: _createTestRequest,
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-                    child: const Text('إنشاء طلب تجريبي'),
                   ),
                 ],
               ),
@@ -1040,16 +925,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
                       ],
                     ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                ElevatedButton(
-                  onPressed: _createTestRequest,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(0, 55),
-                  ),
-                  child: const Icon(Icons.add),
                 ),
               ],
             ),

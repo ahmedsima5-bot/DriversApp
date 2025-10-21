@@ -28,8 +28,8 @@
 /android/.iml
 /android/gradle.properties
 # Flutter Android build files (specific to your error):
-android/app/build/
-android/app/build/outputs/
+## android/app/build/
+## android/app/build/outputs/
 android/app/build/intermediates/
 
 ### IntelliJ/Android Studio ###

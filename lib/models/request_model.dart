@@ -23,6 +23,8 @@ class Request {
   final DateTime startTimeExpected;
   final String status;
   final DateTime createdAt;
+  final String toLocation;
+  final String fromLocation;
 
   Request({
     required this.requestId,
@@ -46,6 +48,8 @@ class Request {
     required this.startTimeExpected,
     required this.status,
     required this.createdAt,
+    required this.toLocation,
+    required this.fromLocation,
   });
 
   String get purpose => purposeType;
@@ -80,15 +84,21 @@ class Request {
       return const GeoPoint(24.7136, 46.6753);
     }
 
+    // دالة مساعدة لتحويل أي قيمة إلى String
+    String _parseString(dynamic value, String defaultValue) {
+      if (value == null) return defaultValue;
+      return value.toString();
+    }
+
     return Request(
-      requestId: data['requestId']?.toString() ?? '',
-      companyId: data['companyId']?.toString() ?? 'C001',
-      requesterId: data['requesterId']?.toString() ?? '',
-      requesterName: data['requesterName']?.toString() ?? 'غير معروف',
+      requestId: _parseString(data['requestId'], ''),
+      companyId: _parseString(data['companyId'], 'C001'),
+      requesterId: _parseString(data['requesterId'], ''),
+      requesterName: _parseString(data['requesterName'], 'غير معروف'),
       department: data['department']?.toString(),
-      purposeType: data['purposeType']?.toString() ?? 'عمل',
-      details: data['details']?.toString() ?? '',
-      priority: data['priority']?.toString() ?? 'Normal',
+      purposeType: _parseString(data['purposeType'], 'عمل'),
+      details: _parseString(data['details'], ''),
+      priority: _parseString(data['priority'], 'Normal'),
       assignedDriverId: data['assignedDriverId']?.toString(),
       assignedDriverName: data['assignedDriverName']?.toString(),
 
@@ -100,8 +110,10 @@ class Request {
       pickupLocation: _parseGeoPoint(data['pickupLocation']),
       destinationLocation: _parseGeoPoint(data['destinationLocation']),
       startTimeExpected: _parseDateTime(data['startTimeExpected']),
-      status: data['status']?.toString() ?? 'NEW',
+      status: _parseString(data['status'], 'NEW'),
       createdAt: _parseDateTime(data['createdAt']),
+      toLocation: _parseString(data['toLocation'], 'الموقع غير محدد'),
+      fromLocation: _parseString(data['fromLocation'], 'الموقع غير محدد'),
     );
   }
 
@@ -130,6 +142,8 @@ class Request {
       'startTimeExpected': Timestamp.fromDate(startTimeExpected),
       'status': status,
       'createdAt': Timestamp.fromDate(createdAt),
+      'toLocation': toLocation,
+      'fromLocation': fromLocation,
     };
   }
 
@@ -145,8 +159,8 @@ class Request {
    - الوقت المتوقع: $startTimeExpected
    - وقت الإنشاء: $createdAt
    - السائق المعين: $assignedDriverName
-   - من: (${pickupLocation.latitude}, ${pickupLocation.longitude})
-   - إلى: (${destinationLocation.latitude}, ${destinationLocation.longitude})
+   - من: $fromLocation (${pickupLocation.latitude}, ${pickupLocation.longitude})
+   - إلى: $toLocation (${destinationLocation.latitude}, ${destinationLocation.longitude})
 ''');
   }
 }

@@ -22,19 +22,45 @@ class NewTransferRequestScreen extends StatefulWidget {
 
 class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
   final _formKey = GlobalKey<FormState>();
-  final TextEditingController _requestTitleController = TextEditingController(text: 'طلب نقل');
+  final TextEditingController _requestTitleController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
+  final TextEditingController _fromLocationController = TextEditingController();
+  final TextEditingController _toLocationController = TextEditingController();
   final TextEditingController _responsibleNameController = TextEditingController();
   final TextEditingController _responsiblePhoneController = TextEditingController();
   final TextEditingController _additionalDetailsController = TextEditingController();
-  final TextEditingController _locationController = TextEditingController();
 
-  // متغيرات جديدة لإدارة الأولوية
-  String _selectedPriority = 'MEDIUM'; // MEDIUM, HIGH
+  String _selectedPriority = 'Normal';
   bool _isUrgent = false;
+  String? _userDepartment;
 
   File? _selectedImage;
   final ImagePicker _picker = ImagePicker();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserDepartment();
+  }
+
+  // دالة لتحميل قسم المستخدم تلقائياً
+  Future<void> _loadUserDepartment() async {
+    try {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.userId)
+          .get();
+
+      setState(() {
+        _userDepartment = userDoc.data()?['department']?.toString() ?? 'General';
+      });
+    } catch (e) {
+      print('Error loading user department: $e');
+      setState(() {
+        _userDepartment = 'General';
+      });
+    }
+  }
 
   // دالة لاختيار الصورة
   Future<void> _pickImage() async {
@@ -48,51 +74,6 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
     } catch (e) {
       print('Error picking image: $e');
     }
-  }
-
-  // دالة لفتح حوار الموقع
-  void _openLocationDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('إدخال الموقع'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextFormField(
-              controller: _locationController,
-              decoration: const InputDecoration(
-                labelText: 'أدخل العنوان أو الموقع',
-                border: OutlineInputBorder(),
-                hintText: 'مثال: الرياض - حي الملز - شارع الملك فهد',
-              ),
-              maxLines: 3,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('إلغاء'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (_locationController.text.isNotEmpty) {
-                setState(() {});
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('تم حفظ الموقع بنجاح'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-              }
-            },
-            child: const Text('حفظ'),
-          ),
-        ],
-      ),
-    );
   }
 
   // دالة إرسال الطلب
@@ -146,76 +127,89 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
   Future<void> _saveRequestToFirestore() async {
     try {
       // تحديد حالة الطلب بناءً على الأولوية
-      String status = _isUrgent ? 'PENDING_HR_APPROVAL' : 'ASSIGNING_DRIVER';
-      String priority = _isUrgent ? 'HIGH' : 'MEDIUM';
+      String status = _isUrgent ? 'HR_PENDING' : 'PENDING';
+      String priority = _isUrgent ? 'Urgent' : 'Normal';
 
-      // تحديد المسار بناءً على الأولوية
-      String collectionPath = _isUrgent
-          ? 'artifacts/${widget.companyId}/public/data/hr_pending_requests'
-          : 'artifacts/${widget.companyId}/public/data/active_requests';
+      // إنشاء معرف فريد للطلب
+      String requestId = 'req_${DateTime.now().millisecondsSinceEpoch}';
 
-      await FirebaseFirestore.instance
-          .collection(collectionPath)
-          .add({
-        'title': _requestTitleController.text,
-        'description': _descriptionController.text,
-        'responsibleName': _responsibleNameController.text.isEmpty ? null : _responsibleNameController.text,
-        'responsiblePhone': _responsiblePhoneController.text.isEmpty ? null : _responsiblePhoneController.text,
-        'location': _locationController.text.isEmpty ? null : _locationController.text,
-        'additionalDetails': _additionalDetailsController.text.isEmpty ? null : _additionalDetailsController.text,
-
-        // الحقول الأساسية
-        'status': status,
-        'priority': priority,
-        'isUrgent': _isUrgent,
-        'createdAt': Timestamp.now(),
-        'userId': widget.userId,
-        'userName': widget.userName,
+      // البيانات الأساسية للطلب - مطابقة لهيكل النظام
+      Map<String, dynamic> requestData = {
+        // المعلومات الأساسية (مطلوبة للنظام)
+        'requestId': requestId,
         'companyId': widget.companyId,
+        'requesterId': widget.userId,
+        'requesterName': widget.userName,
+        'department': _userDepartment ?? 'General',
 
-        // معلومات إضافية للتتبع
-        'assignedDepartment': _isUrgent ? 'HR' : 'OPERATIONS',
-        'requiredApproval': _isUrgent,
-        'autoAssign': !_isUrgent,
+        // معلومات الرحلة (مطلوبة للنظام)
+        'purposeType': 'نقل',
+        'details': _descriptionController.text,
+        'fromLocation': _fromLocationController.text,
+        'toLocation': _toLocationController.text,
 
-        // معلومات الأداء (للتوزيع العادل)
-        'assignmentScore': 0, // سيتم حسابه عند التوزيع
-        'estimatedCompletionTime': _isUrgent ? 2 : 24, // ساعات
-      });
-
-      // أيضًا حفظ في السجل العام
-      await FirebaseFirestore.instance
-          .collection('artifacts/${widget.companyId}/public/data/requests')
-          .add({
-        'title': _requestTitleController.text,
-        'description': _descriptionController.text,
-        'location': _locationController.text.isEmpty ? null : _locationController.text,
-        'status': status,
+        // الأولوية والحالة (مطلوبة للنظام)
         'priority': priority,
-        'isUrgent': _isUrgent,
-        'createdAt': Timestamp.now(),
-        'userId': widget.userId,
-        'userName': widget.userName,
-        'assignedDepartment': _isUrgent ? 'HR' : 'OPERATIONS',
-      });
+        'status': status,
 
+        // التواريخ (مطلوبة للنظام)
+        'createdAt': FieldValue.serverTimestamp(),
+        'lastUpdated': FieldValue.serverTimestamp(),
+        'startTimeExpected': Timestamp.fromDate(DateTime.now().add(const Duration(hours: 1))),
+
+        // معلومات إضافية
+        'title': _requestTitleController.text.isNotEmpty
+            ? _requestTitleController.text
+            : 'طلب نقل', // قيمة افتراضية إذا لم يدخل المستخدم عنوان
+        'additionalDetails': _additionalDetailsController.text.isEmpty
+            ? null
+            : _additionalDetailsController.text,
+        'responsibleName': _responsibleNameController.text.isEmpty
+            ? null
+            : _responsibleNameController.text,
+        'responsiblePhone': _responsiblePhoneController.text.isEmpty
+            ? null
+            : _responsiblePhoneController.text,
+
+        // حقول افتراضية للنظام
+        'assignedDriverId': null,
+        'assignedDriverName': null,
+        'assignedTime': null,
+        'pickupLocation': const GeoPoint(24.7136, 46.6753), // قيمة افتراضية
+        'destinationLocation': const GeoPoint(24.7136, 46.6753), // قيمة افتراضية
+      };
+
+      // حفظ في المسار الصحيح للنظام
+      await FirebaseFirestore.instance
+          .collection('companies')
+          .doc(widget.companyId)
+          .collection('requests')
+          .doc(requestId)
+          .set(requestData);
+
+      // إشعار نجاح
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             _isUrgent
                 ? 'تم إرسال الطلب العاجل للموارد البشرية للموافقة'
-                : 'تم إرسال الطلب وسيتم تعيينه للسائقين قريباً',
+                : 'تم إرسال الطلب وسيتم تعيين سائق قريباً',
           ),
           backgroundColor: Colors.green,
+          duration: const Duration(seconds: 3),
         ),
       );
 
+      // العودة للشاشة السابقة
       Navigator.pop(context);
+
     } catch (e) {
+      print('Error saving request: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('خطأ في إرسال الطلب: $e'),
           backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
         ),
       );
     }
@@ -236,9 +230,20 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // عنوان الطلب
-              _buildSectionTitle('طلب نقل جديد'),
-              _buildReadOnlyField('عنوان الطلب', _requestTitleController),
+              // عنوان الطلب (حقل إدخال حر)
+              _buildSectionTitle('عنوان الطلب'),
+              _buildTextField(
+                controller: _requestTitleController,
+                label: 'عنوان الطلب *',
+                hintText: 'أدخل عنواناً وصفياً للطلب (مثال: نقل معدات مكتبية - نقل موظفين - إلخ)',
+                maxLines: 2,
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'يرجى إدخال عنوان للطلب';
+                  }
+                  return null;
+                },
+              ),
               const SizedBox(height: 20),
 
               // مستوى الأولوية
@@ -265,7 +270,7 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
                         onTap: () {
                           setState(() {
                             _isUrgent = false;
-                            _selectedPriority = 'MEDIUM';
+                            _selectedPriority = 'Normal';
                           });
                         },
                       ),
@@ -282,7 +287,7 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
                         onTap: () {
                           setState(() {
                             _isUrgent = true;
-                            _selectedPriority = 'HIGH';
+                            _selectedPriority = 'Urgent';
                           });
                         },
                       ),
@@ -296,8 +301,8 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
               _buildSectionTitle('وصف الطلب'),
               _buildTextField(
                 controller: _descriptionController,
-                label: 'وصف الطلب',
-                hintText: 'أدخل وصف الطلب هنا',
+                label: 'وصف الطلب *',
+                hintText: 'أدخل وصف تفصيلي للطلب',
                 maxLines: 4,
                 validator: (value) {
                   if (value == null || value.isEmpty) {
@@ -308,22 +313,64 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
               ),
               const SizedBox(height: 20),
 
-              // التاريخ
-              _buildSectionTitle('التاريخ'),
-              _buildReadOnlyField('التاريخ', TextEditingController(text: _getCurrentDate())),
+              // مواقع الرحلة
+              _buildSectionTitle('مواقع الرحلة'),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'حدد مواقع الرحلة',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // مكان الانطلاق
+                      _buildLocationField(
+                        controller: _fromLocationController,
+                        label: 'من (مكان الانطلاق) *',
+                        hintText: 'أدخل مكان الانطلاق',
+                        icon: Icons.location_on,
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'يرجى إدخال مكان الانطلاق';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+
+                      // الوجهة
+                      _buildLocationField(
+                        controller: _toLocationController,
+                        label: 'إلى (الوجهة) *',
+                        hintText: 'أدخل الوجهة',
+                        icon: Icons.flag,
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'يرجى إدخال الوجهة';
+                          }
+                          return null;
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
               const SizedBox(height: 20),
 
-              // اختيار الموقع
-              _buildSectionTitle('موقع الأهداف'),
-              _buildLocationSection(),
+              // التاريخ
+              _buildSectionTitle('التاريخ والوقت'),
+              _buildReadOnlyField('تاريخ الطلب', TextEditingController(text: _getCurrentDate())),
               const SizedBox(height: 20),
 
               // المسؤول - خانات اختيارية
-              _buildSectionTitle('المسؤول'),
+              _buildSectionTitle('معلومات الاتصال'),
               Row(
                 children: [
                   Expanded(
-                    flex: 2,
                     child: _buildTextField(
                       controller: _responsibleNameController,
                       label: 'اسم المسؤول (اختياري)',
@@ -332,7 +379,6 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    flex: 2,
                     child: _buildTextField(
                       controller: _responsiblePhoneController,
                       label: 'رقم الهاتف (اختياري)',
@@ -419,81 +465,33 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
     );
   }
 
-  // قسم الموقع
-  Widget _buildLocationSection() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'الموقع',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-            ),
-            const SizedBox(height: 10),
-
-            // زر إدخال الموقع
-            ElevatedButton.icon(
-              onPressed: _openLocationDialog,
-              icon: const Icon(Icons.location_on),
-              label: const Text('إدخال الموقع'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue[50],
-                foregroundColor: Colors.blue[800],
-                minimumSize: const Size(double.infinity, 50),
-              ),
-            ),
-            const SizedBox(height: 10),
-
-            // الموقع المدخل
-            if (_locationController.text.isNotEmpty)
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.green[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.green[200]!),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.check_circle, color: Colors.green, size: 20),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _locationController.text,
-                        style: const TextStyle(fontSize: 14),
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.edit, size: 18),
-                      onPressed: _openLocationDialog,
-                    ),
-                  ],
-                ),
-              )
-            else
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.grey[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.grey[300]!),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(Icons.info, color: Colors.grey, size: 20),
-                    SizedBox(width: 8),
-                    Text(
-                      'لم يتم إدخال موقع',
-                      style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
-                    ),
-                  ],
-                ),
-              ),
-          ],
+  // حقل الموقع
+  Widget _buildLocationField({
+    required TextEditingController controller,
+    required String label,
+    required String hintText,
+    required IconData icon,
+    required String? Function(String?)? validator,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
-      ),
+        const SizedBox(height: 8),
+        TextFormField(
+          controller: controller,
+          decoration: InputDecoration(
+            hintText: hintText,
+            border: const OutlineInputBorder(),
+            prefixIcon: Icon(icon),
+            contentPadding: const EdgeInsets.all(12),
+          ),
+          validator: validator,
+        ),
+      ],
     );
   }
 
@@ -529,7 +527,7 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
 
   String _getCurrentDate() {
     final now = DateTime.now();
-    final formatter = DateFormat('yyyy-MM-dd');
+    final formatter = DateFormat('yyyy-MM-dd HH:mm');
     return formatter.format(now);
   }
 
