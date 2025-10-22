@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class HRDriversManagement extends StatefulWidget {
   final String companyId;
@@ -13,40 +14,65 @@ class HRDriversManagement extends StatefulWidget {
 }
 
 class _HRDriversManagementState extends State<HRDriversManagement> {
-  final List<Map<String, dynamic>> _drivers = [
-    {
-      'id': 'D001',
-      'name': 'أحمد محمد',
-      'phone': '+966500000001',
-      'status': 'متاح',
-      'assignedRequests': 2,
-      'rating': 4.5,
-    },
-    {
-      'id': 'D002',
-      'name': 'محمد علي',
-      'phone': '+966500000002',
-      'status': 'مشغول',
-      'assignedRequests': 1,
-      'rating': 4.2,
-    },
-    {
-      'id': 'D003',
-      'name': 'testdriver',
-      'phone': '+966500000003',
-      'status': 'متاح',
-      'assignedRequests': 0,
-      'rating': 4.8,
-    },
-    {
-      'id': 'D004',
-      'name': 'سعيد حسن',
-      'phone': '+966500000004',
-      'status': 'إجازة',
-      'assignedRequests': 0,
-      'rating': 4.0,
-    },
-  ];
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  List<Map<String, dynamic>> _drivers = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRealDrivers();
+  }
+
+  Future<void> _loadRealDrivers() async {
+    try {
+      final driversSnapshot = await _firestore
+          .collection('companies')
+          .doc(widget.companyId)
+          .collection('drivers')
+          .get();
+
+      setState(() {
+        _drivers = driversSnapshot.docs.map((doc) {
+          final data = doc.data();
+          return {
+            'id': doc.id,
+            'name': data['name'] ?? 'سائق غير معروف',
+            'email': data['email'] ?? '',
+            'phone': data['phone'] ?? 'غير محدد',
+            'isAvailable': data['isAvailable'] ?? false,
+            'isActive': data['isActive'] ?? false,
+            'completedRides': data['completedRides'] ?? 0,
+            'currentRequestId': data['currentRequestId'],
+          };
+        }).toList();
+        _loading = false;
+      });
+    } catch (e) {
+      print('❌ خطأ في جلب السائقين: $e');
+      setState(() {
+        _loading = false;
+      });
+    }
+  }
+
+  String _getStatus(bool isAvailable, bool isActive) {
+    if (!isActive) return 'غير نشط';
+    return isAvailable ? 'متاح' : 'مشغول';
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'متاح':
+        return Colors.green;
+      case 'مشغول':
+        return Colors.orange;
+      case 'غير نشط':
+        return Colors.grey;
+      default:
+        return Colors.grey;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -55,8 +81,30 @@ class _HRDriversManagementState extends State<HRDriversManagement> {
         title: Text('إدارة السائقين - ${widget.companyId}'),
         backgroundColor: Colors.green.shade800,
         foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadRealDrivers,
+          ),
+        ],
       ),
-      body: ListView.builder(
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _drivers.isEmpty
+          ? const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.people_outline, size: 64, color: Colors.grey),
+            SizedBox(height: 16),
+            Text(
+              'لا يوجد سائقين مسجلين',
+              style: TextStyle(fontSize: 18, color: Colors.grey),
+            ),
+          ],
+        ),
+      )
+          : ListView.builder(
         padding: const EdgeInsets.all(16),
         itemCount: _drivers.length,
         itemBuilder: (context, index) {
@@ -67,7 +115,8 @@ class _HRDriversManagementState extends State<HRDriversManagement> {
   }
 
   Widget _buildDriverCard(Map<String, dynamic> driver) {
-    Color statusColor = _getStatusColor(driver['status']);
+    final status = _getStatus(driver['isAvailable'], driver['isActive']);
+    final statusColor = _getStatusColor(status);
 
     return Card(
       elevation: 2,
@@ -82,19 +131,13 @@ class _HRDriversManagementState extends State<HRDriversManagement> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('الهاتف: ${driver['phone']}'),
-            Text('الطلبات المخصصة: ${driver['assignedRequests']}'),
-            Row(
-              children: [
-                const Icon(Icons.star, size: 16, color: Colors.amber),
-                const SizedBox(width: 4),
-                Text('${driver['rating']}'),
-              ],
-            ),
+            Text('البريد: ${driver['email']}'),
+            Text('المشاوير المكتملة: ${driver['completedRides']}'),
           ],
         ),
         trailing: Chip(
           label: Text(
-            driver['status'],
+            status,
             style: const TextStyle(color: Colors.white, fontSize: 12),
           ),
           backgroundColor: statusColor,
@@ -106,20 +149,9 @@ class _HRDriversManagementState extends State<HRDriversManagement> {
     );
   }
 
-  Color _getStatusColor(String status) {
-    switch (status) {
-      case 'متاح':
-        return Colors.green;
-      case 'مشغول':
-        return Colors.orange;
-      case 'إجازة':
-        return Colors.blue;
-      default:
-        return Colors.grey;
-    }
-  }
-
   void _showDriverDetails(Map<String, dynamic> driver) {
+    final status = _getStatus(driver['isAvailable'], driver['isActive']);
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -130,22 +162,16 @@ class _HRDriversManagementState extends State<HRDriversManagement> {
           children: [
             _buildDetailRow('رقم السائق:', driver['id']),
             _buildDetailRow('الهاتف:', driver['phone']),
-            _buildDetailRow('الحالة:', driver['status']),
-            _buildDetailRow('التقييم:', '${driver['rating']} / 5.0'),
-            _buildDetailRow('الطلبات النشطة:', '${driver['assignedRequests']}'),
+            _buildDetailRow('البريد:', driver['email']),
+            _buildDetailRow('الحالة:', status),
+            _buildDetailRow('المشاوير المكتملة:', '${driver['completedRides']}'),
+            _buildDetailRow('نشط:', driver['isActive'] ? 'نعم' : 'لا'),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('إغلاق'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              // TODO: تعديل بيانات السائق
-              Navigator.pop(context);
-            },
-            child: const Text('تعديل البيانات'),
           ),
         ],
       ),
@@ -159,7 +185,7 @@ class _HRDriversManagementState extends State<HRDriversManagement> {
         children: [
           Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(width: 8),
-          Text(value),
+          Expanded(child: Text(value)),
         ],
       ),
     );

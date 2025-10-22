@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import 'new_request_screen.dart';
+import '../../providers/language_provider.dart';
+import '../../locales/app_localizations.dart';
 
 class MyRequestsScreen extends StatefulWidget {
   final String companyId;
@@ -31,6 +34,10 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
     _loadMyRequests();
   }
 
+  String _translate(String key, String languageCode) {
+    return AppLocalizations.getTranslatedValue(key, languageCode);
+  }
+
   Future<void> _loadMyRequests() async {
     try {
       setState(() {
@@ -38,7 +45,6 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
         _errorMessage = '';
       });
 
-      // استعلام مبسط بدون orderBy أولاً لتجنب مشكلة الفهرس
       final QuerySnapshot snapshot = await FirebaseFirestore.instance
           .collection('companies')
           .doc(widget.companyId)
@@ -46,7 +52,6 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
           .where('requesterId', isEqualTo: widget.userId)
           .get();
 
-      // ترتيب البيانات محلياً
       final sortedDocs = snapshot.docs.toList()
         ..sort((a, b) {
           final aTime = (a.data() as Map<String, dynamic>)['createdAt'] as Timestamp?;
@@ -71,42 +76,41 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
 
       if (e.toString().contains('index') || e.toString().contains('requires an index')) {
         setState(() {
-          _errorMessage = 'جاري إنشاء الفهرس في النظام...\nيرجى المحاولة مرة أخرى خلال دقيقة';
+          _errorMessage = _translate('index_creating', 'ar');
           _indexCreating = true;
           _isLoading = false;
         });
 
-        // إعادة المحاولة تلقائياً بعد 5 ثواني
         Future.delayed(const Duration(seconds: 5), () {
           if (mounted) _loadMyRequests();
         });
       } else {
         setState(() {
-          _errorMessage = 'خطأ في تحميل الطلبات: $e';
+          _errorMessage = '${_translate('load_requests_error', 'ar')}: $e';
           _isLoading = false;
         });
       }
     }
   }
 
-  String _getStatusText(String status) {
+  String _getStatusText(String status, String currentLanguage) {
     switch (status) {
       case 'PENDING':
-        return 'قيد الانتظار';
+        return _translate('pending', currentLanguage);
       case 'HR_PENDING':
-        return 'بانتظار الموارد البشرية';
+        return _translate('hr_pending', currentLanguage);
       case 'APPROVED':
-        return 'مقبول';
+        return _translate('approved', currentLanguage);
       case 'REJECTED':
-        return 'مرفوض';
+        return _translate('rejected', currentLanguage);
       case 'IN_PROGRESS':
-        return 'قيد التنفيذ';
+        return _translate('in_progress', currentLanguage);
       case 'COMPLETED':
-        return 'مكتمل';
+        return _translate('completed', currentLanguage);
       case 'ASSIGNED':
-        return 'تم التعيين';
+        return _translate('assigned', currentLanguage);
       case 'WAITING_FOR_DRIVER':
-        return 'بانتظار السائق'; // ✅ تم التحويل للعربية
+        return _translate('waiting_for_driver', currentLanguage);
       default:
         return status;
     }
@@ -129,7 +133,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
       case 'REJECTED':
         return Colors.red;
       case 'WAITING_FOR_DRIVER':
-        return Colors.purple; // ✅ لون مميز لانتظار السائق
+        return Colors.purple;
       default:
         return Colors.grey;
     }
@@ -146,37 +150,34 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
     }
   }
 
-  String _getPriorityText(String priority) {
+  String _getPriorityText(String priority, String currentLanguage) {
     switch (priority) {
       case 'Urgent':
-        return 'عاجل';
+        return _translate('urgent', currentLanguage);
       case 'Normal':
-        return 'عادي';
+        return _translate('normal', currentLanguage);
       default:
         return priority;
     }
   }
 
-  // ✅ دالة جديدة للتحقق من وجود سائق معين
   bool _hasDriverAssigned(Map<String, dynamic> request) {
     return request['assignedDriverId'] != null &&
         request['assignedDriverId'].toString().isNotEmpty;
   }
 
-  // ✅ دالة جديدة للحصول على اسم السائق
   String _getDriverName(Map<String, dynamic> request) {
     return request['assignedDriverName']?.toString() ??
         request['driverName']?.toString() ??
         'لم يتم التعيين بعد';
   }
 
-  // ✅ دالة جديدة للحصول على صورة السائق
   String? _getDriverImage(Map<String, dynamic> request) {
     return request['assignedDriverImage']?.toString() ??
         request['driverImage']?.toString();
   }
 
-  Widget _buildIndexCreationMessage() {
+  Widget _buildIndexCreationMessage(String currentLanguage) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -185,9 +186,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
           const SizedBox(height: 20),
           const Icon(Icons.build, size: 64, color: Colors.orange),
           const SizedBox(height: 16),
-          const Text(
-            'جاري تهيئة النظام...',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.orange),
+          Text(
+            _translate('system_initializing', currentLanguage),
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.orange),
           ),
           const SizedBox(height: 8),
           Padding(
@@ -205,7 +206,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
               backgroundColor: Colors.orange,
               foregroundColor: Colors.white,
             ),
-            child: const Text('إعادة المحاولة الآن'),
+            child: Text(_translate('retry_now', currentLanguage)),
           ),
         ],
       ),
@@ -214,133 +215,145 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('طلباتي'),
-        backgroundColor: Colors.blue.shade800,
-        foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadMyRequests,
-            tooltip: 'تحديث',
+    return Consumer<LanguageProvider>(
+      builder: (context, languageProvider, child) {
+        final currentLanguage = languageProvider.currentLanguage;
+
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(_translate('my_requests', currentLanguage)),
+            backgroundColor: Colors.blue.shade800,
+            foregroundColor: Colors.white,
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.refresh),
+                onPressed: _loadMyRequests,
+                tooltip: _translate('refresh', currentLanguage),
+              ),
+            ],
           ),
-        ],
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _indexCreating
-          ? _buildIndexCreationMessage()
-          : _errorMessage.isNotEmpty && !_indexCreating
-          ? Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, size: 64, color: Colors.red),
-            const SizedBox(height: 16),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(
-                _errorMessage,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 16, color: Colors.red),
-              ),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _loadMyRequests,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue.shade800,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('إعادة المحاولة'),
-            ),
-          ],
-        ),
-      )
-          : _requests.isEmpty
-          ? Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.inbox_outlined, size: 80, color: Colors.grey.shade400),
-            const SizedBox(height: 16),
-            const Text(
-              'لا توجد طلبات',
-              style: TextStyle(fontSize: 18, color: Colors.grey),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'سيظهر هنا الطلبات التي تقوم بإنشائها',
-              style: TextStyle(fontSize: 14, color: Colors.grey),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => NewTransferRequestScreen(
-                      companyId: widget.companyId,
-                      userId: widget.userId,
-                      userName: widget.userName ?? 'مستخدم',
-                    ),
+          body: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _indexCreating
+              ? _buildIndexCreationMessage(currentLanguage)
+              : _errorMessage.isNotEmpty && !_indexCreating
+              ? Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.error_outline, size: 64, color: Colors.red),
+                const SizedBox(height: 16),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Text(
+                    _errorMessage,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 16, color: Colors.red),
                   ),
-                ).then((_) => _loadMyRequests());
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: _loadMyRequests,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue.shade800,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: Text(_translate('retry', currentLanguage)),
+                ),
+              ],
+            ),
+          )
+              : _requests.isEmpty
+              ? Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.inbox_outlined, size: 80, color: Colors.grey.shade400),
+                const SizedBox(height: 16),
+                Text(
+                  _translate('no_requests', currentLanguage),
+                  style: const TextStyle(fontSize: 18, color: Colors.grey),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _translate('requests_will_appear_here', currentLanguage),
+                  style: const TextStyle(fontSize: 14, color: Colors.grey),
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => NewTransferRequestScreen(
+                          companyId: widget.companyId,
+                          userId: widget.userId,
+                          userName: widget.userName ?? _translate('user', currentLanguage),
+                        ),
+                      ),
+                    ).then((_) => _loadMyRequests());
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue.shade800,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: Text(_translate('create_new_request', currentLanguage)),
+                ),
+              ],
+            ),
+          )
+              : RefreshIndicator(
+            onRefresh: _loadMyRequests,
+            child: ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: _requests.length,
+              itemBuilder: (context, index) {
+                final request = _requests[index];
+                return _buildRequestCard(request, currentLanguage);
               },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue.shade800,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('إنشاء طلب جديد'),
             ),
-          ],
-        ),
-      )
-          : RefreshIndicator(
-        onRefresh: _loadMyRequests,
-        child: ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: _requests.length,
-          itemBuilder: (context, index) {
-            final request = _requests[index];
-            return _buildRequestCard(request);
-          },
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => NewTransferRequestScreen(
-                companyId: widget.companyId,
-                userId: widget.userId,
-                userName: widget.userName ?? 'مستخدم',
-              ),
-            ),
-          ).then((_) => _loadMyRequests());
-        },
-        backgroundColor: Colors.blue.shade800,
-        foregroundColor: Colors.white,
-        child: const Icon(Icons.add),
-      ),
+          ),
+          floatingActionButton: FloatingActionButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => NewTransferRequestScreen(
+                    companyId: widget.companyId,
+                    userId: widget.userId,
+                    userName: widget.userName ?? _translate('user', currentLanguage),
+                  ),
+                ),
+              ).then((_) => _loadMyRequests());
+            },
+            backgroundColor: Colors.blue.shade800,
+            foregroundColor: Colors.white,
+            child: const Icon(Icons.add),
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildRequestCard(Map<String, dynamic> request) {
+  Widget _buildRequestCard(Map<String, dynamic> request, String currentLanguage) {
     final createdAt = request['createdAt'] is Timestamp
         ? (request['createdAt'] as Timestamp).toDate()
         : DateTime.now();
 
     final isUrgent = request['priority'] == 'Urgent';
     final status = request['status'] ?? 'PENDING';
-    final title = request['title'] ?? 'طلب نقل';
+    final title = request['title'] ?? _translate('transfer_request', currentLanguage);
     final description = request['details'] ?? request['description'] ?? '';
     final fromLocation = request['fromLocation'] ?? '';
     final toLocation = request['toLocation'] ?? '';
     final hasDriver = _hasDriverAssigned(request);
     final driverName = _getDriverName(request);
+
+    // البيانات الإضافية
+    final additionalDetails = request['additionalDetails'] ?? '';
+    final responsibleName = request['responsibleName'] ?? '';
+    final responsiblePhone = request['responsiblePhone'] ?? '';
+    final purposeType = request['purposeType'] ?? _translate('transfer', currentLanguage);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -354,7 +367,6 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
             // العنوان والحالة
             Row(
               children: [
-                // علامة عاجل
                 if (isUrgent) ...[
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -369,7 +381,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                         Icon(Icons.warning, size: 14, color: Colors.red.shade700),
                         const SizedBox(width: 4),
                         Text(
-                          'عاجل',
+                          _translate('urgent', currentLanguage),
                           style: TextStyle(
                             fontSize: 12,
                             color: Colors.red.shade700,
@@ -381,8 +393,6 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                   ),
                   const SizedBox(width: 8),
                 ],
-
-                // العنوان
                 Expanded(
                   child: Text(
                     title,
@@ -394,8 +404,6 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                     maxLines: 2,
                   ),
                 ),
-
-                // حالة الطلب
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
@@ -404,7 +412,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                     border: Border.all(color: _getStatusColor(status)),
                   ),
                   child: Text(
-                    _getStatusText(status),
+                    _getStatusText(status, currentLanguage),
                     style: TextStyle(
                       fontSize: 12,
                       color: _getStatusColor(status),
@@ -416,6 +424,10 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
             ),
 
             const SizedBox(height: 12),
+
+            // نوع الطلب
+            if (purposeType.isNotEmpty)
+              _buildSimpleInfoRow(_translate('request_type', currentLanguage), purposeType, currentLanguage),
 
             // التاريخ والوقت
             Row(
@@ -444,9 +456,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   if (fromLocation.isNotEmpty)
-                    _buildLocationRow('من:', fromLocation, Icons.location_on),
+                    _buildLocationRow(_translate('from', currentLanguage), fromLocation, Icons.location_on, currentLanguage),
                   if (toLocation.isNotEmpty)
-                    _buildLocationRow('إلى:', toLocation, Icons.flag),
+                    _buildLocationRow(_translate('to', currentLanguage), toLocation, Icons.flag, currentLanguage),
                 ],
               ),
               const SizedBox(height: 8),
@@ -454,41 +466,81 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
 
             // الوصف
             if (description.isNotEmpty) ...[
-              Text(
-                description,
-                style: const TextStyle(fontSize: 14, height: 1.4),
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
+              _buildSimpleInfoRow(_translate('description', currentLanguage), description, currentLanguage),
+              const SizedBox(height: 8),
+            ],
+
+            // التفاصيل الإضافية
+            if (additionalDetails.isNotEmpty) ...[
+              _buildSimpleInfoRow(_translate('additional_details', currentLanguage), additionalDetails, currentLanguage),
+              const SizedBox(height: 8),
+            ],
+
+            // معلومات المسؤول
+            if (responsibleName.isNotEmpty || responsiblePhone.isNotEmpty) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.green.shade200),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _translate('responsible_info', currentLanguage),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.green.shade800,
+                      ),
+                    ),
+                    if (responsibleName.isNotEmpty)
+                      _buildSimpleInfoRow(_translate('name', currentLanguage), responsibleName, currentLanguage),
+                    if (responsiblePhone.isNotEmpty)
+                      _buildSimpleInfoRow(_translate('phone', currentLanguage), responsiblePhone, currentLanguage),
+                  ],
+                ),
               ),
               const SizedBox(height: 8),
             ],
 
-            // ✅ معلومات السائق (تظهر في جميع الحالات إذا كان هناك سائق)
+            // معلومات السائق
             if (hasDriver) ...[
-              _buildDriverInfo(request),
+              _buildDriverInfo(request, currentLanguage),
               const SizedBox(height: 8),
             ],
 
             const Divider(height: 20),
 
             // المعلومات الإضافية
-            Row(
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
                 // القسم
-                if (request['department'] != null) ...[
+                if (request['department'] != null)
                   _buildInfoChip(
-                    'القسم: ${request['department']}',
+                    '${_translate('department', currentLanguage)}: ${request['department']}',
                     Icons.business,
                     color: Colors.purple,
+                    currentLanguage: currentLanguage,
                   ),
-                  const SizedBox(width: 8),
-                ],
 
                 // الأولوية
                 _buildInfoChip(
-                  'الأولوية: ${_getPriorityText(request['priority'] ?? 'Normal')}',
+                  '${_translate('priority', currentLanguage)}: ${_getPriorityText(request['priority'] ?? 'Normal', currentLanguage)}',
                   Icons.flag,
                   color: _getPriorityColor(request['priority'] ?? 'Normal'),
+                  currentLanguage: currentLanguage,
+                ),
+
+                // رقم الطلب
+                _buildInfoChip(
+                  '${_translate('request_number', currentLanguage)}: ${request['requestId'] ?? ''}',
+                  Icons.numbers,
+                  color: Colors.orange,
+                  currentLanguage: currentLanguage,
                 ),
               ],
             ),
@@ -498,8 +550,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
     );
   }
 
-  // ✅ ويدجت جديدة لعرض معلومات السائق
-  Widget _buildDriverInfo(Map<String, dynamic> request) {
+  Widget _buildDriverInfo(Map<String, dynamic> request, String currentLanguage) {
     final driverName = _getDriverName(request);
     final driverImage = _getDriverImage(request);
     final status = request['status'] ?? 'PENDING';
@@ -513,7 +564,6 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
       ),
       child: Row(
         children: [
-          // صورة السائق أو أيقونة افتراضية
           Container(
             width: 40,
             height: 40,
@@ -537,7 +587,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'السائق: $driverName',
+                  '${_translate('driver', currentLanguage)}: $driverName',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
@@ -546,7 +596,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  _getDriverStatusText(status),
+                  _getDriverStatusText(status, currentLanguage),
                   style: TextStyle(
                     fontSize: 12,
                     color: Colors.blue.shade600,
@@ -555,7 +605,6 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
               ],
             ),
           ),
-          // أيقونة حسب حالة الطلب
           Icon(
             _getDriverStatusIcon(status),
             color: _getDriverStatusColor(status),
@@ -566,23 +615,21 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
     );
   }
 
-  // ✅ دالة للحصول على نص حالة السائق
-  String _getDriverStatusText(String status) {
+  String _getDriverStatusText(String status, String currentLanguage) {
     switch (status) {
       case 'ASSIGNED':
-        return 'تم تعيين السائق';
+        return _translate('driver_assigned', currentLanguage);
       case 'IN_PROGRESS':
-        return 'جاري التنفيذ';
+        return _translate('in_progress', currentLanguage);
       case 'COMPLETED':
-        return 'تم إكمال الطلب';
+        return _translate('request_completed', currentLanguage);
       case 'WAITING_FOR_DRIVER':
-        return 'بانتظار بدء التنفيذ';
+        return _translate('waiting_for_driver_start', currentLanguage);
       default:
-        return 'تحت المتابعة';
+        return _translate('under_followup', currentLanguage);
     }
   }
 
-  // ✅ دالة للحصول على أيقونة حالة السائق
   IconData _getDriverStatusIcon(String status) {
     switch (status) {
       case 'ASSIGNED':
@@ -598,7 +645,6 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
     }
   }
 
-  // ✅ دالة للحصول على لون حالة السائق
   Color _getDriverStatusColor(String status) {
     switch (status) {
       case 'ASSIGNED':
@@ -614,7 +660,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
     }
   }
 
-  Widget _buildLocationRow(String label, String location, IconData icon) {
+  Widget _buildLocationRow(String label, String location, IconData icon, String currentLanguage) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
@@ -642,7 +688,33 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
     );
   }
 
-  Widget _buildInfoChip(String text, IconData icon, {Color? color}) {
+  Widget _buildSimpleInfoRow(String label, String value, String currentLanguage) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$label ',
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey.shade700,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(fontSize: 14, color: Colors.grey.shade700),
+              overflow: TextOverflow.visible,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoChip(String text, IconData icon, {Color? color, required String currentLanguage}) {
     final chipColor = color ?? Colors.blue;
 
     return Container(

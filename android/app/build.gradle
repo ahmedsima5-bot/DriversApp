@@ -41,7 +41,7 @@ android {
 
     defaultConfig {
         applicationId "com.dialogistics.drivers"
-        minSdk 21
+        minSdkVersion flutter.minSdkVersion
         targetSdk 33
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName

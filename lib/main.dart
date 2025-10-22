@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:provider/provider.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'services/firebase_options.dart';
 import 'screens/auth/login_screen.dart';
 import 'services/dispatch_service.dart';
+import 'providers/language_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -13,9 +16,7 @@ void main() async {
     );
     print('✅ Firebase initialized successfully');
 
-    // 🎯 تفعيل نظام التوزيع التلقائي - صححت الشركة لـ C001
     initializeDispatchSystem();
-
     runApp(const MyApp());
   } catch (e) {
     print("❌ Firebase Initialization Error: $e");
@@ -23,14 +24,10 @@ void main() async {
   }
 }
 
-// ✨ دالة تفعيل نظام التوزيع - صححت الشركة
 void initializeDispatchSystem() {
   try {
     final dispatchService = DispatchService();
-
-    // 🔥 التصحيح: استخدم C001 بدل default_company
     dispatchService.startListening('C001');
-
     print('🎯 نظام التوزيع التلقائي مفعل للشركة: C001');
   } catch (e) {
     print('❌ خطأ في تفعيل نظام التوزيع: $e');
@@ -42,15 +39,32 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'نظام إدارة النقل',
-      theme: ThemeData(
-        primarySwatch: Colors.orange,
-        fontFamily: 'Tajawal',
-        useMaterial3: true,
+    return ChangeNotifierProvider(
+      create: (context) => LanguageProvider(),
+      child: Consumer<LanguageProvider>(
+        builder: (context, languageProvider, child) {
+          return MaterialApp(
+            title: 'Transport Management System',
+            locale: Locale(languageProvider.currentLanguage),
+            supportedLocales: const [
+              Locale('ar'),
+              Locale('en'),
+            ],
+            localizationsDelegates: const [
+              GlobalMaterialLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+            ],
+            theme: ThemeData(
+              primarySwatch: Colors.orange,
+              fontFamily: languageProvider.currentLanguage == 'ar' ? 'Tajawal' : null,
+              useMaterial3: true,
+            ),
+            home: const LoginScreen(),
+            debugShowCheckedModeBanner: false,
+          );
+        },
       ),
-      home: const LoginScreen(),
-      debugShowCheckedModeBanner: false,
     );
   }
 }
@@ -64,31 +78,26 @@ class ErrorApp extends StatelessWidget {
       home: Scaffold(
         backgroundColor: Colors.red.shade50,
         body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.error_outline, size: 80, color: Colors.red),
-                const SizedBox(height: 20),
-                const Text(
-                  "خطأ في تهيئة النظام",
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.red),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 10),
-                const Text(
-                  "يرجى التحقق من إعدادات Firebase وتوصيل الإنترنت",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 16),
-                ),
-                const SizedBox(height: 30),
-                ElevatedButton(
-                  onPressed: () => main(),
-                  child: const Text('إعادة المحاولة'),
-                ),
-              ],
-            ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, size: 80, color: Colors.red),
+              const SizedBox(height: 20),
+              const Text(
+                "خطأ في تهيئة النظام",
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.red),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                "يرجى التحقق من إعدادات Firebase وتوصيل الإنترنت",
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 30),
+              ElevatedButton(
+                onPressed: () => main(),
+                child: const Text('إعادة المحاولة'),
+              ),
+            ],
           ),
         ),
       ),

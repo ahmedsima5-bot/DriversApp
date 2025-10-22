@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
 import '../../services/auth_service.dart';
+import '../../providers/language_provider.dart';
+import '../../locales/app_localizations.dart';
 import '../role_router_screen.dart';
 import 'register_screen.dart';
 
@@ -28,6 +31,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
   final _formKey = GlobalKey<FormState>();
 
+  String _translate(String key, String languageCode) {
+    return AppLocalizations.getTranslatedValue(key, languageCode);
+  }
+
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) {
       return;
@@ -47,26 +54,30 @@ class _LoginScreenState extends State<LoginScreen> {
       // ✅ التوجيه بعد تسجيل الدخول الناجح
       if (mounted) {
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (context) => const RoleRouterScreen()),
+          MaterialPageRoute(
+            builder: (context) => const RoleRouterScreen(),
+          ),
         );
       }
 
     } on FirebaseAuthException catch (e) {
+      final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
       String message;
       if (e.code == 'user-not-found' || e.code == 'wrong-password') {
-        message = 'بريد إلكتروني أو كلمة مرور غير صحيحة.';
+        message = _translate('incorrect_credentials', languageProvider.currentLanguage);
       } else if (e.code == 'invalid-email') {
-        message = 'البريد الإلكتروني غير صالح.';
+        message = _translate('invalid_email', languageProvider.currentLanguage);
       } else if (e.code == 'user-disabled') {
-        message = 'هذا الحساب معطل.';
+        message = _translate('account_disabled', languageProvider.currentLanguage);
       } else if (e.code == 'too-many-requests') {
-        message = 'محاولات تسجيل دخول كثيرة. حاول مرة أخرى لاحقاً.';
+        message = _translate('too_many_attempts', languageProvider.currentLanguage);
       } else {
-        message = 'خطأ في تسجيل الدخول: ${e.message}';
+        message = _translate('login_error', languageProvider.currentLanguage) + ' ${e.message}';
       }
       _errorMessage = message;
     } catch (e) {
-      _errorMessage = 'خطأ عام: $e';
+      final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
+      _errorMessage = _translate('general_error', languageProvider.currentLanguage) + ' $e';
     } finally {
       if (mounted) {
         setState(() {
@@ -78,119 +89,185 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('تسجيل الدخول'),
-        centerTitle: true,
-        backgroundColor: Colors.blue.shade800,
-        foregroundColor: Colors.white,
-      ),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(32.0),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: <Widget>[
-                const Icon(
-                  Icons.local_shipping,
-                  size: 80,
-                  color: Colors.blue,
-                ),
-                const SizedBox(height: 40),
-                TextFormField(
-                  controller: _emailController,
-                  decoration: const InputDecoration(
-                    labelText: 'البريد الإلكتروني',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
-                    prefixIcon: Icon(Icons.email),
-                  ),
-                  keyboardType: TextInputType.emailAddress,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'يرجى إدخال البريد الإلكتروني.';
-                    }
-                    if (!value.contains('@')) {
-                      return 'أدخل بريد إلكتروني صالح.';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 15),
-                TextFormField(
-                  controller: _passwordController,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'كلمة المرور',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
-                    prefixIcon: Icon(Icons.lock),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'يرجى إدخال كلمة المرور.';
-                    }
-                    if (value.length < 6) {
-                      return 'يجب أن لا تقل كلمة المرور عن 6 أحرف.';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 25),
-
-                if (_errorMessage != null)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Text(
-                      _errorMessage!,
-                      style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
-                      textAlign: TextAlign.center,
+    return Consumer<LanguageProvider>(
+      builder: (context, languageProvider, child) {
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(_translate('login', languageProvider.currentLanguage)),
+            centerTitle: true,
+            backgroundColor: Colors.blue.shade800,
+            foregroundColor: Colors.white,
+            actions: [
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.language, color: Colors.white),
+                onSelected: (String newLanguage) async {
+                  await languageProvider.changeLanguage(newLanguage);
+                },
+                itemBuilder: (BuildContext context) => [
+                  PopupMenuItem(
+                    value: 'ar',
+                    child: Row(
+                      children: [
+                        const Icon(Icons.language, color: Colors.green),
+                        const SizedBox(width: 8),
+                        Text(_translate('arabic', languageProvider.currentLanguage)),
+                      ],
                     ),
                   ),
-
-                ElevatedButton(
-                  onPressed: _isLoading ? null : _login,
-                  style: ElevatedButton.styleFrom(
-                    minimumSize: const Size(double.infinity, 50),
-                    backgroundColor: Colors.blue.shade800,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
+                  PopupMenuItem(
+                    value: 'en',
+                    child: Row(
+                      children: [
+                        const Icon(Icons.language, color: Colors.blue),
+                        const SizedBox(width: 8),
+                        Text(_translate('english', languageProvider.currentLanguage)),
+                      ],
                     ),
-                    elevation: 5,
                   ),
-                  child: _isLoading
-                      ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                      strokeWidth: 2,
+                ],
+              ),
+            ],
+          ),
+          body: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(32.0),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: <Widget>[
+                    const Icon(
+                      Icons.local_shipping,
+                      size: 80,
+                      color: Colors.blue,
                     ),
-                  )
-                      : const Text('تسجيل الدخول', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                ),
+                    const SizedBox(height: 40),
 
-                const SizedBox(height: 15),
+                    // عرض اللغة الحالية
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade200,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        languageProvider.currentLanguage == 'ar' ? 'العربية' : 'English',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
 
-                TextButton(
-                  onPressed: _isLoading
-                      ? null
-                      : () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (context) => const RegisterScreen()),
-                    );
-                  },
-                  child: const Text(
-                    'إنشاء حساب جديد',
-                    style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 16),
-                  ),
+                    TextFormField(
+                      controller: _emailController,
+                      decoration: InputDecoration(
+                        labelText: _translate('email', languageProvider.currentLanguage),
+                        border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
+                        prefixIcon: const Icon(Icons.email),
+                      ),
+                      keyboardType: TextInputType.emailAddress,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return _translate('email_required', languageProvider.currentLanguage);
+                        }
+                        if (!value.contains('@')) {
+                          return _translate('invalid_email', languageProvider.currentLanguage);
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 15),
+                    TextFormField(
+                      controller: _passwordController,
+                      obscureText: true,
+                      decoration: InputDecoration(
+                        labelText: _translate('password', languageProvider.currentLanguage),
+                        border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
+                        prefixIcon: const Icon(Icons.lock),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return _translate('password_required', languageProvider.currentLanguage);
+                        }
+                        if (value.length < 6) {
+                          return _translate('password_length', languageProvider.currentLanguage);
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 25),
+
+                    if (_errorMessage != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.red.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.red.shade200),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.error_outline, color: Colors.red),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  _errorMessage!,
+                                  style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                    ElevatedButton(
+                      onPressed: _isLoading ? null : _login,
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 50),
+                        backgroundColor: Colors.blue.shade800,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        elevation: 5,
+                      ),
+                      child: _isLoading
+                          ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                          : Text(_translate('login_button', languageProvider.currentLanguage),
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    ),
+
+                    const SizedBox(height: 15),
+
+                    TextButton(
+                      onPressed: _isLoading
+                          ? null
+                          : () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (context) => const RegisterScreen()),
+                        );
+                      },
+                      child: Text(
+                        _translate('register', languageProvider.currentLanguage),
+                        style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }

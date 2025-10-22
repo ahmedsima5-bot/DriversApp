@@ -252,7 +252,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
     }
   }
 
-  // 🚗 بدء الرحلة
   Future<void> _startRide(String requestId) async {
     try {
       await _firestore
@@ -286,7 +285,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
     }
   }
 
-  // ✅ إنهاء الرحلة
   Future<void> _completeRide(String requestId) async {
     try {
       await _firestore
@@ -331,7 +329,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
     }
   }
 
-  // 🚪 تسجيل الخروج
   Future<void> _logout() async {
     try {
       if (_driverId != null && _companyId != null) {
@@ -367,7 +364,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
     }
   }
 
-  // 👤 عرض الملف الشخصي
   void _showProfile() {
     showDialog(
       context: context,
@@ -411,7 +407,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
     );
   }
 
-  // 📋 عرض طلباتي
   void _showMyRequests() {
     debugPrint('🎯 تم النقر على زر عرض طلباتي');
     debugPrint('📊 عدد الطلبات: ${_requests.length}');

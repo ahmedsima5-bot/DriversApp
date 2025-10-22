@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../services/auth_service.dart';
 import '../../services/database_service.dart';
+import '../../services/language_service.dart';
+import '../../locales/app_localizations.dart';
 import '../role_router_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -16,58 +17,73 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _nameController = TextEditingController();
-  final _phoneController = TextEditingController();
-
   final AuthService _authService = AuthService();
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   bool _isLoading = false;
-  bool _isLoadingDepartments = true;
   String? _errorMessage;
+  String _currentLanguage = 'ar';
 
+  // قائمة الأقسام ستُجلب من Firestore
   List<String> _departmentOptions = [];
+  // الخيارات الثابتة للأدوار
   final List<String> _roleOptions = ['Requester', 'Driver', 'HR'];
 
   String? _selectedDepartment;
   String? _selectedRole;
 
+  // مفتاح النموذج للتحقق من صحة الإدخالات
   final _formKey = GlobalKey<FormState>();
+
+  // قيمة ثابتة مؤقتة لمعرّف الشركة (نستخدمها لجلب الأقسام)
   static const String _companyId = 'C001';
 
   @override
   void initState() {
     super.initState();
+    _loadLanguage();
     _fetchDepartments();
   }
 
-  void _fetchDepartments() async {
-    try {
-      setState(() {
-        _isLoadingDepartments = true;
-        _errorMessage = null;
-      });
+  Future<void> _loadLanguage() async {
+    final savedLanguage = await LanguageService.getLanguage();
+    setState(() {
+      _currentLanguage = savedLanguage;
+    });
+  }
 
-      final departments = await DatabaseService.getDepartments(_companyId);
+  Future<void> _changeLanguage(String newLanguage) async {
+    await LanguageService.setLanguage(newLanguage);
+    setState(() {
+      _currentLanguage = newLanguage;
+    });
+  }
 
+  String _translate(String key) {
+    return AppLocalizations.getTranslatedValue(key, _currentLanguage);
+  }
+
+  // جلب الأقسام من Firestore باستخدام Stream
+  void _fetchDepartments() {
+    DatabaseService.getDepartmentsStream(_companyId).listen((departments) {
       if (mounted) {
         setState(() {
           _departmentOptions = departments;
-          _isLoadingDepartments = false;
-
           if (departments.isEmpty) {
-            _errorMessage = "لا توجد أقسام متاحة. تأكد من وجود شركة C001 في قاعدة البيانات.";
+            _errorMessage = _currentLanguage == 'ar'
+                ? "لا توجد أقسام متاحة حاليًا. يرجى التواصل مع مسؤول الموارد البشرية."
+                : "No departments available currently. Please contact HR.";
           }
         });
       }
-    } catch (e) {
+    }, onError: (error) {
       if (mounted) {
         setState(() {
-          _isLoadingDepartments = false;
-          _errorMessage = "خطأ في تحميل الأقسام: $e";
-          _departmentOptions = [];
+          _errorMessage = _currentLanguage == 'ar'
+              ? "خطأ في تحميل الأقسام: $error"
+              : "Error loading departments: $error";
         });
       }
-    }
+    });
   }
 
   @override
@@ -75,88 +91,45 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _emailController.dispose();
     _passwordController.dispose();
     _nameController.dispose();
-    _phoneController.dispose();
     super.dispose();
   }
 
+  // دالة مساعدة لترجمة الدور للعرض
   String _getDisplayRole(String value) {
-    switch (value) {
-      case 'HR':
-        return 'إداري';
-      case 'Driver':
-        return 'سائق';
-      case 'Requester':
-      default:
-        return 'موظف';
+    if (_currentLanguage == 'ar') {
+      switch (value) {
+        case 'HR':
+          return 'إداري';
+        case 'Driver':
+          return 'سائق';
+        case 'Requester':
+        default:
+          return 'موظف';
+      }
+    } else {
+      return value;
     }
   }
 
-  // 🚗 دالة محسنة لإضافة السائق إلى Firestore
-  Future<void> _addDriverToFirestore(User user, String fullName) async {
-    try {
-      final driverData = {
-        'driverId': user.uid,
-        'uid': user.uid,
-        'name': fullName,
-        'email': user.email,
-        'phone': _phoneController.text.isNotEmpty ? _phoneController.text : '+966000000000',
-        'isOnline': true,
-        'isAvailable': true,
-        'isActive': true,
-        'completedRides': 0,
-        'department': 'السائقين',
-        'role': 'driver',
-        'companyId': _companyId,
-        'vehicleInfo': {
-          'type': 'سيارة',
-          'model': '2024',
-          'plate': 'غير محدد'
-        },
-        'createdAt': FieldValue.serverTimestamp(),
-        'lastUpdated': FieldValue.serverTimestamp(),
-      };
-
-      // ✅ إضافة إلى collection السائقين العام
-      await _firestore.collection('drivers').doc(user.uid).set(driverData);
-
-      // ✅ إضافة إلى سائقين الشركة
-      await _firestore
-          .collection('companies')
-          .doc(_companyId)
-          .collection('drivers')
-          .doc(user.uid)
-          .set(driverData);
-
-      debugPrint('✅ تم إضافة السائق إلى Firestore بنجاح: ${user.uid}');
-    } catch (e) {
-      debugPrint('❌ خطأ في إضافة السائق إلى Firestore: $e');
-      throw e;
-    }
-  }
-
-  // 🎯 دالة محسنة للتسجيل
   Future<void> _register() async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
 
-    if (_selectedRole == null) {
+    if (_selectedDepartment == null || _selectedRole == null) {
       setState(() {
-        _errorMessage = 'يجب اختيار الدور.';
+        _errorMessage = _currentLanguage == 'ar'
+            ? 'يجب اختيار القسم والدور.'
+            : 'You must select department and role.';
       });
       return;
     }
 
-    if (_selectedRole != 'Driver' && _selectedDepartment == null) {
+    if (_departmentOptions.isEmpty) {
       setState(() {
-        _errorMessage = 'يجب اختيار القسم.';
-      });
-      return;
-    }
-
-    if (_selectedRole != 'Driver' && _departmentOptions.isEmpty) {
-      setState(() {
-        _errorMessage = 'لا يمكن التسجيل حاليًا. لا توجد أقسام متاحة.';
+        _errorMessage = _currentLanguage == 'ar'
+            ? 'لا يمكن التسجيل حاليًا. لا توجد أقسام متاحة.'
+            : 'Cannot register currently. No departments available.';
       });
       return;
     }
@@ -167,64 +140,60 @@ class _RegisterScreenState extends State<RegisterScreen> {
     });
 
     try {
-      final department = _selectedRole == 'Driver' ? 'السائقين' : _selectedDepartment!;
-
       User? user = await _authService.signUp(
         _emailController.text.trim(),
         _passwordController.text.trim(),
         _nameController.text.trim(),
         _selectedRole!,
-        department,
+        _selectedDepartment!,
         _companyId,
       );
 
       if (user != null && mounted) {
-        // ✅ إذا كان سائقاً، أضفه إلى Firestore
-        if (_selectedRole == 'Driver') {
-          await _addDriverToFirestore(user, _nameController.text.trim());
-        }
-
-        // ✅ إضافة بيانات المستخدم العامة
-        await _firestore.collection('users').doc(user.uid).set({
-          'uid': user.uid,
-          'name': _nameController.text.trim(),
-          'email': user.email,
-          'phone': _phoneController.text.trim(),
-          'role': _selectedRole,
-          'department': department,
-          'companyId': _companyId,
-          'createdAt': FieldValue.serverTimestamp(),
-        });
-
-        debugPrint('✅ تم إنشاء حساب المستخدم: ${user.uid} - الدور: $_selectedRole');
-
+        // التوجيه إلى شاشة التوزيع بعد النجاح
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (context) => const RoleRouterScreen()),
+          MaterialPageRoute(
+            builder: (context) => const RoleRouterScreen(),
+          ),
         );
       } else {
         setState(() {
-          _errorMessage = 'فشل في إنشاء الحساب.';
+          _errorMessage = _currentLanguage == 'ar'
+              ? 'فشل في إنشاء الحساب.'
+              : 'Failed to create account.';
         });
       }
     } on FirebaseAuthException catch (e) {
       String message;
       if (e.code == 'weak-password') {
-        message = 'كلمة المرور ضعيفة جداً.';
+        message = _currentLanguage == 'ar'
+            ? 'كلمة المرور ضعيفة جداً.'
+            : 'The password is too weak.';
       } else if (e.code == 'email-already-in-use') {
-        message = 'هذا البريد الإلكتروني مُسجل بالفعل.';
+        message = _currentLanguage == 'ar'
+            ? 'هذا البريد الإلكتروني مُسجل بالفعل.'
+            : 'The account already exists for that email.';
       } else if (e.code == 'invalid-email') {
-        message = 'البريد الإلكتروني غير صالح.';
+        message = _currentLanguage == 'ar'
+            ? 'البريد الإلكتروني غير صالح.'
+            : 'Invalid email address.';
       } else if (e.code == 'operation-not-allowed') {
-        message = 'عملية التسجيل غير مسموحة حالياً.';
+        message = _currentLanguage == 'ar'
+            ? 'عملية التسجيل غير مسموحة حالياً.'
+            : 'Registration is not allowed at the moment.';
       } else {
-        message = 'خطأ في التسجيل: ${e.message}';
+        message = _currentLanguage == 'ar'
+            ? 'خطأ في التسجيل: ${e.message}'
+            : 'Registration error: ${e.message}';
       }
       setState(() {
         _errorMessage = message;
       });
     } catch (e) {
       setState(() {
-        _errorMessage = 'خطأ عام: $e';
+        _errorMessage = _currentLanguage == 'ar'
+            ? 'خطأ عام: $e'
+            : 'General error: $e';
       });
     } finally {
       if (mounted) {
@@ -239,10 +208,39 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('إنشاء حساب جديد'),
+        title: Text(_translate('register')),
         centerTitle: true,
         backgroundColor: Colors.teal,
         foregroundColor: Colors.white,
+        actions: [
+          // ✅ زر اختيار اللغة في AppBar
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.language, color: Colors.white),
+            onSelected: _changeLanguage,
+            itemBuilder: (BuildContext context) => [
+              PopupMenuItem(
+                value: 'ar',
+                child: Row(
+                  children: [
+                    const Icon(Icons.language, color: Colors.green),
+                    const SizedBox(width: 8),
+                    Text(_translate('arabic')),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: 'en',
+                child: Row(
+                  children: [
+                    const Icon(Icons.language, color: Colors.blue),
+                    const SizedBox(width: 8),
+                    Text(_translate('english')),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
       body: Center(
         child: SingleChildScrollView(
@@ -252,24 +250,33 @@ class _RegisterScreenState extends State<RegisterScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: <Widget>[
-                const Text(
-                  'التسجيل لتحديد الدور والصفحة المناسبة',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueGrey),
-                  textAlign: TextAlign.center,
+                // عرض اللغة الحالية
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade200,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    _currentLanguage == 'ar' ? 'العربية' : 'English',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
                 ),
-                const SizedBox(height: 30),
+                const SizedBox(height: 20),
 
                 // حقل الاسم
                 TextFormField(
                   controller: _nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'الاسم الكامل',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
-                    prefixIcon: Icon(Icons.person),
+                  decoration: InputDecoration(
+                    labelText: _translate('name'),
+                    border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
+                    prefixIcon: const Icon(Icons.person),
                   ),
                   validator: (value) {
                     if (value == null || value.isEmpty) {
-                      return 'يُرجى إدخال الاسم.';
+                      return _currentLanguage == 'ar'
+                          ? 'يُرجى إدخال الاسم.'
+                          : 'Please enter your name.';
                     }
                     return null;
                   },
@@ -279,18 +286,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 // حقل البريد الإلكتروني
                 TextFormField(
                   controller: _emailController,
-                  decoration: const InputDecoration(
-                    labelText: 'البريد الإلكتروني',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
-                    prefixIcon: Icon(Icons.email),
+                  decoration: InputDecoration(
+                    labelText: _translate('email'),
+                    border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
+                    prefixIcon: const Icon(Icons.email),
                   ),
                   keyboardType: TextInputType.emailAddress,
                   validator: (value) {
                     if (value == null || value.isEmpty) {
-                      return 'يرجى إدخال البريد الإلكتروني.';
+                      return _translate('email_required');
                     }
                     if (!value.contains('@')) {
-                      return 'أدخل بريد إلكتروني صالح.';
+                      return _translate('invalid_email');
                     }
                     return null;
                   },
@@ -301,46 +308,77 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 TextFormField(
                   controller: _passwordController,
                   obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'كلمة المرور (6 أحرف على الأقل)',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
-                    prefixIcon: Icon(Icons.lock),
+                  decoration: InputDecoration(
+                    labelText: _translate('password'),
+                    border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
+                    prefixIcon: const Icon(Icons.lock),
                   ),
                   validator: (value) {
                     if (value == null || value.isEmpty) {
-                      return 'يرجى إدخال كلمة المرور.';
+                      return _translate('password_required');
                     }
                     if (value.length < 6) {
-                      return 'يجب أن لا تقل كلمة المرور عن 6 أحرف.';
+                      return _translate('password_length');
                     }
                     return null;
                   },
                 ),
 
-                const SizedBox(height: 15),
-
-                // حقل رقم الهاتف (اختياري)
-                TextFormField(
-                  controller: _phoneController,
-                  decoration: const InputDecoration(
-                    labelText: 'رقم الهاتف (اختياري)',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
-                    prefixIcon: Icon(Icons.phone),
-                  ),
-                  keyboardType: TextInputType.phone,
-                ),
-
                 const SizedBox(height: 25),
+
+                // اختيار القسم
+                if (_departmentOptions.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const CircularProgressIndicator(color: Colors.teal),
+                        const SizedBox(width: 10),
+                        Text(
+                          _errorMessage ?? (_currentLanguage == 'ar' ? 'جاري تحميل الأقسام...' : 'Loading departments...'),
+                          style: TextStyle(
+                            color: _errorMessage != null ? Colors.red : Colors.grey,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  DropdownButtonFormField<String>(
+                    decoration: InputDecoration(
+                      labelText: _currentLanguage == 'ar' ? 'اختيار القسم' : 'Select Department',
+                      border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
+                      prefixIcon: const Icon(Icons.apartment),
+                    ),
+                    value: _selectedDepartment,
+                    hint: Text(_currentLanguage == 'ar' ? 'اختر قسمك' : 'Choose your department'),
+                    items: _departmentOptions.map((String value) {
+                      return DropdownMenuItem<String>(
+                        value: value,
+                        child: Text(value),
+                      );
+                    }).toList(),
+                    onChanged: (String? newValue) {
+                      setState(() {
+                        _selectedDepartment = newValue;
+                      });
+                    },
+                    validator: (value) => value == null
+                        ? (_currentLanguage == 'ar' ? 'يُرجى اختيار القسم.' : 'Please select department.')
+                        : null,
+                  ),
+                const SizedBox(height: 15),
 
                 // اختيار الدور
                 DropdownButtonFormField<String>(
-                  decoration: const InputDecoration(
-                    labelText: 'اختيار الدور',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
-                    prefixIcon: Icon(Icons.work),
+                  decoration: InputDecoration(
+                    labelText: _currentLanguage == 'ar' ? 'اختيار الدور' : 'Select Role',
+                    border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
+                    prefixIcon: const Icon(Icons.work),
                   ),
                   value: _selectedRole,
-                  hint: const Text('اختر دورك'),
+                  hint: Text(_currentLanguage == 'ar' ? 'اختر دورك' : 'Choose your role'),
                   items: _roleOptions.map((String value) {
                     return DropdownMenuItem<String>(
                       value: value,
@@ -350,56 +388,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   onChanged: (String? newValue) {
                     setState(() {
                       _selectedRole = newValue;
-                      if (newValue == 'Driver') {
-                        _selectedDepartment = null;
-                      }
                     });
                   },
-                  validator: (value) => value == null ? 'يُرجى اختيار الدور.' : null,
+                  validator: (value) => value == null
+                      ? (_currentLanguage == 'ar' ? 'يُرجى اختيار الدور.' : 'Please select role.')
+                      : null,
                 ),
-
-                const SizedBox(height: 15),
-
-                // اختيار القسم (لغير السائقين)
-                if (_selectedRole != 'Driver' && _selectedRole != null) ...[
-                  if (_isLoadingDepartments)
-                    _buildLoadingDepartments()
-                  else if (_departmentOptions.isEmpty)
-                    _buildNoDepartmentsError()
-                  else
-                    _buildDepartmentDropdown(),
-                  const SizedBox(height: 15),
-                ],
-
-                // رسالة معلومات للسائقين
-                if (_selectedRole == 'Driver')
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.shade50,
-                      border: Border.all(color: Colors.blue.shade200),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.info, color: Colors.blue.shade600, size: 20),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'سيتم إضافتك تلقائياً إلى قائمة السائقين',
-                            style: TextStyle(
-                              color: Colors.blue.shade800,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
 
                 const SizedBox(height: 25),
 
-                // رسالة الخطأ
                 if (_errorMessage != null)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 10),
@@ -412,10 +409,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                 // زر إنشاء الحساب
                 ElevatedButton(
-                  onPressed: (_isLoading ||
-                      (_selectedRole != 'Driver' && _isLoadingDepartments) ||
-                      (_selectedRole != 'Driver' && _departmentOptions.isEmpty))
-                      ? null : _register,
+                  onPressed: _isLoading ? null : _register,
                   style: ElevatedButton.styleFrom(
                     minimumSize: const Size(double.infinity, 50),
                     backgroundColor: Colors.teal,
@@ -429,16 +423,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     height: 20,
                     child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                   )
-                      : const Text('إنشاء الحساب', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      : Text(_translate('register'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 ),
                 const SizedBox(height: 15),
 
-                // زر تسجيل الدخول
+                // رابط العودة لتسجيل الدخول
                 TextButton(
-                  onPressed: _isLoading ? null : () => Navigator.pop(context),
-                  child: const Text(
-                    'لدي حساب بالفعل؟ تسجيل الدخول',
-                    style: TextStyle(color: Colors.blueGrey),
+                  onPressed: _isLoading
+                      ? null
+                      : () {
+                    Navigator.pop(context);
+                  },
+                  child: Text(
+                    _currentLanguage == 'ar' ? 'لدي حساب بالفعل؟ تسجيل الدخول' : 'Already have an account? Login',
+                    style: const TextStyle(color: Colors.blueGrey),
                   ),
                 ),
               ],
@@ -446,83 +444,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildLoadingDepartments() {
-    return Column(
-      children: [
-        const LinearProgressIndicator(color: Colors.teal),
-        const SizedBox(height: 8),
-        Text(
-          'جاري تحميل الأقسام...',
-          style: TextStyle(color: Colors.grey.shade600),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildNoDepartmentsError() {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.red.shade50,
-            border: Border.all(color: Colors.red.shade200),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Column(
-            children: [
-              const Icon(Icons.error_outline, color: Colors.red),
-              const SizedBox(height: 8),
-              const Text(
-                'لا توجد أقسام متاحة',
-                style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _errorMessage ?? 'تأكد من وجود شركة C001 في قاعدة البيانات',
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.red, fontSize: 12),
-              ),
-              const SizedBox(height: 8),
-              ElevatedButton(
-                onPressed: _fetchDepartments,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
-                  foregroundColor: Colors.white,
-                ),
-                child: const Text('إعادة المحاولة'),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDepartmentDropdown() {
-    return DropdownButtonFormField<String>(
-      decoration: const InputDecoration(
-        labelText: 'اختيار القسم',
-        border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
-        prefixIcon: Icon(Icons.apartment),
-      ),
-      value: _selectedDepartment,
-      hint: const Text('اختر قسمك'),
-      items: _departmentOptions.map((String value) {
-        return DropdownMenuItem<String>(
-          value: value,
-          child: Text(value),
-        );
-      }).toList(),
-      onChanged: (String? newValue) {
-        setState(() {
-          _selectedDepartment = newValue;
-        });
-      },
-      validator: (value) => value == null ? 'يُرجى اختيار القسم.' : null,
     );
   }
 }

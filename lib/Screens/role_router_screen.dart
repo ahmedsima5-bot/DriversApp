@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
+import '../providers/language_provider.dart';
+import '../locales/app_localizations.dart';
 import 'auth/login_screen.dart';
 import 'hr/hr_main_screen.dart';
 import 'requester/requester_dashboard.dart';
@@ -26,6 +29,10 @@ class _RoleRouterScreenState extends State<RoleRouterScreen> {
   void initState() {
     super.initState();
     _initializeAuth();
+  }
+
+  String _translate(String key, String languageCode) {
+    return AppLocalizations.getTranslatedValue(key, languageCode);
   }
 
   void _initializeAuth() {
@@ -59,7 +66,7 @@ class _RoleRouterScreenState extends State<RoleRouterScreen> {
   }
 
   // 🔍 دالة محسنة لجلب دور المستخدم ورقم الشركة
-  Future<Map<String, dynamic>> _getUserRoleAndCompanyId(String userId) async {
+  Future<Map<String, dynamic>> _getUserRoleAndCompanyId(String userId, String currentLanguage) async {
     try {
       // البحث في جميع الشركات عن المستخدم
       final companiesSnapshot = await _firestore.collection('companies').get();
@@ -78,8 +85,8 @@ class _RoleRouterScreenState extends State<RoleRouterScreen> {
           return {
             'role': userData['role'] ?? 'Requester',
             'company_id': companyId,
-            'name': userData['name'] ?? 'مستخدم',
-            'department': userData['department'] ?? 'غير محدد',
+            'name': userData['name'] ?? _translate('not_specified', currentLanguage),
+            'department': userData['department'] ?? _translate('not_specified', currentLanguage),
           };
         }
       }
@@ -99,13 +106,15 @@ class _RoleRouterScreenState extends State<RoleRouterScreen> {
           return {
             'role': 'Driver',
             'company_id': companyId,
-            'name': driverData['name'] ?? 'سائق',
-            'department': driverData['department'] ?? 'السائقين',
+            'name': driverData['name'] ?? _translate('driver', currentLanguage),
+            'department': driverData['department'] ?? _translate('drivers', currentLanguage),
           };
         }
       }
 
-      throw Exception('لم يتم العثور على بيانات المستخدم');
+      throw Exception(currentLanguage == 'ar'
+          ? 'لم يتم العثور على بيانات المستخدم'
+          : 'User data not found');
     } catch (e) {
       print('❌ خطأ في جلب دور المستخدم ورقم الشركة: $e');
       rethrow;
@@ -119,7 +128,8 @@ class _RoleRouterScreenState extends State<RoleRouterScreen> {
         _error = null;
       });
 
-      final userData = await _getUserRoleAndCompanyId(userId);
+      final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
+      final userData = await _getUserRoleAndCompanyId(userId, languageProvider.currentLanguage);
 
       if (mounted) {
         setState(() {
@@ -138,9 +148,9 @@ class _RoleRouterScreenState extends State<RoleRouterScreen> {
     }
   }
 
-  Widget _navigateToRoleScreen() {
+  Widget _navigateToRoleScreen(String currentLanguage) {
     if (!_isDataLoaded) {
-      return _buildLoadingScreen();
+      return _buildLoadingScreen(currentLanguage);
     }
 
     if (_user == null) {
@@ -149,11 +159,11 @@ class _RoleRouterScreenState extends State<RoleRouterScreen> {
     }
 
     if (_error != null) {
-      return _buildErrorScreen();
+      return _buildErrorScreen(currentLanguage);
     }
 
     if (_userData == null) {
-      return _buildLoadingUserDataScreen();
+      return _buildLoadingUserDataScreen(currentLanguage);
     }
 
     final role = _userData!['role'] as String;
@@ -166,33 +176,48 @@ class _RoleRouterScreenState extends State<RoleRouterScreen> {
     // التوجيه حسب الدور
     switch (role) {
       case 'HR':
-        return HRMainScreen(companyId: companyId);
+        return Consumer<LanguageProvider>(
+          builder: (context, languageProvider, child) {
+            return HRMainScreen(companyId: companyId);
+          },
+        );
 
       case 'Requester':
-        return RequesterDashboard( // ✅ إزالة const وإضافة المعاملات
-          companyId: companyId,
-          userId: userId,
-          userName: userName ?? 'مستخدم', // ✅ إضافة userName مع قيمة افتراضية
+        return Consumer<LanguageProvider>(
+          builder: (context, languageProvider, child) {
+            return RequesterDashboard(
+              companyId: companyId,
+              userId: userId,
+              userName: userName,
+            );
+          },
         );
 
       case 'Driver':
-        return DriverDashboard(userName: userName);
+        return Consumer<LanguageProvider>(
+          builder: (context, languageProvider, child) {
+            return DriverDashboard(userName: userName);
+          },
+        );
 
       default:
-        return _buildUnsupportedRoleScreen(role);
+        return _buildUnsupportedRoleScreen(role, currentLanguage);
     }
   }
 
   // شاشة التحميل
-  Widget _buildLoadingScreen() {
-    return const Scaffold(
+  Widget _buildLoadingScreen(String currentLanguage) {
+    return Scaffold(
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 20),
-            Text('جارٍ التحقق من بيانات المستخدم...', style: TextStyle(fontSize: 16)),
+            const CircularProgressIndicator(),
+            const SizedBox(height: 20),
+            Text(
+              _translate('loading_user_data', currentLanguage),
+              style: const TextStyle(fontSize: 16),
+            ),
           ],
         ),
       ),
@@ -200,7 +225,7 @@ class _RoleRouterScreenState extends State<RoleRouterScreen> {
   }
 
   // شاشة الخطأ
-  Widget _buildErrorScreen() {
+  Widget _buildErrorScreen(String currentLanguage) {
     return Scaffold(
       body: Center(
         child: Padding(
@@ -210,9 +235,9 @@ class _RoleRouterScreenState extends State<RoleRouterScreen> {
             children: [
               const Icon(Icons.error_outline, color: Colors.red, size: 64),
               const SizedBox(height: 20),
-              const Text(
-                'خطأ في تحميل البيانات',
-                style: TextStyle(fontSize: 18, color: Colors.red, fontWeight: FontWeight.bold),
+              Text(
+                _translate('data_load_error', currentLanguage),
+                style: const TextStyle(fontSize: 18, color: Colors.red, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 10),
               Text(
@@ -223,12 +248,12 @@ class _RoleRouterScreenState extends State<RoleRouterScreen> {
               const SizedBox(height: 30),
               ElevatedButton(
                 onPressed: () => _fetchUserRole(_user!.uid),
-                child: const Text('إعادة المحاولة'),
+                child: Text(_translate('retry', currentLanguage)),
               ),
               const SizedBox(height: 10),
               TextButton(
                 onPressed: () => _authService.signOut(),
-                child: const Text('العودة لتسجيل الدخول'),
+                child: Text(_translate('back_to_login', currentLanguage)),
               ),
             ],
           ),
@@ -238,7 +263,7 @@ class _RoleRouterScreenState extends State<RoleRouterScreen> {
   }
 
   // شاشة تحميل بيانات المستخدم
-  Widget _buildLoadingUserDataScreen() {
+  Widget _buildLoadingUserDataScreen(String currentLanguage) {
     return Scaffold(
       body: Center(
         child: Column(
@@ -246,11 +271,11 @@ class _RoleRouterScreenState extends State<RoleRouterScreen> {
           children: [
             const CircularProgressIndicator(),
             const SizedBox(height: 20),
-            const Text('جارٍ جلب بيانات المستخدم...'),
+            Text(_translate('loading_user_info', currentLanguage)),
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: () => _authService.signOut(),
-              child: const Text('العودة لتسجيل الدخول'),
+              child: Text(_translate('back_to_login', currentLanguage)),
             ),
           ],
         ),
@@ -259,7 +284,7 @@ class _RoleRouterScreenState extends State<RoleRouterScreen> {
   }
 
   // شاشة الدور غير المدعوم
-  Widget _buildUnsupportedRoleScreen(String role) {
+  Widget _buildUnsupportedRoleScreen(String role, String currentLanguage) {
     return Scaffold(
       body: Center(
         child: Padding(
@@ -269,25 +294,25 @@ class _RoleRouterScreenState extends State<RoleRouterScreen> {
             children: [
               const Icon(Icons.warning, color: Colors.orange, size: 64),
               const SizedBox(height: 20),
-              const Text(
-                'دور غير مدعوم',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              Text(
+                _translate('unsupported_role', currentLanguage),
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 10),
               Text(
-                'الدور "$role" غير مدعوم في التطبيق',
+                '${_translate('role', currentLanguage)} "$role" ${_translate('not_supported', currentLanguage)}',
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontSize: 16),
               ),
               const SizedBox(height: 20),
               Text(
-                'الرجاء التواصل مع المسؤول',
+                _translate('contact_admin', currentLanguage),
                 style: TextStyle(color: Colors.grey.shade600),
               ),
               const SizedBox(height: 30),
               ElevatedButton(
                 onPressed: () => _authService.signOut(),
-                child: const Text('العودة لتسجيل الدخول'),
+                child: Text(_translate('back_to_login', currentLanguage)),
               ),
             ],
           ),
@@ -298,6 +323,10 @@ class _RoleRouterScreenState extends State<RoleRouterScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return _navigateToRoleScreen();
+    return Consumer<LanguageProvider>(
+      builder: (context, languageProvider, child) {
+        return _navigateToRoleScreen(languageProvider.currentLanguage);
+      },
+    );
   }
 }

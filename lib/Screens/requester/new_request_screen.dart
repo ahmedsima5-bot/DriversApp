@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import 'dart:io';
+import '../../providers/language_provider.dart';
+import '../../locales/app_localizations.dart';
 
 class NewTransferRequestScreen extends StatefulWidget {
   final String companyId;
@@ -43,6 +46,10 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
     _loadUserDepartment();
   }
 
+  String _translate(String key, String languageCode) {
+    return AppLocalizations.getTranslatedValue(key, languageCode);
+  }
+
   // دالة لتحميل قسم المستخدم تلقائياً
   Future<void> _loadUserDepartment() async {
     try {
@@ -77,17 +84,18 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
   }
 
   // دالة إرسال الطلب
+  // دالة إرسال الطلب
   void _submitRequest() {
     if (_formKey.currentState!.validate()) {
-      _showPriorityConfirmationDialog();
+      _showPriorityConfirmationDialog(context, languageProvider.currentLanguage);
     }
   }
 
   // حوار تأكيد الأولوية
-  void _showPriorityConfirmationDialog() {
+  void _showPriorityConfirmationDialog(BuildContext context, String currentLanguage) {
     String message = _isUrgent
-        ? '⚠️ هذا الطلب عاجل وسيتم إرساله إلى إدارة الموارد البشرية للموافقة عليه أولاً قبل تعيينه للسائقين.'
-        : '✅ هذا الطلب عادي وسيتم تعيينه تلقائياً للسائقين المتاحين حسب أدائهم وعدد مشاويرهم.';
+        ? _translate('urgent_request_message', currentLanguage)
+        : _translate('normal_request_message', currentLanguage);
 
     showDialog(
       context: context,
@@ -99,14 +107,14 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
               color: _isUrgent ? Colors.orange : Colors.green,
             ),
             const SizedBox(width: 8),
-            Text(_isUrgent ? 'طلب عاجل' : 'طلب عادي'),
+            Text(_isUrgent ? _translate('urgent_request', currentLanguage) : _translate('normal_request', currentLanguage)),
           ],
         ),
         content: Text(message),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('تعديل'),
+            child: Text(_translate('edit', currentLanguage)),
           ),
           ElevatedButton(
             onPressed: () {
@@ -116,7 +124,7 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: _isUrgent ? Colors.orange : Colors.green,
             ),
-            child: Text(_isUrgent ? 'تأكيد كطلب عاجل' : 'تأكيد كطلب عادي'),
+            child: Text(_isUrgent ? _translate('confirm_urgent', currentLanguage) : _translate('confirm_normal', currentLanguage)),
           ),
         ],
       ),
@@ -160,7 +168,7 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
         // معلومات إضافية
         'title': _requestTitleController.text.isNotEmpty
             ? _requestTitleController.text
-            : 'طلب نقل', // قيمة افتراضية إذا لم يدخل المستخدم عنوان
+            : 'طلب نقل',
         'additionalDetails': _additionalDetailsController.text.isEmpty
             ? null
             : _additionalDetailsController.text,
@@ -175,8 +183,8 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
         'assignedDriverId': null,
         'assignedDriverName': null,
         'assignedTime': null,
-        'pickupLocation': const GeoPoint(24.7136, 46.6753), // قيمة افتراضية
-        'destinationLocation': const GeoPoint(24.7136, 46.6753), // قيمة افتراضية
+        'pickupLocation': const GeoPoint(24.7136, 46.6753),
+        'destinationLocation': const GeoPoint(24.7136, 46.6753),
       };
 
       // حفظ في المسار الصحيح للنظام
@@ -192,8 +200,8 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
         SnackBar(
           content: Text(
             _isUrgent
-                ? 'تم إرسال الطلب العاجل للموارد البشرية للموافقة'
-                : 'تم إرسال الطلب وسيتم تعيين سائق قريباً',
+                ? _translate('urgent_request_sent', languageProvider.currentLanguage)
+                : _translate('normal_request_sent', languageProvider.currentLanguage),
           ),
           backgroundColor: Colors.green,
           duration: const Duration(seconds: 3),
@@ -207,7 +215,7 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
       print('Error saving request: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('خطأ في إرسال الطلب: $e'),
+          content: Text('${_translate('request_error', languageProvider.currentLanguage)}: $e'),
           backgroundColor: Colors.red,
           duration: const Duration(seconds: 3),
         ),
@@ -215,197 +223,215 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
     }
   }
 
+  late LanguageProvider languageProvider;
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('طلب نقل جديد'),
-        backgroundColor: Colors.blue[800],
-        foregroundColor: Colors.white,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // عنوان الطلب (حقل إدخال حر)
-              _buildSectionTitle('عنوان الطلب'),
-              _buildTextField(
-                controller: _requestTitleController,
-                label: 'عنوان الطلب *',
-                hintText: 'أدخل عنواناً وصفياً للطلب (مثال: نقل معدات مكتبية - نقل موظفين - إلخ)',
-                maxLines: 2,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'يرجى إدخال عنوان للطلب';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 20),
+    return Consumer<LanguageProvider>(
+      builder: (context, languageProvider, child) {
+        this.languageProvider = languageProvider;
+        final currentLanguage = languageProvider.currentLanguage;
 
-              // مستوى الأولوية
-              _buildSectionTitle('مستوى الأولوية'),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'اختر مستوى الأولوية',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                      ),
-                      const SizedBox(height: 10),
-
-                      // خيار الطلب العادي
-                      _buildPriorityOption(
-                        title: 'طلب عادي',
-                        subtitle: 'سيتم تعيينه تلقائياً للسائقين حسب الأداء والعدالة',
-                        icon: Icons.timelapse,
-                        color: Colors.blue,
-                        isSelected: !_isUrgent,
-                        onTap: () {
-                          setState(() {
-                            _isUrgent = false;
-                            _selectedPriority = 'Normal';
-                          });
-                        },
-                      ),
-
-                      const SizedBox(height: 12),
-
-                      // خيار الطلب العاجل
-                      _buildPriorityOption(
-                        title: 'طلب عاجل ⚡',
-                        subtitle: 'يتطلب موافقة إدارة الموارد البشرية أولاً',
-                        icon: Icons.warning_amber,
-                        color: Colors.orange,
-                        isSelected: _isUrgent,
-                        onTap: () {
-                          setState(() {
-                            _isUrgent = true;
-                            _selectedPriority = 'Urgent';
-                          });
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // وصف الطلب
-              _buildSectionTitle('وصف الطلب'),
-              _buildTextField(
-                controller: _descriptionController,
-                label: 'وصف الطلب *',
-                hintText: 'أدخل وصف تفصيلي للطلب',
-                maxLines: 4,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'يرجى إدخال وصف الطلب';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 20),
-
-              // مواقع الرحلة
-              _buildSectionTitle('مواقع الرحلة'),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'حدد مواقع الرحلة',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // مكان الانطلاق
-                      _buildLocationField(
-                        controller: _fromLocationController,
-                        label: 'من (مكان الانطلاق) *',
-                        hintText: 'أدخل مكان الانطلاق',
-                        icon: Icons.location_on,
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'يرجى إدخال مكان الانطلاق';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-
-                      // الوجهة
-                      _buildLocationField(
-                        controller: _toLocationController,
-                        label: 'إلى (الوجهة) *',
-                        hintText: 'أدخل الوجهة',
-                        icon: Icons.flag,
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'يرجى إدخال الوجهة';
-                          }
-                          return null;
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // التاريخ
-              _buildSectionTitle('التاريخ والوقت'),
-              _buildReadOnlyField('تاريخ الطلب', TextEditingController(text: _getCurrentDate())),
-              const SizedBox(height: 20),
-
-              // المسؤول - خانات اختيارية
-              _buildSectionTitle('معلومات الاتصال'),
-              Row(
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(_translate('new_transfer_request', currentLanguage)),
+            backgroundColor: Colors.blue[800],
+            foregroundColor: Colors.white,
+          ),
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: _buildTextField(
-                      controller: _responsibleNameController,
-                      label: 'اسم المسؤول (اختياري)',
-                      hintText: 'أدخل اسم المسؤول',
+                  // عنوان الطلب
+                  _buildSectionTitle(_translate('request_title', currentLanguage), currentLanguage),
+                  _buildTextField(
+                    controller: _requestTitleController,
+                    label: '${_translate('request_title', currentLanguage)} *',
+                    hintText: _translate('request_title_hint', currentLanguage),
+                    maxLines: 2,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return _translate('title_required', currentLanguage);
+                      }
+                      return null;
+                    },
+                    currentLanguage: currentLanguage,
+                  ),
+                  const SizedBox(height: 20),
+
+                  // مستوى الأولوية
+                  _buildSectionTitle(_translate('priority_level', currentLanguage), currentLanguage),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _translate('choose_priority', currentLanguage),
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                          ),
+                          const SizedBox(height: 10),
+
+                          // خيار الطلب العادي
+                          _buildPriorityOption(
+                            title: _translate('normal_request', currentLanguage),
+                            subtitle: _translate('normal_request_desc', currentLanguage),
+                            icon: Icons.timelapse,
+                            color: Colors.blue,
+                            isSelected: !_isUrgent,
+                            onTap: () {
+                              setState(() {
+                                _isUrgent = false;
+                                _selectedPriority = 'Normal';
+                              });
+                            },
+                            currentLanguage: currentLanguage,
+                          ),
+
+                          const SizedBox(height: 12),
+
+                          // خيار الطلب العاجل
+                          _buildPriorityOption(
+                            title: _translate('urgent_request', currentLanguage),
+                            subtitle: _translate('urgent_request_desc', currentLanguage),
+                            icon: Icons.warning_amber,
+                            color: Colors.orange,
+                            isSelected: _isUrgent,
+                            onTap: () {
+                              setState(() {
+                                _isUrgent = true;
+                                _selectedPriority = 'Urgent';
+                              });
+                            },
+                            currentLanguage: currentLanguage,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _buildTextField(
-                      controller: _responsiblePhoneController,
-                      label: 'رقم الهاتف (اختياري)',
-                      hintText: 'أدخل رقم الهاتف',
-                      keyboardType: TextInputType.phone,
+                  const SizedBox(height: 20),
+
+                  // وصف الطلب
+                  _buildSectionTitle(_translate('request_description', currentLanguage), currentLanguage),
+                  _buildTextField(
+                    controller: _descriptionController,
+                    label: '${_translate('request_description', currentLanguage)} *',
+                    hintText: _translate('description_hint', currentLanguage),
+                    maxLines: 4,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return _translate('description_required', currentLanguage);
+                      }
+                      return null;
+                    },
+                    currentLanguage: currentLanguage,
+                  ),
+                  const SizedBox(height: 20),
+
+                  // مواقع الرحلة
+                  _buildSectionTitle(_translate('trip_locations', currentLanguage), currentLanguage),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _translate('specify_locations', currentLanguage),
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                          ),
+                          const SizedBox(height: 16),
+
+                          // مكان الانطلاق
+                          _buildLocationField(
+                            controller: _fromLocationController,
+                            label: '${_translate('from_location', currentLanguage)} *',
+                            hintText: _translate('from_location_hint', currentLanguage),
+                            icon: Icons.location_on,
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return _translate('from_location_required', currentLanguage);
+                              }
+                              return null;
+                            },
+                            currentLanguage: currentLanguage,
+                          ),
+                          const SizedBox(height: 16),
+
+                          // الوجهة
+                          _buildLocationField(
+                            controller: _toLocationController,
+                            label: '${_translate('to_location', currentLanguage)} *',
+                            hintText: _translate('to_location_hint', currentLanguage),
+                            icon: Icons.flag,
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return _translate('to_location_required', currentLanguage);
+                              }
+                              return null;
+                            },
+                            currentLanguage: currentLanguage,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
+                  const SizedBox(height: 20),
+
+                  // التاريخ
+                  _buildSectionTitle(_translate('date_time', currentLanguage), currentLanguage),
+                  _buildReadOnlyField(_translate('request_date', currentLanguage), TextEditingController(text: _getCurrentDate()), currentLanguage),
+                  const SizedBox(height: 20),
+
+                  // المسؤول - خانات اختيارية
+                  _buildSectionTitle(_translate('contact_info', currentLanguage), currentLanguage),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildTextField(
+                          controller: _responsibleNameController,
+                          label: _translate('responsible_name_optional', currentLanguage),
+                          hintText: _translate('responsible_name_hint', currentLanguage),
+                          currentLanguage: currentLanguage,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _buildTextField(
+                          controller: _responsiblePhoneController,
+                          label: _translate('phone_optional', currentLanguage),
+                          hintText: _translate('phone_hint', currentLanguage),
+                          keyboardType: TextInputType.phone,
+                          currentLanguage: currentLanguage,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+
+                  // تفاصيل إضافية
+                  _buildSectionTitle(_translate('additional_details', currentLanguage), currentLanguage),
+                  _buildTextField(
+                    controller: _additionalDetailsController,
+                    label: _translate('additional_details_optional', currentLanguage),
+                    hintText: _translate('additional_details_hint', currentLanguage),
+                    maxLines: 4,
+                    currentLanguage: currentLanguage,
+                  ),
+                  const SizedBox(height: 30),
+
+                  // زر إرسال الطلب
+                  _buildSubmitButton(currentLanguage),
                 ],
               ),
-              const SizedBox(height: 20),
-
-              // تفاصيل إضافية
-              _buildSectionTitle('تفاصيل إضافية'),
-              _buildTextField(
-                controller: _additionalDetailsController,
-                label: 'التفاصيل الإضافية (اختياري)',
-                hintText: 'أدخل تفاصيل إضافية عن الطلب (الأشخاص، المعدات، المتطلبات الخاصة)',
-                maxLines: 4,
-              ),
-              const SizedBox(height: 30),
-
-              // زر إرسال الطلب
-              _buildSubmitButton(),
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -417,6 +443,7 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
     required Color color,
     required bool isSelected,
     required VoidCallback onTap,
+    required String currentLanguage,
   }) {
     return InkWell(
       onTap: onTap,
@@ -472,6 +499,7 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
     required String hintText,
     required IconData icon,
     required String? Function(String?)? validator,
+    required String currentLanguage,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -496,7 +524,7 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
   }
 
   // زر الإرسال
-  Widget _buildSubmitButton() {
+  Widget _buildSubmitButton(String currentLanguage) {
     return SizedBox(
       width: double.infinity,
       height: 55,
@@ -516,7 +544,7 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
             Icon(_isUrgent ? Icons.warning_amber : Icons.send),
             const SizedBox(width: 8),
             Text(
-              _isUrgent ? 'إرسال كطلب عاجل' : 'إرسال كطلب عادي',
+              _isUrgent ? _translate('send_urgent', currentLanguage) : _translate('send_normal', currentLanguage),
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
           ],
@@ -531,7 +559,7 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
     return formatter.format(now);
   }
 
-  Widget _buildSectionTitle(String title) {
+  Widget _buildSectionTitle(String title, String currentLanguage) {
     return Text(
       title,
       style: TextStyle(
@@ -549,6 +577,7 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
     int maxLines = 1,
     TextInputType keyboardType = TextInputType.text,
     String? Function(String?)? validator,
+    required String currentLanguage,
   }) {
     return Card(
       child: Padding(
@@ -578,7 +607,7 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
     );
   }
 
-  Widget _buildReadOnlyField(String label, TextEditingController controller) {
+  Widget _buildReadOnlyField(String label, TextEditingController controller, String currentLanguage) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
