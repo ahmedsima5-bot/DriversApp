@@ -57,22 +57,22 @@ class Request {
 
   factory Request.fromMap(Map<String, dynamic> data) {
     // دالة مساعدة لتحويل أي قيمة إلى DateTime
-    DateTime _parseDateTime(dynamic value) {
-      if (value == null) return DateTime.now().add(Duration(hours: 1));
+    DateTime parseDateTime(dynamic value) {
+      if (value == null) return DateTime.now().add(const Duration(hours: 1));
       if (value is Timestamp) return value.toDate();
       if (value is DateTime) return value;
       if (value is String) {
         try {
           return DateTime.parse(value);
         } catch (e) {
-          return DateTime.now().add(Duration(hours: 1));
+          return DateTime.now().add(const Duration(hours: 1));
         }
       }
-      return DateTime.now().add(Duration(hours: 1));
+      return DateTime.now().add(const Duration(hours: 1));
     }
 
     // دالة مساعدة لتحويل أي قيمة إلى GeoPoint
-    GeoPoint _parseGeoPoint(dynamic value) {
+    GeoPoint parseGeoPoint(dynamic value) {
       if (value == null) return const GeoPoint(24.7136, 46.6753); // الرياض
       if (value is GeoPoint) return value;
       if (value is Map && value['latitude'] != null && value['longitude'] != null) {
@@ -85,35 +85,35 @@ class Request {
     }
 
     // دالة مساعدة لتحويل أي قيمة إلى String
-    String _parseString(dynamic value, String defaultValue) {
+    String parseString(dynamic value, String defaultValue) {
       if (value == null) return defaultValue;
       return value.toString();
     }
 
     return Request(
-      requestId: _parseString(data['requestId'], ''),
-      companyId: _parseString(data['companyId'], 'C001'),
-      requesterId: _parseString(data['requesterId'], ''),
-      requesterName: _parseString(data['requesterName'], 'غير معروف'),
+      requestId: parseString(data['requestId'], ''),
+      companyId: parseString(data['companyId'], 'C001'),
+      requesterId: parseString(data['requesterId'], ''),
+      requesterName: parseString(data['requesterName'], 'غير معروف'),
       department: data['department']?.toString(),
-      purposeType: _parseString(data['purposeType'], 'عمل'),
-      details: _parseString(data['details'], ''),
-      priority: _parseString(data['priority'], 'Normal'),
+      purposeType: parseString(data['purposeType'], 'عمل'),
+      details: parseString(data['details'], ''),
+      priority: parseString(data['priority'], 'Normal'),
       assignedDriverId: data['assignedDriverId']?.toString(),
       assignedDriverName: data['assignedDriverName']?.toString(),
 
       hrApproverId: data['hrApproverId']?.toString(),
       hrApproverName: data['hrApproverName']?.toString(),
-      hrApprovalTime: data['hrApprovalTime'] != null ? _parseDateTime(data['hrApprovalTime']) : null,
+      hrApprovalTime: data['hrApprovalTime'] != null ? parseDateTime(data['hrApprovalTime']) : null,
       rejectionReason: data['rejectionReason']?.toString(),
 
-      pickupLocation: _parseGeoPoint(data['pickupLocation']),
-      destinationLocation: _parseGeoPoint(data['destinationLocation']),
-      startTimeExpected: _parseDateTime(data['startTimeExpected']),
-      status: _parseString(data['status'], 'NEW'),
-      createdAt: _parseDateTime(data['createdAt']),
-      toLocation: _parseString(data['toLocation'], 'الموقع غير محدد'),
-      fromLocation: _parseString(data['fromLocation'], 'الموقع غير محدد'),
+      pickupLocation: parseGeoPoint(data['pickupLocation']),
+      destinationLocation: parseGeoPoint(data['destinationLocation']),
+      startTimeExpected: parseDateTime(data['startTimeExpected']),
+      status: parseString(data['status'], 'NEW'),
+      createdAt: parseDateTime(data['createdAt']),
+      toLocation: parseString(data['toLocation'], 'الموقع غير محدد'),
+      fromLocation: parseString(data['fromLocation'], 'الموقع غير محدد'),
     );
   }
 

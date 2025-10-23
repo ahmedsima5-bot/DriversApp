@@ -1,5 +1,5 @@
 class AppLocalizations {
-  static Map<String, Map<String, String>> _localizedValues = {
+  static final Map<String, Map<String, String>> _localizedValues = {
     'ar': {
       'my_requests': 'طلباتي',
       'refresh': 'تحديث',

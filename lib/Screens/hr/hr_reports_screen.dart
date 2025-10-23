@@ -144,7 +144,7 @@ class _HRReportsScreenState extends State<HRReportsScreen> {
               ],
             ),
             const SizedBox(height: 16),
-            _buildInfoRow('آخر تحديث:', '${DateTime.now().toString().substring(0, 16)}'),
+            _buildInfoRow('آخر تحديث:', DateTime.now().toString().substring(0, 16)),
             _buildInfoRow('معرف الشركة:', widget.companyId),
             _buildInfoRow('إجمالي البيانات:', '${_stats['totalRequests']} طلب، ${_stats['activeDrivers']} سائق'),
             const SizedBox(height: 16),

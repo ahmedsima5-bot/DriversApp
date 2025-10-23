@@ -100,7 +100,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
       if (user != null) {
         debugPrint('👤 Checking driver existence...');
 
-        final companyId = 'C001';
+        const companyId = 'C001';
         final driversSnapshot = await _firestore
             .collection('companies')
             .doc(companyId)
@@ -131,7 +131,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
     try {
       final user = _auth.currentUser;
       if (user != null) {
-        final companyId = 'C001';
+        const companyId = 'C001';
         final driverId = 'driver_${user.uid.substring(0, 8)}';
 
         await _firestore
@@ -193,7 +193,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
       if (user != null) {
         debugPrint('👤 Current user: ${user.email}');
 
-        final companyId = 'C001';
+        const companyId = 'C001';
         final driversSnapshot = await _firestore
             .collection('companies')
             .doc(companyId)
@@ -352,8 +352,8 @@ class _DriverDashboardState extends State<DriverDashboard> {
       builder: (context) => AlertDialog(
         title: Row(
           children: [
-            Icon(Icons.person, color: Colors.orange),
-            SizedBox(width: 8),
+            const Icon(Icons.person, color: Colors.orange),
+            const SizedBox(width: 8),
             Text(_translate('profile', currentLanguage)),
           ],
         ),
@@ -385,7 +385,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         children: [
-          Text('$label ', style: TextStyle(fontWeight: FontWeight.bold)),
+          Text('$label ', style: const TextStyle(fontWeight: FontWeight.bold)),
           Expanded(child: Text(value)),
         ],
       ),
@@ -407,8 +407,8 @@ class _DriverDashboardState extends State<DriverDashboard> {
         return AlertDialog(
           title: Row(
             children: [
-              Icon(Icons.inventory_2, color: Colors.orange),
-              SizedBox(width: 8),
+              const Icon(Icons.inventory_2, color: Colors.orange),
+              const SizedBox(width: 8),
               Text(_translate('no_requests', currentLanguage)),
             ],
           ),
@@ -416,7 +416,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(_translate('no_assigned_requests', currentLanguage)),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
               if (!_driverProfileExists)
                 ElevatedButton(
                   onPressed: () {
@@ -521,29 +521,29 @@ class _DriverDashboardState extends State<DriverDashboard> {
               ],
             ),
 
-            SizedBox(height: 8),
+            const SizedBox(height: 8),
 
             // Requester Information
             Row(
               children: [
                 Icon(Icons.person, size: 16, color: Colors.grey.shade600),
-                SizedBox(width: 6),
+                const SizedBox(width: 6),
                 Expanded(
                   child: Text(
                     requesterName,
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
                   ),
                 ),
               ],
             ),
 
-            SizedBox(height: 4),
+            const SizedBox(height: 4),
 
             // Department Information
             Row(
               children: [
                 Icon(Icons.business, size: 16, color: Colors.grey.shade600),
-                SizedBox(width: 6),
+                const SizedBox(width: 6),
                 Text(
                   '${_translate('department', currentLanguage)}: ',
                   style: TextStyle(fontSize: 12, color: Colors.grey.shade700, fontWeight: FontWeight.bold),
@@ -555,14 +555,14 @@ class _DriverDashboardState extends State<DriverDashboard> {
               ],
             ),
 
-            SizedBox(height: 8),
+            const SizedBox(height: 8),
 
             // Locations
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Icon(Icons.place, size: 16, color: Colors.grey.shade600),
-                SizedBox(width: 6),
+                const SizedBox(width: 6),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -575,7 +575,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
               ],
             ),
 
-            SizedBox(height: 8),
+            const SizedBox(height: 8),
 
             // Description
             if (description.isNotEmpty) ...[
@@ -583,7 +583,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Icon(Icons.description, size: 16, color: Colors.grey.shade600),
-                  SizedBox(width: 6),
+                  const SizedBox(width: 6),
                   Expanded(
                     child: Text(
                       description,
@@ -594,7 +594,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
                   ),
                 ],
               ),
-              SizedBox(height: 8),
+              const SizedBox(height: 8),
             ],
 
             // Priority and Action Button
@@ -674,11 +674,11 @@ class _DriverDashboardState extends State<DriverDashboard> {
           backgroundColor: Colors.green,
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          minimumSize: Size(0, 30),
+          minimumSize: const Size(0, 30),
         ),
         child: Text(
           _translate('start_ride', currentLanguage),
-          style: TextStyle(fontSize: 12),
+          style: const TextStyle(fontSize: 12),
         ),
       );
     } else if (status == 'IN_PROGRESS') {
@@ -688,11 +688,11 @@ class _DriverDashboardState extends State<DriverDashboard> {
           backgroundColor: Colors.blue,
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          minimumSize: Size(0, 30),
+          minimumSize: const Size(0, 30),
         ),
         child: Text(
           _translate('complete_ride', currentLanguage),
-          style: TextStyle(fontSize: 12),
+          style: const TextStyle(fontSize: 12),
         ),
       );
     } else {
@@ -703,7 +703,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
           borderRadius: BorderRadius.circular(6),
           border: Border.all(color: Colors.green),
         ),
-        child: Icon(Icons.check, size: 16, color: Colors.green),
+        child: const Icon(Icons.check, size: 16, color: Colors.green),
       );
     }
   }
@@ -749,7 +749,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
           title: Row(
             children: [
               Icon(Icons.info_outline, color: statusColor),
-              SizedBox(width: 8),
+              const SizedBox(width: 8),
               Text(_translate('request_details', currentLanguage)),
             ],
           ),
@@ -761,42 +761,42 @@ class _DriverDashboardState extends State<DriverDashboard> {
                 // Request Information
                 _buildDetailRow('${_translate('request_number', currentLanguage)}:', requestId),
 
-                SizedBox(height: 12),
+                const SizedBox(height: 12),
 
                 // Requester Information Section
                 Text(
                   _translate('requester_info', currentLanguage),
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blue.shade800),
                 ),
-                SizedBox(height: 8),
+                const SizedBox(height: 8),
                 _buildDetailRow('${_translate('requester_name', currentLanguage)}:', requesterName),
                 _buildDetailRow('${_translate('department', currentLanguage)}:', requesterDepartment),
                 _buildDetailRow('${_translate('phone_number', currentLanguage)}:', phoneNumber),
 
-                SizedBox(height: 12),
+                const SizedBox(height: 12),
 
                 // Trip Information Section
                 Text(
                   _translate('trip_info', currentLanguage),
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blue.shade800),
                 ),
-                SizedBox(height: 8),
+                const SizedBox(height: 8),
                 _buildDetailRow('${_translate('from', currentLanguage)}:', fromLocation),
                 _buildDetailRow('${_translate('to', currentLanguage)}:', toLocation),
                 _buildDetailRow('${_translate('address', currentLanguage)}:', address),
 
-                SizedBox(height: 12),
+                const SizedBox(height: 12),
 
                 // Additional Information Section
                 Text(
                   _translate('additional_info', currentLanguage),
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blue.shade800),
                 ),
-                SizedBox(height: 8),
+                const SizedBox(height: 8),
                 _buildDetailRow('${_translate('description', currentLanguage)}:', description),
                 _buildDetailRow('${_translate('status', currentLanguage)}:', statusText),
                 _buildDetailRow('${_translate('priority', currentLanguage)}:', priority),
-                SizedBox(height: 16),
+                const SizedBox(height: 16),
 
                 // Action Button
                 if (status == 'ASSIGNED')
@@ -858,11 +858,11 @@ class _DriverDashboardState extends State<DriverDashboard> {
               style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey.shade700, fontSize: 12),
             ),
           ),
-          SizedBox(width: 8),
+          const SizedBox(width: 8),
           Expanded(
             child: Text(
               value,
-              style: TextStyle(color: Colors.black87, fontSize: 12),
+              style: const TextStyle(color: Colors.black87, fontSize: 12),
               softWrap: true,
             ),
           ),
@@ -887,15 +887,15 @@ class _DriverDashboardState extends State<DriverDashboard> {
                 children: [
                   Text(
                     _translate('my_requests', currentLanguage),
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.orange),
+                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.orange),
                   ),
                   IconButton(
-                    icon: Icon(Icons.close),
+                    icon: const Icon(Icons.close),
                     onPressed: () => Navigator.pop(context),
                   ),
                 ],
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
@@ -905,25 +905,25 @@ class _DriverDashboardState extends State<DriverDashboard> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.list_alt, color: Colors.orange),
-                    SizedBox(width: 8),
+                    const Icon(Icons.list_alt, color: Colors.orange),
+                    const SizedBox(width: 8),
                     Text(
                       '${_translate('total_requests', currentLanguage)}: ${_requests.length}',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.orange),
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.orange),
                     ),
                   ],
                 ),
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
               Expanded(
                 child: _requests.isEmpty
                     ? Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.inbox_outlined, size: 60, color: Colors.grey),
-                      SizedBox(height: 16),
-                      Text(_translate('no_requests', currentLanguage), style: TextStyle(fontSize: 18, color: Colors.grey)),
+                      const Icon(Icons.inbox_outlined, size: 60, color: Colors.grey),
+                      const SizedBox(height: 16),
+                      Text(_translate('no_requests', currentLanguage), style: const TextStyle(fontSize: 18, color: Colors.grey)),
                     ],
                   ),
                 )
@@ -936,7 +936,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
                   },
                 ),
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
               Row(
                 children: [
                   Expanded(
@@ -945,7 +945,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
                       child: Text(_translate('close', currentLanguage)),
                     ),
                   ),
-                  SizedBox(width: 12),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: ElevatedButton(
                       onPressed: _loadDriverRequests,
@@ -974,7 +974,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
             backgroundColor: Colors.orange,
             actions: [
               IconButton(
-                icon: Icon(Icons.refresh),
+                icon: const Icon(Icons.refresh),
                 onPressed: _loadDriverRequests,
                 tooltip: _translate('refresh_requests', currentLanguage),
               ),
@@ -991,8 +991,8 @@ class _DriverDashboardState extends State<DriverDashboard> {
                     value: 'profile',
                     child: Row(
                       children: [
-                        Icon(Icons.person, color: Colors.orange),
-                        SizedBox(width: 8),
+                        const Icon(Icons.person, color: Colors.orange),
+                        const SizedBox(width: 8),
                         Text(_translate('profile', currentLanguage)),
                       ],
                     ),
@@ -1001,8 +1001,8 @@ class _DriverDashboardState extends State<DriverDashboard> {
                     value: 'logout',
                     child: Row(
                       children: [
-                        Icon(Icons.logout, color: Colors.red),
-                        SizedBox(width: 8),
+                        const Icon(Icons.logout, color: Colors.red),
+                        const SizedBox(width: 8),
                         Text(_translate('logout', currentLanguage)),
                       ],
                     ),
@@ -1026,17 +1026,17 @@ class _DriverDashboardState extends State<DriverDashboard> {
                 ),
                 child: Column(
                   children: [
-                    CircleAvatar(
+                    const CircleAvatar(
                       radius: 40,
                       backgroundColor: Colors.orange,
                       child: Icon(Icons.person, size: 40, color: Colors.white),
                     ),
-                    SizedBox(height: 16),
+                    const SizedBox(height: 16),
                     Text(
                       '${_translate('welcome', currentLanguage)} ${widget.userName}',
                       style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.orange.shade800),
                     ),
-                    SizedBox(height: 8),
+                    const SizedBox(height: 8),
                     Text(
                       _driverProfileExists
                           ? _translate('account_active_ready', currentLanguage)
@@ -1062,29 +1062,29 @@ class _DriverDashboardState extends State<DriverDashboard> {
                     ),
                     child: Text(
                       _translate('activate_driver_account', currentLanguage),
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                     ),
                   ),
                 ),
 
               Expanded(
                 child: _loading
-                    ? Center(child: CircularProgressIndicator(color: Colors.orange))
+                    ? const Center(child: CircularProgressIndicator(color: Colors.orange))
                     : _requests.isEmpty
                     ? Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.inbox_outlined, size: 80, color: Colors.grey),
-                      SizedBox(height: 20),
+                      const Icon(Icons.inbox_outlined, size: 80, color: Colors.grey),
+                      const SizedBox(height: 20),
                       Text(
                         _translate('no_requests_currently', currentLanguage),
-                        style: TextStyle(fontSize: 20, color: Colors.grey, fontWeight: FontWeight.bold),
+                        style: const TextStyle(fontSize: 20, color: Colors.grey, fontWeight: FontWeight.bold),
                       ),
-                      SizedBox(height: 8),
+                      const SizedBox(height: 8),
                       Text(
                         _translate('requests_will_appear_here_when_assigned', currentLanguage),
-                        style: TextStyle(fontSize: 14, color: Colors.grey),
+                        style: const TextStyle(fontSize: 14, color: Colors.grey),
                         textAlign: TextAlign.center,
                       ),
                     ],
@@ -1115,9 +1115,9 @@ class _DriverDashboardState extends State<DriverDashboard> {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.list_alt),
-                            SizedBox(width: 8),
-                            Text(_translate('show_my_requests', currentLanguage), style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                            const Icon(Icons.list_alt),
+                            const SizedBox(width: 8),
+                            Text(_translate('show_my_requests', currentLanguage), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                           ],
                         ),
                       ),

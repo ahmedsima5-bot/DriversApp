@@ -142,7 +142,7 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(message),
-            SizedBox(height: 12),
+            const SizedBox(height: 12),
             Text(
               '${_translate('department', currentLanguage)}: $_userDepartment',
               style: TextStyle(
@@ -302,7 +302,7 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
                         child: Row(
                           children: [
                             Icon(Icons.business, color: Colors.blue.shade700),
-                            SizedBox(width: 8),
+                            const SizedBox(width: 8),
                             Text(
                               '${_translate('department', currentLanguage)}: ',
                               style: TextStyle(
@@ -321,7 +321,7 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
                         ),
                       ),
                     ),
-                    SizedBox(height: 16),
+                    const SizedBox(height: 16),
                   ],
 
                   // عنوان الطلب

@@ -19,7 +19,7 @@ class FirestoreService {
       print('✅ تم إضافة السائق إلى Firestore بنجاح: $userId');
     } catch (e) {
       print('❌ خطأ في إضافة السائق إلى Firestore: $e');
-      throw e;
+      rethrow;
     }
   }
 }

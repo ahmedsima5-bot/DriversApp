@@ -351,7 +351,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
                       prefixIcon: const Icon(Icons.apartment),
                     ),
-                    value: _selectedDepartment,
+                    initialValue: _selectedDepartment,
                     hint: Text(_currentLanguage == 'ar' ? 'اختر قسمك' : 'Choose your department'),
                     items: _departmentOptions.map((String value) {
                       return DropdownMenuItem<String>(
@@ -377,7 +377,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
                     prefixIcon: const Icon(Icons.work),
                   ),
-                  value: _selectedRole,
+                  initialValue: _selectedRole,
                   hint: Text(_currentLanguage == 'ar' ? 'اختر دورك' : 'Choose your role'),
                   items: _roleOptions.map((String value) {
                     return DropdownMenuItem<String>(

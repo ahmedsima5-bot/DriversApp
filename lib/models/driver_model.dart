@@ -29,7 +29,7 @@ class Driver {
 
   factory Driver.fromMap(Map<String, dynamic> data) {
     // دالة مساعدة لتحويل أي قيمة إلى DateTime
-    DateTime? _parseDateTime(dynamic value) {
+    DateTime? parseDateTime(dynamic value) {
       if (value == null) return null;
       if (value is Timestamp) return value.toDate();
       if (value is DateTime) return value;
@@ -44,7 +44,7 @@ class Driver {
     }
 
     // دالة مساعدة لتحويل أي قيمة إلى int
-    int _parseInt(dynamic value) {
+    int parseInt(dynamic value) {
       if (value == null) return 0;
       if (value is int) return value;
       if (value is double) return value.toInt();
@@ -59,7 +59,7 @@ class Driver {
     }
 
     // دالة مساعدة لتحويل أي قيمة إلى bool
-    bool _parseBool(dynamic value) {
+    bool parseBool(dynamic value) {
       if (value == null) return false;
       if (value is bool) return value;
       if (value is String) return value.toLowerCase() == 'true';
@@ -72,11 +72,11 @@ class Driver {
       name: data['name']?.toString() ?? 'سائق غير معروف',
       email: data['email']?.toString() ?? '',
       phone: data['phone']?.toString() ?? '',
-      isOnline: _parseBool(data['isOnline']),
-      isAvailable: _parseBool(data['isAvailable']),
-      isActive: _parseBool(data['isActive']),
-      completedRides: _parseInt(data['completedRides']),
-      lastStatusUpdate: _parseDateTime(data['lastStatusUpdate']),
+      isOnline: parseBool(data['isOnline']),
+      isAvailable: parseBool(data['isAvailable']),
+      isActive: parseBool(data['isActive']),
+      completedRides: parseInt(data['completedRides']),
+      lastStatusUpdate: parseDateTime(data['lastStatusUpdate']),
       currentVehicle: data['currentVehicle']?.toString(),
       licenseNumber: data['licenseNumber']?.toString(),
     );

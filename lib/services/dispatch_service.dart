@@ -26,7 +26,7 @@ class DispatchService {
 
   // ✨ بدء المعالجة الخلفية الدورية
   void _startBackgroundProcessing(String companyId) {
-    _processingTimer = Timer.periodic(Duration(seconds: 10), (timer) {
+    _processingTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
       _processPendingRequests(companyId);
     });
   }
@@ -137,7 +137,7 @@ class DispatchService {
 
       for (var doc in allDriversSnap.docs) {
         try {
-          final driverData = doc.data() as Map<String, dynamic>;
+          final driverData = doc.data();
 
           final driver = Driver.fromMap({
             ...driverData,
@@ -284,7 +284,7 @@ class DispatchService {
   // ✨ دالة مساعدة لاستخراج العنوان من بيانات الطلب
   String _getTitleFromRequestData(Request request) {
     // محاولة الحصول على العنوان من الحقول المختلفة
-    if (request.details != null && request.details.isNotEmpty) {
+    if (request.details.isNotEmpty) {
       return request.details;
     }
 
@@ -552,9 +552,9 @@ class DispatchService {
           .get();
 
       print('👥 عدد السائقين المتاحين: ${availableDrivers.docs.length}');
-      availableDrivers.docs.forEach((driver) {
+      for (var driver in availableDrivers.docs) {
         print('   - ${driver['name']} (${driver.id}) - مشاوير: ${driver['completedRides'] ?? 0}');
-      });
+      }
 
       // فحص الطلبات المنتظرة
       final pendingRequests = await _firestore
@@ -565,9 +565,9 @@ class DispatchService {
           .get();
 
       print('📋 عدد الطلبات المنتظرة: ${pendingRequests.docs.length}');
-      pendingRequests.docs.forEach((request) {
+      for (var request in pendingRequests.docs) {
         print('   - ${request.id} (${request['status']}) - ${request['requesterName']}');
-      });
+      }
 
       // فحص قوائم الانتظار
       final allDrivers = await _firestore
@@ -587,9 +587,9 @@ class DispatchService {
 
         if (queue.docs.isNotEmpty) {
           print('📥 قائمة انتظار السائق ${driver['name']}: ${queue.docs.length} طلب');
-          queue.docs.forEach((request) {
+          for (var request in queue.docs) {
             print('   - ${request.id}');
-          });
+          }
         }
       }
 

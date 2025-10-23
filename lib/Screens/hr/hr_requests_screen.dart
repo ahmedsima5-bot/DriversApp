@@ -244,7 +244,7 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
       final availableDrivers = await _getAvailableDrivers();
       if (availableDrivers.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+          const SnackBar(
             content: Text('لا يوجد سائقين متاحين حالياً'),
             backgroundColor: Colors.orange,
           ),
@@ -519,7 +519,7 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
                   color: Colors.orange.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(6),
                 ),
-                child: Text(
+                child: const Text(
                   'عاجل',
                   style: TextStyle(
                     color: Colors.orange,
@@ -556,7 +556,7 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
                 ),
                 if (request['assignedDriverName'] != null) ...[
                   const SizedBox(width: 8),
-                  Icon(Icons.person, size: 12, color: Colors.grey),
+                  const Icon(Icons.person, size: 12, color: Colors.grey),
                   const SizedBox(width: 4),
                   Text(
                     request['assignedDriverName']!,
@@ -746,7 +746,7 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
 
     if (availableDrivers.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+        const SnackBar(
           content: Text('لا يوجد سائقين متاحين حالياً'),
           backgroundColor: Colors.orange,
         ),
@@ -797,7 +797,7 @@ class _DriverAssignmentDialogState extends State<DriverAssignmentDialog> {
           const Text('اختر سائق للطلب:'),
           const SizedBox(height: 16),
           DropdownButtonFormField<String>(
-            value: _selectedDriverId,
+            initialValue: _selectedDriverId,
             items: widget.drivers.map((driver) {
               return DropdownMenuItem<String>(
                 value: driver['id'],

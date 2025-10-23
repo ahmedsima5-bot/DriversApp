@@ -72,12 +72,12 @@ class _LoginScreenState extends State<LoginScreen> {
       } else if (e.code == 'too-many-requests') {
         message = _translate('too_many_attempts', languageProvider.currentLanguage);
       } else {
-        message = _translate('login_error', languageProvider.currentLanguage) + ' ${e.message}';
+        message = '${_translate('login_error', languageProvider.currentLanguage)} ${e.message}';
       }
       _errorMessage = message;
     } catch (e) {
       final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
-      _errorMessage = _translate('general_error', languageProvider.currentLanguage) + ' $e';
+      _errorMessage = '${_translate('general_error', languageProvider.currentLanguage)} $e';
     } finally {
       if (mounted) {
         setState(() {
