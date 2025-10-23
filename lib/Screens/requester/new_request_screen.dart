@@ -50,21 +50,49 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
     return AppLocalizations.getTranslatedValue(key, languageCode);
   }
 
-  // دالة لتحميل قسم المستخدم تلقائياً
+  // دالة محسنة لتحميل قسم المستخدم تلقائياً
   Future<void> _loadUserDepartment() async {
     try {
+      // البحث في مجموعة companies/C001/users أولاً
       final userDoc = await FirebaseFirestore.instance
+          .collection('companies')
+          .doc(widget.companyId)
           .collection('users')
           .doc(widget.userId)
           .get();
 
+      if (userDoc.exists && userDoc.data()?['department'] != null) {
+        setState(() {
+          _userDepartment = userDoc.data()?['department']?.toString();
+        });
+        debugPrint('✅ Found department in companies: $_userDepartment');
+        return;
+      }
+
+      // إذا لم يوجد، البحث في المجموعة العامة users
+      final globalUserDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.userId)
+          .get();
+
+      if (globalUserDoc.exists && globalUserDoc.data()?['department'] != null) {
+        setState(() {
+          _userDepartment = globalUserDoc.data()?['department']?.toString();
+        });
+        debugPrint('✅ Found department in global users: $_userDepartment');
+        return;
+      }
+
+      // إذا لم يوجد قسم، نستخدم القيمة الافتراضية من بيانات المستخدم
       setState(() {
-        _userDepartment = userDoc.data()?['department']?.toString() ?? 'General';
+        _userDepartment = 'Maintenance'; // القيمة الافتراضية الصحيحة
       });
+      debugPrint('⚠️ Using default department: $_userDepartment');
+
     } catch (e) {
-      print('Error loading user department: $e');
+      debugPrint('❌ Error loading user department: $e');
       setState(() {
-        _userDepartment = 'General';
+        _userDepartment = 'Maintenance'; // القيمة الافتراضية الصحيحة
       });
     }
   }
@@ -79,11 +107,10 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
         });
       }
     } catch (e) {
-      print('Error picking image: $e');
+      debugPrint('Error picking image: $e');
     }
   }
 
-  // دالة إرسال الطلب
   // دالة إرسال الطلب
   void _submitRequest() {
     if (_formKey.currentState!.validate()) {
@@ -110,7 +137,21 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
             Text(_isUrgent ? _translate('urgent_request', currentLanguage) : _translate('normal_request', currentLanguage)),
           ],
         ),
-        content: Text(message),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(message),
+            SizedBox(height: 12),
+            Text(
+              '${_translate('department', currentLanguage)}: $_userDepartment',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.blue.shade800,
+              ),
+            ),
+          ],
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -141,6 +182,11 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
       // إنشاء معرف فريد للطلب
       String requestId = 'req_${DateTime.now().millisecondsSinceEpoch}';
 
+      // التأكد من أن القسم ليس null
+      final department = _userDepartment ?? 'Maintenance';
+
+      debugPrint('💾 Saving request with department: $department');
+
       // البيانات الأساسية للطلب - مطابقة لهيكل النظام
       Map<String, dynamic> requestData = {
         // المعلومات الأساسية (مطلوبة للنظام)
@@ -148,7 +194,7 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
         'companyId': widget.companyId,
         'requesterId': widget.userId,
         'requesterName': widget.userName,
-        'department': _userDepartment ?? 'General',
+        'department': department, // استخدام القسم الصحيح
 
         // معلومات الرحلة (مطلوبة للنظام)
         'purposeType': 'نقل',
@@ -195,6 +241,8 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
           .doc(requestId)
           .set(requestData);
 
+      debugPrint('✅ Request saved successfully with department: $department');
+
       // إشعار نجاح
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -212,7 +260,7 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
       Navigator.pop(context);
 
     } catch (e) {
-      print('Error saving request: $e');
+      debugPrint('❌ Error saving request: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('${_translate('request_error', languageProvider.currentLanguage)}: $e'),
@@ -245,6 +293,37 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // قسم المستخدم (للإظهار فقط)
+                  if (_userDepartment != null) ...[
+                    Card(
+                      color: Colors.blue.shade50,
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Row(
+                          children: [
+                            Icon(Icons.business, color: Colors.blue.shade700),
+                            SizedBox(width: 8),
+                            Text(
+                              '${_translate('department', currentLanguage)}: ',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue.shade800,
+                              ),
+                            ),
+                            Text(
+                              _userDepartment!,
+                              style: TextStyle(
+                                color: Colors.blue.shade800,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: 16),
+                  ],
+
                   // عنوان الطلب
                   _buildSectionTitle(_translate('request_title', currentLanguage), currentLanguage),
                   _buildTextField(

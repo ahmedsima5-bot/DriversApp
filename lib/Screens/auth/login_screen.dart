@@ -91,9 +91,12 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     return Consumer<LanguageProvider>(
       builder: (context, languageProvider, child) {
+        final currentLanguage = languageProvider.currentLanguage;
+        final isRTL = currentLanguage == 'ar';
+
         return Scaffold(
           appBar: AppBar(
-            title: Text(_translate('login', languageProvider.currentLanguage)),
+            title: Text(_translate('login', currentLanguage)),
             centerTitle: true,
             backgroundColor: Colors.blue.shade800,
             foregroundColor: Colors.white,
@@ -101,7 +104,8 @@ class _LoginScreenState extends State<LoginScreen> {
               PopupMenuButton<String>(
                 icon: const Icon(Icons.language, color: Colors.white),
                 onSelected: (String newLanguage) async {
-                  await languageProvider.changeLanguage(newLanguage);
+                  // 🔥 التعديل: استخدام setLanguage بدل changeLanguage
+                  await languageProvider.setLanguage(newLanguage);
                 },
                 itemBuilder: (BuildContext context) => [
                   PopupMenuItem(
@@ -110,7 +114,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       children: [
                         const Icon(Icons.language, color: Colors.green),
                         const SizedBox(width: 8),
-                        Text(_translate('arabic', languageProvider.currentLanguage)),
+                        Text(_translate('arabic', currentLanguage)),
                       ],
                     ),
                   ),
@@ -120,7 +124,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       children: [
                         const Icon(Icons.language, color: Colors.blue),
                         const SizedBox(width: 8),
-                        Text(_translate('english', languageProvider.currentLanguage)),
+                        Text(_translate('english', currentLanguage)),
                       ],
                     ),
                   ),
@@ -128,140 +132,175 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ],
           ),
-          body: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(32.0),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: <Widget>[
-                    const Icon(
-                      Icons.local_shipping,
-                      size: 80,
-                      color: Colors.blue,
-                    ),
-                    const SizedBox(height: 40),
+          body: Directionality(
+            textDirection: isRTL ? TextDirection.rtl : TextDirection.ltr,
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(32.0),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: <Widget>[
+                      const Icon(
+                        Icons.local_shipping,
+                        size: 80,
+                        color: Colors.blue,
+                      ),
+                      const SizedBox(height: 40),
 
-                    // عرض اللغة الحالية
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade200,
-                        borderRadius: BorderRadius.circular(20),
+                      // عرض اللغة الحالية
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade200,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          currentLanguage == 'ar' ? 'العربية' : 'English',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
                       ),
-                      child: Text(
-                        languageProvider.currentLanguage == 'ar' ? 'العربية' : 'English',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
+                      const SizedBox(height: 20),
 
-                    TextFormField(
-                      controller: _emailController,
-                      decoration: InputDecoration(
-                        labelText: _translate('email', languageProvider.currentLanguage),
-                        border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
-                        prefixIcon: const Icon(Icons.email),
+                      TextFormField(
+                        controller: _emailController,
+                        textDirection: isRTL ? TextDirection.rtl : TextDirection.ltr,
+                        decoration: InputDecoration(
+                          labelText: _translate('email', currentLanguage),
+                          border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
+                          prefixIcon: const Icon(Icons.email),
+                        ),
+                        keyboardType: TextInputType.emailAddress,
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return _translate('email_required', currentLanguage);
+                          }
+                          if (!value.contains('@')) {
+                            return _translate('invalid_email', currentLanguage);
+                          }
+                          return null;
+                        },
                       ),
-                      keyboardType: TextInputType.emailAddress,
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return _translate('email_required', languageProvider.currentLanguage);
-                        }
-                        if (!value.contains('@')) {
-                          return _translate('invalid_email', languageProvider.currentLanguage);
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 15),
-                    TextFormField(
-                      controller: _passwordController,
-                      obscureText: true,
-                      decoration: InputDecoration(
-                        labelText: _translate('password', languageProvider.currentLanguage),
-                        border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
-                        prefixIcon: const Icon(Icons.lock),
+                      const SizedBox(height: 15),
+                      TextFormField(
+                        controller: _passwordController,
+                        obscureText: true,
+                        textDirection: isRTL ? TextDirection.rtl : TextDirection.ltr,
+                        decoration: InputDecoration(
+                          labelText: _translate('password', currentLanguage),
+                          border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
+                          prefixIcon: const Icon(Icons.lock),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return _translate('password_required', currentLanguage);
+                          }
+                          if (value.length < 6) {
+                            return _translate('password_length', currentLanguage);
+                          }
+                          return null;
+                        },
                       ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return _translate('password_required', languageProvider.currentLanguage);
-                        }
-                        if (value.length < 6) {
-                          return _translate('password_length', languageProvider.currentLanguage);
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 25),
+                      const SizedBox(height: 25),
 
-                    if (_errorMessage != null)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.red.shade50,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.red.shade200),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.error_outline, color: Colors.red),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  _errorMessage!,
-                                  style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
-                                  textAlign: TextAlign.center,
+                      if (_errorMessage != null)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.red.shade200),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.error_outline, color: Colors.red),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    _errorMessage!,
+                                    style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                                    textAlign: TextAlign.start,
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
+                          ),
+                        ),
+
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: _isLoading ? null : _login,
+                          style: ElevatedButton.styleFrom(
+                            minimumSize: const Size(double.infinity, 50),
+                            backgroundColor: Colors.blue.shade800,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            elevation: 5,
+                          ),
+                          child: _isLoading
+                              ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                              : Text(
+                              _translate('login_button', currentLanguage),
+                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)
                           ),
                         ),
                       ),
 
-                    ElevatedButton(
-                      onPressed: _isLoading ? null : _login,
-                      style: ElevatedButton.styleFrom(
-                        minimumSize: const Size(double.infinity, 50),
-                        backgroundColor: Colors.blue.shade800,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        elevation: 5,
-                      ),
-                      child: _isLoading
-                          ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
-                        ),
-                      )
-                          : Text(_translate('login_button', languageProvider.currentLanguage),
-                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                    ),
+                      const SizedBox(height: 15),
 
-                    const SizedBox(height: 15),
-
-                    TextButton(
-                      onPressed: _isLoading
-                          ? null
-                          : () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(builder: (context) => const RegisterScreen()),
-                        );
-                      },
-                      child: Text(
-                        _translate('register', languageProvider.currentLanguage),
-                        style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 16),
+                      TextButton(
+                        onPressed: _isLoading
+                            ? null
+                            : () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(builder: (context) => const RegisterScreen()),
+                          );
+                        },
+                        child: Text(
+                          _translate('register', currentLanguage),
+                          style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
                       ),
-                    ),
-                  ],
+
+                      const SizedBox(height: 20),
+
+                      // 🔥 قسم معلومات الترجمة (للتطوير فقط - يمكن حذفه لاحقاً)
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Column(
+                          children: [
+                            Text(
+                              _translate('language_info', currentLanguage),
+                              style: const TextStyle(fontSize: 12, color: Colors.grey),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 5),
+                            Text(
+                              'Current: $currentLanguage',
+                              style: const TextStyle(fontSize: 10, color: Colors.grey),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),

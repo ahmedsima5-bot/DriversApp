@@ -12,18 +12,31 @@ dependencies:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
+
+  # 🔥 إزالة جميع حزم Firebase المؤقتاً
+  # firebase_core: ^2.15.0
+  # cloud_firestore: ^4.9.2
+  # firebase_auth: ^4.12.0
+  # firebase_messaging: ^14.2.1
+
+  # 🔥 إزالة flutter_local_notifications
+  # flutter_local_notifications: ^13.0.0
+
+  # 🔥 الحزم الأساسية فقط
   google_maps_flutter: ^2.5.0
-  firebase_core: ^2.15.0
-  cloud_firestore: ^4.9.2
-  firebase_auth: ^4.12.0
   uuid: ^4.2.1
   connectivity_plus: ^5.0.2
   intl: ^0.20.2
   flutter_map: ^5.0.0
   geolocator: ^11.0.0
-  image_picker: any
+  image_picker: ^1.0.4
   shared_preferences: ^2.2.2
   provider: ^6.1.1
+  google_translator: ^1.0.0
+  http: ^1.1.0
+  firebase_core: ^4.2.0
+  firebase_auth: ^6.1.1
+  cloud_firestore: ^6.0.3
 
 dev_dependencies:
   flutter_test:
@@ -31,5 +44,9 @@ dev_dependencies:
   flutter_lints: ^2.0.0
 
 flutter:
-  uses-material-design:  true
+  uses-material-design: true
   generate: true
+
+  # 🔥 إزالة assets إذا لم تكن موجودة
+  # assets:
+  #   - assets/images/

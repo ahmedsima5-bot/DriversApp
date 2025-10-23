@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
 import '../../services/dispatch_service.dart';
+import '../../services/simple_notification_service.dart'; // 🔥 استيراد خدمة الإشعارات
+import '../../providers/language_provider.dart';
+import '../../locales/app_localizations.dart';
+import 'dart:async'; //
 
 class DriverDashboard extends StatefulWidget {
   final String userName;
@@ -21,20 +26,79 @@ class _DriverDashboardState extends State<DriverDashboard> {
   String? _driverId;
   String? _companyId;
   bool _driverProfileExists = false;
+  StreamSubscription? _requestsSubscription; // 🔥 للاستماع للطلبات الجديدة
+
+  String _translate(String key, String languageCode) {
+    return AppLocalizations.getTranslatedValue(key, languageCode);
+  }
 
   @override
   void initState() {
     super.initState();
-    _debugCheckDriverLocation();
     _checkDriverProfile();
     _loadDriverRequests();
+    _startRequestsListener(); // 🔥 بدء الاستماع للطلبات الجديدة
+  }
+
+  @override
+  void dispose() {
+    _requestsSubscription?.cancel(); // 🔥 تنظيف الـ subscription
+    super.dispose();
+  }
+
+  // 🔥 الاستماع للطلبات الجديدة المخصصة للسائق
+  void _startRequestsListener() {
+    _requestsSubscription = _firestore
+        .collection('companies')
+        .doc('C001')
+        .collection('requests')
+        .where('status', whereIn: ['ASSIGNED', 'IN_PROGRESS'])
+        .snapshots()
+        .listen((snapshot) {
+      for (var change in snapshot.docChanges) {
+        if (change.type == DocumentChangeType.added || change.type == DocumentChangeType.modified) {
+          final request = change.doc.data() as Map<String, dynamic>;
+          final requestId = change.doc.id;
+          final assignedDriverId = request['assignedDriverId'];
+          final status = request['status'];
+
+          // إذا كان الطلب مخصص لهذا السائق
+          if (assignedDriverId == _driverId) {
+            _handleRequestNotification(requestId, request, status, change.type);
+          }
+        }
+      }
+    });
+  }
+
+  // 🔥 معالجة إشعارات الطلبات
+  void _handleRequestNotification(String requestId, Map<String, dynamic> request, String status, DocumentChangeType changeType) {
+    final currentLanguage = Provider.of<LanguageProvider>(context, listen: false).currentLanguage;
+
+    if (changeType == DocumentChangeType.added && status == 'ASSIGNED') {
+      // 🔥 إشعار طلب جديد
+      SimpleNotificationService.notifyNewRequest(context, requestId);
+
+      // تحديث القائمة تلقائياً
+      _loadDriverRequests();
+
+    } else if (changeType == DocumentChangeType.modified) {
+      if (status == 'IN_PROGRESS') {
+        // 🔥 إشعار بدء الرحلة (يمكن إضافته إذا كان هناك تحديث من النظام)
+        // SimpleNotificationService.notifyRideStarted(context, requestId);
+      } else if (status == 'COMPLETED') {
+        // 🔥 إشعار انتهاء الرحلة
+        SimpleNotificationService.notifyRideCompleted(context, requestId);
+        _loadDriverRequests();
+      }
+    }
   }
 
   Future<void> _checkDriverProfile() async {
     try {
       final user = _auth.currentUser;
       if (user != null) {
-        debugPrint('👤 التحقق من وجود السائق...');
+        debugPrint('👤 Checking driver existence...');
 
         final companyId = 'C001';
         final driversSnapshot = await _firestore
@@ -50,46 +114,16 @@ class _DriverDashboardState extends State<DriverDashboard> {
           _companyId = companyId;
           _driverProfileExists = true;
 
-          debugPrint('✅ السائق موجود: $_driverId');
+          debugPrint('✅ Driver found: $_driverId');
         } else {
           setState(() {
             _driverProfileExists = false;
           });
-          debugPrint('❌ لا يوجد سجل للسائق - يحتاج التفعيل');
+          debugPrint('❌ No driver record found - needs activation');
         }
       }
     } catch (e) {
-      debugPrint('❌ خطأ في التحقق من السائق: $e');
-    }
-  }
-
-  Future<void> _debugCheckDriverLocation() async {
-    try {
-      final user = _auth.currentUser;
-      if (user != null) {
-        debugPrint('🔍 فحص مواقع السائق...');
-
-        final rootDrivers = await _firestore
-            .collection('drivers')
-            .where('email', isEqualTo: user.email)
-            .get();
-        debugPrint('📍 السائقين في المستوى الرئيسي: ${rootDrivers.docs.length}');
-
-        final correctDrivers = await _firestore
-            .collection('companies')
-            .doc('C001')
-            .collection('drivers')
-            .where('email', isEqualTo: user.email)
-            .get();
-        debugPrint('📍 السائقين في C001/drivers: ${correctDrivers.docs.length}');
-
-        if (rootDrivers.docs.isNotEmpty) {
-          debugPrint('⚠️ السائق موجود في المكان الخطأ!');
-          debugPrint('💡 انقل السجل من /drivers إلى /companies/C001/drivers/');
-        }
-      }
-    } catch (e) {
-      debugPrint('❌ خطأ في الفحص: $e');
+      debugPrint('❌ Error checking driver: $e');
     }
   }
 
@@ -129,23 +163,24 @@ class _DriverDashboardState extends State<DriverDashboard> {
           _companyId = companyId;
         });
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('🎉 تم تفعيل حساب السائق بنجاح!'),
-            backgroundColor: Colors.green,
-          ),
+        // 🔥 إشعار نجاح التفعيل
+        SimpleNotificationService.notifySuccess(
+            context,
+            'تم تفعيل حساب السائق بنجاح'
         );
 
-        debugPrint('✅ تم إنشاء سجل السائق: $driverId');
+        debugPrint('✅ Driver record created: $driverId');
         _loadDriverRequests();
+
+        // 🔥 إعادة تشغيل الـ listener بعد إنشاء البروفايل
+        _startRequestsListener();
       }
     } catch (e) {
-      debugPrint('❌ خطأ في إنشاء سجل السائق: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('خطأ في تفعيل الحساب: $e'),
-          backgroundColor: Colors.red,
-        ),
+      debugPrint('❌ Error creating driver record: $e');
+      // 🔥 إشعار خطأ
+      SimpleNotificationService.notifyError(
+          context,
+          'خطأ في تفعيل الحساب: $e'
       );
     }
   }
@@ -156,7 +191,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
 
       final user = _auth.currentUser;
       if (user != null) {
-        debugPrint('👤 المستخدم الحالي: ${user.email}');
+        debugPrint('👤 Current user: ${user.email}');
 
         final companyId = 'C001';
         final driversSnapshot = await _firestore
@@ -166,7 +201,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
             .where('email', isEqualTo: user.email)
             .get();
 
-        debugPrint('🔍 عدد السائقين المطابقين: ${driversSnapshot.docs.length}');
+        debugPrint('🔍 Matching drivers count: ${driversSnapshot.docs.length}');
 
         if (driversSnapshot.docs.isNotEmpty) {
           final driverDoc = driversSnapshot.docs.first;
@@ -176,15 +211,16 @@ class _DriverDashboardState extends State<DriverDashboard> {
           _driverId = driverId;
           _companyId = companyId;
 
-          debugPrint('🎯 تم العثور على السائق: $driverId');
-          debugPrint('📋 بيانات السائق: ${driverData['name']} - ${driverData['email']}');
-          debugPrint('🟢 حالة السائق: online=${driverData['isOnline']}, available=${driverData['isAvailable']}');
+          debugPrint('🎯 Driver found: $driverId');
+          debugPrint('📋 Driver data: ${driverData['name']} - ${driverData['email']}');
 
           final requestsSnapshot = await _firestore
               .collection('companies')
               .doc(companyId)
               .collection('requests')
               .where('assignedDriverId', isEqualTo: driverId)
+              .where('status', whereIn: ['ASSIGNED', 'IN_PROGRESS', 'COMPLETED'])
+              .orderBy('createdAt', descending: true)
               .get();
 
           setState(() {
@@ -192,62 +228,19 @@ class _DriverDashboardState extends State<DriverDashboard> {
             _loading = false;
           });
 
-          debugPrint('✅ عدد الطلبات المخصصة: ${_requests.length}');
-
-          if (_requests.isEmpty) {
-            debugPrint('🔍 فحص الطلبات المتاحة للتوزيع...');
-            _checkAvailableRequests(companyId);
-          }
+          debugPrint('✅ Assigned requests count: ${_requests.length}');
         } else {
           setState(() { _loading = false; });
-          debugPrint('❌ لم يتم العثور على بيانات السائق في الشركة C001');
+          debugPrint('❌ Driver data not found in company C001');
         }
       }
     } catch (e) {
       setState(() { _loading = false; });
-      debugPrint('❌ خطأ في جلب الطلبات: $e');
-    }
-  }
-
-  Future<void> _checkAvailableRequests(String companyId) async {
-    try {
-      final availableRequests = await _firestore
-          .collection('companies')
-          .doc(companyId)
-          .collection('requests')
-          .where('status', whereIn: ['NEW', 'PENDING'])
-          .get();
-
-      debugPrint('🔍 الطلبات المتاحة للتوزيع: ${availableRequests.docs.length}');
-
-      for (var doc in availableRequests.docs) {
-        final data = doc.data();
-        debugPrint('   - ${doc.id} : ${data['status']} (${data['fromLocation']} → ${data['toLocation']})');
-      }
-    } catch (e) {
-      debugPrint('❌ خطأ في فحص الطلبات المتاحة: $e');
-    }
-  }
-
-  Future<void> _debugDispatchSystem() async {
-    try {
-      debugPrint('🔍 تشغيل تشخيص نظام التوزيع...');
-      final DispatchService dispatchService = DispatchService();
-      await dispatchService.debugDispatchSystem('C001');
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('تم تشخيص نظام التوزيع - شاهد الـ logs'),
-          backgroundColor: Colors.blue,
-        ),
-      );
-    } catch (e) {
-      debugPrint('❌ خطأ في التشخيص: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('خطأ في التشخيص: $e'),
-          backgroundColor: Colors.red,
-        ),
+      debugPrint('❌ Error loading requests: $e');
+      // 🔥 إشعار خطأ في تحميل الطلبات
+      SimpleNotificationService.notifyError(
+          context,
+          'خطأ في تحميل الطلبات: $e'
       );
     }
   }
@@ -265,22 +258,17 @@ class _DriverDashboardState extends State<DriverDashboard> {
         'lastUpdated': FieldValue.serverTimestamp(),
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('🚗 بدأت الرحلة بنجاح'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      // 🔥 إشعار بدء الرحلة
+      SimpleNotificationService.notifyRideStarted(context, requestId);
 
-      debugPrint('🚗 بدأت الرحلة: $requestId');
+      debugPrint('🚗 Ride started: $requestId');
       _loadDriverRequests();
     } catch (e) {
-      debugPrint('❌ خطأ في بدء الرحلة: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('خطأ في بدء الرحلة: $e'),
-          backgroundColor: Colors.red,
-        ),
+      debugPrint('❌ Error starting ride: $e');
+      // 🔥 إشعار خطأ في بدء الرحلة
+      SimpleNotificationService.notifyError(
+          context,
+          'خطأ في بدء الرحلة: $e'
       );
     }
   }
@@ -309,22 +297,17 @@ class _DriverDashboardState extends State<DriverDashboard> {
         'lastStatusUpdate': FieldValue.serverTimestamp(),
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('✅ تم إنهاء الرحلة بنجاح'),
-          backgroundColor: Colors.blue,
-        ),
-      );
+      // 🔥 إشعار انتهاء الرحلة
+      SimpleNotificationService.notifyRideCompleted(context, requestId);
 
-      debugPrint('✅ تم إنهاء الرحلة: $requestId');
+      debugPrint('✅ Ride completed: $requestId');
       _loadDriverRequests();
     } catch (e) {
-      debugPrint('❌ خطأ في إنهاء الرحلة: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('خطأ في إنهاء الرحلة: $e'),
-          backgroundColor: Colors.red,
-        ),
+      debugPrint('❌ Error completing ride: $e');
+      // 🔥 إشعار خطأ في إنهاء الرحلة
+      SimpleNotificationService.notifyError(
+          context,
+          'خطأ في إنهاء الرحلة: $e'
       );
     }
   }
@@ -345,50 +328,52 @@ class _DriverDashboardState extends State<DriverDashboard> {
 
       await _auth.signOut();
 
+      // 🔥 إشعار تسجيل الخروج
+      SimpleNotificationService.notifySuccess(
+          context,
+          'تم تسجيل الخروج بنجاح'
+      );
+
       Navigator.pushReplacementNamed(context, '/login');
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('تم تسجيل الخروج بنجاح'),
-          backgroundColor: Colors.green,
-        ),
-      );
     } catch (e) {
-      debugPrint('❌ خطأ في تسجيل الخروج: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('خطأ في تسجيل الخروج: $e'),
-          backgroundColor: Colors.red,
-        ),
+      debugPrint('❌ Error logging out: $e');
+      // 🔥 إشعار خطأ في تسجيل الخروج
+      SimpleNotificationService.notifyError(
+          context,
+          'خطأ في تسجيل الخروج: $e'
       );
     }
   }
 
-  void _showProfile() {
+  void _showProfile(BuildContext context, String currentLanguage) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Row(
+        title: Row(
           children: [
             Icon(Icons.person, color: Colors.orange),
             SizedBox(width: 8),
-            Text('الملف الشخصي'),
+            Text(_translate('profile', currentLanguage)),
           ],
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildProfileRow('الاسم:', widget.userName),
-            _buildProfileRow('البريد:', _auth.currentUser?.email ?? ''),
-            _buildProfileRow('رقم السائق:', _driverId ?? 'غير محدد'),
-            _buildProfileRow('الحالة:', 'سائق - مرتبط بالموارد البشرية'),
+            _buildProfileRow('${_translate('name', currentLanguage)}:', widget.userName),
+            _buildProfileRow('${_translate('email', currentLanguage)}:', _auth.currentUser?.email ?? ''),
+            _buildProfileRow('${_translate('driver_id', currentLanguage)}:', _driverId ?? _translate('not_specified', currentLanguage)),
+            _buildProfileRow('${_translate('status', currentLanguage)}:', _translate('driver_linked_to_hr', currentLanguage)),
+            if (_driverProfileExists)
+              _buildProfileRow('${_translate('completed_rides', currentLanguage)}:',
+                  _requests.where((r) => r['status'] == 'COMPLETED').length.toString()),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('حسناً'),
+            child: Text(_translate('ok', currentLanguage)),
           ),
         ],
       ),
@@ -400,41 +385,38 @@ class _DriverDashboardState extends State<DriverDashboard> {
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         children: [
-          Text('$label ', style: const TextStyle(fontWeight: FontWeight.bold)),
+          Text('$label ', style: TextStyle(fontWeight: FontWeight.bold)),
           Expanded(child: Text(value)),
         ],
       ),
     );
   }
 
-  void _showMyRequests() {
-    debugPrint('🎯 تم النقر على زر عرض طلباتي');
-    debugPrint('📊 عدد الطلبات: ${_requests.length}');
-
+  void _showMyRequests(BuildContext context, String currentLanguage) {
     if (_requests.isEmpty) {
-      _showNoRequestsDialog();
+      _showNoRequestsDialog(context, currentLanguage);
     } else {
-      _showRequestsBottomSheet();
+      _showRequestsBottomSheet(context, currentLanguage);
     }
   }
 
-  void _showNoRequestsDialog() {
+  void _showNoRequestsDialog(BuildContext context, String currentLanguage) {
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Row(
+          title: Row(
             children: [
               Icon(Icons.inventory_2, color: Colors.orange),
               SizedBox(width: 8),
-              Text('لا توجد طلبات'),
+              Text(_translate('no_requests', currentLanguage)),
             ],
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('لا توجد طلبات مخصصة لك حالياً.'),
-              const SizedBox(height: 16),
+              Text(_translate('no_assigned_requests', currentLanguage)),
+              SizedBox(height: 16),
               if (!_driverProfileExists)
                 ElevatedButton(
                   onPressed: () {
@@ -445,14 +427,14 @@ class _DriverDashboardState extends State<DriverDashboard> {
                     backgroundColor: Colors.blue,
                     foregroundColor: Colors.white,
                   ),
-                  child: const Text('تفعيل حساب السائق'),
+                  child: Text(_translate('activate_driver_account', currentLanguage)),
                 ),
             ],
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('حسناً'),
+              child: Text(_translate('ok', currentLanguage)),
             ),
           ],
         );
@@ -460,20 +442,38 @@ class _DriverDashboardState extends State<DriverDashboard> {
     );
   }
 
-  Widget _buildRequestCard(String requestId, Map<String, dynamic> data) {
+  Widget _buildRequestCard(String requestId, Map<String, dynamic> data, String currentLanguage) {
     final status = data['status'] ?? 'ASSIGNED';
-    final fromLocation = data['fromLocation'] ?? 'غير محدد';
-    final toLocation = data['toLocation'] ?? 'غير محدد';
+
+    // الحصول على بيانات طالب الخدمة (الموظف)
+    final requesterName = data['requesterName'] ??
+        data['userName'] ??
+        data['employeeName'] ??
+        _translate('not_specified', currentLanguage);
+
+    // قسم طالب الخدمة (الموظف)
+    final requesterDepartment = data['department'] ??
+        data['requesterDepartment'] ??
+        data['employeeDepartment'] ??
+        _translate('not_specified', currentLanguage);
+
+    final fromLocation = _translateLocation(data['fromLocation'] ?? '', currentLanguage);
+    final toLocation = _translateLocation(data['toLocation'] ?? '', currentLanguage);
+    final priority = _translatePriority(data['priority'] ?? 'Normal', currentLanguage);
+
+    // الحصول على تفاصيل إضافية
+    final description = data['details'] ?? data['description'] ?? '';
+    final phoneNumber = data['phoneNumber'] ?? data['requesterPhone'] ?? '';
 
     Color statusColor = Colors.orange;
-    String statusText = 'جديد';
+    String statusText = _translate('assigned', currentLanguage);
 
     if (status == 'IN_PROGRESS') {
       statusColor = Colors.blue;
-      statusText = 'قيد التنفيذ';
+      statusText = _translate('in_progress', currentLanguage);
     } else if (status == 'COMPLETED') {
       statusColor = Colors.green;
-      statusText = 'مكتمل';
+      statusText = _translate('completed', currentLanguage);
     }
 
     return Container(
@@ -489,51 +489,184 @@ class _DriverDashboardState extends State<DriverDashboard> {
           ),
         ],
       ),
-      child: ListTile(
-        leading: Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: statusColor.withOpacity(0.2),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(Icons.local_shipping, color: statusColor, size: 20),
-        ),
-        title: Text(
-          'طلب #${requestId.substring(0, 6)}',
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-        ),
-        subtitle: Column(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SizedBox(height: 4),
-            Text('📍 $fromLocation'),
-            Text('🎯 $toLocation'),
-            const SizedBox(height: 4),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: statusColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Text(
-                statusText,
-                style: TextStyle(
-                  color: statusColor,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
+            // Header with request number and status
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '${_translate('request', currentLanguage)} #${requestId.length > 6 ? requestId.substring(0, 6) : requestId}',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.orange.shade800),
                 ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: statusColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: statusColor),
+                  ),
+                  child: Text(
+                    statusText,
+                    style: TextStyle(
+                      color: statusColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            SizedBox(height: 8),
+
+            // Requester Information
+            Row(
+              children: [
+                Icon(Icons.person, size: 16, color: Colors.grey.shade600),
+                SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    requesterName,
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                  ),
+                ),
+              ],
+            ),
+
+            SizedBox(height: 4),
+
+            // Department Information
+            Row(
+              children: [
+                Icon(Icons.business, size: 16, color: Colors.grey.shade600),
+                SizedBox(width: 6),
+                Text(
+                  '${_translate('department', currentLanguage)}: ',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade700, fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  requesterDepartment,
+                  style: TextStyle(fontSize: 12, color: Colors.blue.shade700),
+                ),
+              ],
+            ),
+
+            SizedBox(height: 8),
+
+            // Locations
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.place, size: 16, color: Colors.grey.shade600),
+                SizedBox(width: 6),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('${_translate('from', currentLanguage)}: $fromLocation'),
+                      Text('${_translate('to', currentLanguage)}: $toLocation'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+
+            SizedBox(height: 8),
+
+            // Description
+            if (description.isNotEmpty) ...[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.description, size: 16, color: Colors.grey.shade600),
+                  SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      description,
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
               ),
+              SizedBox(height: 8),
+            ],
+
+            // Priority and Action Button
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: priority == 'Urgent' ? Colors.red.shade50 : Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: priority == 'Urgent' ? Colors.red.shade300 : Colors.green.shade300,
+                    ),
+                  ),
+                  child: Text(
+                    priority,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: priority == 'Urgent' ? Colors.red.shade800 : Colors.green.shade800,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                _buildActionButtons(requestId, status, currentLanguage),
+              ],
             ),
           ],
         ),
-        trailing: _buildActionButtons(requestId, status),
-        onTap: () => _showRequestDetails(requestId, data),
       ),
     );
   }
 
-  Widget _buildActionButtons(String requestId, String status) {
+  String _translateLocation(String location, String language) {
+    final locationTranslations = {
+      'المصنع': {
+        'en': 'Factory',
+        'ar': 'المصنع',
+      },
+      'Takhasusi': {
+        'en': 'Takhasusi',
+        'ar': 'التخصصي',
+      },
+      'Factory': {
+        'en': 'Factory',
+        'ar': 'المصنع',
+      },
+      'الدرس العزيزية': {
+        'en': 'Al-Dars Al-Aziziya',
+        'ar': 'الدرس العزيزية',
+      },
+    };
+
+    return locationTranslations[location]?[language] ?? location;
+  }
+
+  String _translatePriority(String priority, String language) {
+    final priorityTranslations = {
+      'Normal': {
+        'en': 'Normal',
+        'ar': 'عادي',
+      },
+      'Urgent': {
+        'en': 'Urgent',
+        'ar': 'عاجل',
+      },
+    };
+
+    return priorityTranslations[priority]?[language] ?? priority;
+  }
+
+  Widget _buildActionButtons(String requestId, String status, String currentLanguage) {
     if (status == 'ASSIGNED') {
       return ElevatedButton(
         onPressed: () => _startRide(requestId),
@@ -541,8 +674,12 @@ class _DriverDashboardState extends State<DriverDashboard> {
           backgroundColor: Colors.green,
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          minimumSize: Size(0, 30),
         ),
-        child: const Text('بدء الرحلة'),
+        child: Text(
+          _translate('start_ride', currentLanguage),
+          style: TextStyle(fontSize: 12),
+        ),
       );
     } else if (status == 'IN_PROGRESS') {
       return ElevatedButton(
@@ -551,24 +688,57 @@ class _DriverDashboardState extends State<DriverDashboard> {
           backgroundColor: Colors.blue,
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          minimumSize: Size(0, 30),
         ),
-        child: const Text('إنهاء الرحلة'),
+        child: Text(
+          _translate('complete_ride', currentLanguage),
+          style: TextStyle(fontSize: 12),
+        ),
       );
     } else {
-      return const Icon(Icons.check_circle, color: Colors.green);
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.green.shade50,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: Colors.green),
+        ),
+        child: Icon(Icons.check, size: 16, color: Colors.green),
+      );
     }
   }
 
-  void _showRequestDetails(String requestId, Map<String, dynamic> data) {
+  void _showRequestDetails(String requestId, Map<String, dynamic> data, String currentLanguage) {
     final status = data['status'] ?? 'ASSIGNED';
-    String statusText = 'مُعين';
+
+    // الحصول على جميع بيانات طالب الخدمة (الموظف)
+    final requesterName = data['requesterName'] ??
+        data['userName'] ??
+        data['employeeName'] ??
+        _translate('not_specified', currentLanguage);
+
+    // قسم طالب الخدمة (الموظف)
+    final requesterDepartment = data['department'] ??
+        data['requesterDepartment'] ??
+        data['employeeDepartment'] ??
+        _translate('not_specified', currentLanguage);
+
+    final fromLocation = _translateLocation(data['fromLocation'] ?? '', currentLanguage);
+    final toLocation = _translateLocation(data['toLocation'] ?? '', currentLanguage);
+    final priority = _translatePriority(data['priority'] ?? 'Normal', currentLanguage);
+
+    final description = data['details'] ?? data['description'] ?? _translate('no_description', currentLanguage);
+    final phoneNumber = data['phoneNumber'] ?? data['requesterPhone'] ?? _translate('not_specified', currentLanguage);
+    final address = data['address'] ?? data['locationDetails'] ?? _translate('not_specified', currentLanguage);
+
+    String statusText = _translate('assigned', currentLanguage);
     Color statusColor = Colors.orange;
 
     if (status == 'IN_PROGRESS') {
-      statusText = 'قيد التنفيذ';
+      statusText = _translate('in_progress', currentLanguage);
       statusColor = Colors.blue;
     } else if (status == 'COMPLETED') {
-      statusText = 'مكتمل';
+      statusText = _translate('completed', currentLanguage);
       statusColor = Colors.green;
     }
 
@@ -579,8 +749,8 @@ class _DriverDashboardState extends State<DriverDashboard> {
           title: Row(
             children: [
               Icon(Icons.info_outline, color: statusColor),
-              const SizedBox(width: 8),
-              const Text('تفاصيل الطلب'),
+              SizedBox(width: 8),
+              Text(_translate('request_details', currentLanguage)),
             ],
           ),
           content: SingleChildScrollView(
@@ -588,14 +758,47 @@ class _DriverDashboardState extends State<DriverDashboard> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                _buildDetailRow('رقم الطلب:', requestId),
-                _buildDetailRow('العميل:', data['customerName'] ?? 'غير محدد'),
-                _buildDetailRow('من:', data['fromLocation'] ?? 'غير محدد'),
-                _buildDetailRow('إلى:', data['toLocation'] ?? 'غير محدد'),
-                _buildDetailRow('الحالة:', statusText),
-                _buildDetailRow('الأولوية:', data['priority'] ?? 'عادي'),
-                const SizedBox(height: 16),
+                // Request Information
+                _buildDetailRow('${_translate('request_number', currentLanguage)}:', requestId),
 
+                SizedBox(height: 12),
+
+                // Requester Information Section
+                Text(
+                  _translate('requester_info', currentLanguage),
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blue.shade800),
+                ),
+                SizedBox(height: 8),
+                _buildDetailRow('${_translate('requester_name', currentLanguage)}:', requesterName),
+                _buildDetailRow('${_translate('department', currentLanguage)}:', requesterDepartment),
+                _buildDetailRow('${_translate('phone_number', currentLanguage)}:', phoneNumber),
+
+                SizedBox(height: 12),
+
+                // Trip Information Section
+                Text(
+                  _translate('trip_info', currentLanguage),
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blue.shade800),
+                ),
+                SizedBox(height: 8),
+                _buildDetailRow('${_translate('from', currentLanguage)}:', fromLocation),
+                _buildDetailRow('${_translate('to', currentLanguage)}:', toLocation),
+                _buildDetailRow('${_translate('address', currentLanguage)}:', address),
+
+                SizedBox(height: 12),
+
+                // Additional Information Section
+                Text(
+                  _translate('additional_info', currentLanguage),
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blue.shade800),
+                ),
+                SizedBox(height: 8),
+                _buildDetailRow('${_translate('description', currentLanguage)}:', description),
+                _buildDetailRow('${_translate('status', currentLanguage)}:', statusText),
+                _buildDetailRow('${_translate('priority', currentLanguage)}:', priority),
+                SizedBox(height: 16),
+
+                // Action Button
                 if (status == 'ASSIGNED')
                   SizedBox(
                     width: double.infinity,
@@ -607,8 +810,9 @@ class _DriverDashboardState extends State<DriverDashboard> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green,
                         foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
                       ),
-                      child: const Text('بدء الرحلة'),
+                      child: Text(_translate('start_ride', currentLanguage)),
                     ),
                   )
                 else if (status == 'IN_PROGRESS')
@@ -622,8 +826,9 @@ class _DriverDashboardState extends State<DriverDashboard> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.blue,
                         foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
                       ),
-                      child: const Text('إنهاء الرحلة'),
+                      child: Text(_translate('complete_ride', currentLanguage)),
                     ),
                   ),
               ],
@@ -632,7 +837,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('إغلاق'),
+              child: Text(_translate('close', currentLanguage)),
             ),
           ],
         );
@@ -646,18 +851,27 @@ class _DriverDashboardState extends State<DriverDashboard> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey),
+          SizedBox(
+            width: 100,
+            child: Text(
+              label,
+              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey.shade700, fontSize: 12),
+            ),
           ),
-          const SizedBox(width: 8),
-          Expanded(child: Text(value, style: const TextStyle(color: Colors.black87))),
+          SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(color: Colors.black87, fontSize: 12),
+              softWrap: true,
+            ),
+          ),
         ],
       ),
     );
   }
 
-  void _showRequestsBottomSheet() {
+  void _showRequestsBottomSheet(BuildContext context, String currentLanguage) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -671,17 +885,17 @@ class _DriverDashboardState extends State<DriverDashboard> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    'طلباتي',
+                  Text(
+                    _translate('my_requests', currentLanguage),
                     style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.orange),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close),
+                    icon: Icon(Icons.close),
                     onPressed: () => Navigator.pop(context),
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              SizedBox(height: 16),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
@@ -691,25 +905,25 @@ class _DriverDashboardState extends State<DriverDashboard> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.list_alt, color: Colors.orange),
-                    const SizedBox(width: 8),
+                    Icon(Icons.list_alt, color: Colors.orange),
+                    SizedBox(width: 8),
                     Text(
-                      'إجمالي الطلبات: ${_requests.length}',
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.orange),
+                      '${_translate('total_requests', currentLanguage)}: ${_requests.length}',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.orange),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 16),
+              SizedBox(height: 16),
               Expanded(
                 child: _requests.isEmpty
                     ? Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Icon(Icons.inbox_outlined, size: 60, color: Colors.grey),
-                      const SizedBox(height: 16),
-                      const Text('لا توجد طلبات', style: TextStyle(fontSize: 18, color: Colors.grey)),
+                      Icon(Icons.inbox_outlined, size: 60, color: Colors.grey),
+                      SizedBox(height: 16),
+                      Text(_translate('no_requests', currentLanguage), style: TextStyle(fontSize: 18, color: Colors.grey)),
                     ],
                   ),
                 )
@@ -718,25 +932,25 @@ class _DriverDashboardState extends State<DriverDashboard> {
                   itemBuilder: (context, index) {
                     final request = _requests[index];
                     final data = request.data() as Map<String, dynamic>;
-                    return _buildRequestCard(request.id, data);
+                    return _buildRequestCard(request.id, data, currentLanguage);
                   },
                 ),
               ),
-              const SizedBox(height: 16),
+              SizedBox(height: 16),
               Row(
                 children: [
                   Expanded(
                     child: OutlinedButton(
                       onPressed: () => Navigator.pop(context),
-                      child: const Text('إغلاق'),
+                      child: Text(_translate('close', currentLanguage)),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  SizedBox(width: 12),
                   Expanded(
                     child: ElevatedButton(
                       onPressed: _loadDriverRequests,
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-                      child: const Text('تحديث'),
+                      child: Text(_translate('refresh', currentLanguage)),
                     ),
                   ),
                 ],
@@ -750,182 +964,171 @@ class _DriverDashboardState extends State<DriverDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('شاشة السائق - مهامي اليومية'),
-        backgroundColor: Colors.orange,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadDriverRequests,
-            tooltip: 'تحديث الطلبات',
+    return Consumer<LanguageProvider>(
+      builder: (context, languageProvider, child) {
+        final currentLanguage = languageProvider.currentLanguage;
+
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(_translate('driver_dashboard', currentLanguage)),
+            backgroundColor: Colors.orange,
+            actions: [
+              IconButton(
+                icon: Icon(Icons.refresh),
+                onPressed: _loadDriverRequests,
+                tooltip: _translate('refresh_requests', currentLanguage),
+              ),
+              PopupMenuButton<String>(
+                onSelected: (value) {
+                  if (value == 'logout') {
+                    _logout();
+                  } else if (value == 'profile') {
+                    _showProfile(context, currentLanguage);
+                  }
+                },
+                itemBuilder: (BuildContext context) => [
+                  PopupMenuItem(
+                    value: 'profile',
+                    child: Row(
+                      children: [
+                        Icon(Icons.person, color: Colors.orange),
+                        SizedBox(width: 8),
+                        Text(_translate('profile', currentLanguage)),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'logout',
+                    child: Row(
+                      children: [
+                        Icon(Icons.logout, color: Colors.red),
+                        SizedBox(width: 8),
+                        Text(_translate('logout', currentLanguage)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
-          PopupMenuButton<String>(
-            onSelected: (value) {
-              if (value == 'logout') {
-                _logout();
-              } else if (value == 'profile') {
-                _showProfile();
-              }
-            },
-            itemBuilder: (BuildContext context) => [
-              const PopupMenuItem(
-                value: 'profile',
-                child: Row(
+          body: Column(
+            children: [
+              // Welcome Section
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Colors.orange.shade50, Colors.orange.shade100],
+                  ),
+                ),
+                child: Column(
                   children: [
-                    Icon(Icons.person, color: Colors.orange),
-                    SizedBox(width: 8),
-                    Text('الملف الشخصي'),
+                    CircleAvatar(
+                      radius: 40,
+                      backgroundColor: Colors.orange,
+                      child: Icon(Icons.person, size: 40, color: Colors.white),
+                    ),
+                    SizedBox(height: 16),
+                    Text(
+                      '${_translate('welcome', currentLanguage)} ${widget.userName}',
+                      style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.orange.shade800),
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      _driverProfileExists
+                          ? _translate('account_active_ready', currentLanguage)
+                          : _translate('activate_account_to_start', currentLanguage),
+                      style: TextStyle(
+                          fontSize: 16,
+                          color: _driverProfileExists ? Colors.green : Colors.orange
+                      ),
+                    ),
                   ],
                 ),
               ),
-              const PopupMenuItem(
-                value: 'logout',
+
+              if (!_driverProfileExists)
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  child: ElevatedButton(
+                    onPressed: _createDriverProfile,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(double.infinity, 55),
+                    ),
+                    child: Text(
+                      _translate('activate_driver_account', currentLanguage),
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+
+              Expanded(
+                child: _loading
+                    ? Center(child: CircularProgressIndicator(color: Colors.orange))
+                    : _requests.isEmpty
+                    ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.inbox_outlined, size: 80, color: Colors.grey),
+                      SizedBox(height: 20),
+                      Text(
+                        _translate('no_requests_currently', currentLanguage),
+                        style: TextStyle(fontSize: 20, color: Colors.grey, fontWeight: FontWeight.bold),
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        _translate('requests_will_appear_here_when_assigned', currentLanguage),
+                        style: TextStyle(fontSize: 14, color: Colors.grey),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                )
+                    : ListView.builder(
+                  itemCount: _requests.length,
+                  itemBuilder: (context, index) {
+                    final request = _requests[index];
+                    final data = request.data() as Map<String, dynamic>;
+                    return _buildRequestCard(request.id, data, currentLanguage);
+                  },
+                ),
+              ),
+
+              Container(
+                padding: const EdgeInsets.all(16),
                 child: Row(
                   children: [
-                    Icon(Icons.logout, color: Colors.red),
-                    SizedBox(width: 8),
-                    Text('تسجيل خروج'),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () => _showMyRequests(context, currentLanguage),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange,
+                          foregroundColor: Colors.white,
+                          minimumSize: const Size(0, 55),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.list_alt),
+                            SizedBox(width: 8),
+                            Text(_translate('show_my_requests', currentLanguage), style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
             ],
           ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // Welcome Section
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Colors.orange.shade50, Colors.orange.shade100],
-              ),
-            ),
-            child: Column(
-              children: [
-                CircleAvatar(
-                  radius: 40,
-                  backgroundColor: Colors.orange,
-                  child: const Icon(Icons.person, size: 40, color: Colors.white),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'مرحباً بك ${widget.userName}',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.orange.shade800),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  _driverProfileExists
-                      ? 'حسابك مفعل وجاهز لاستقبال الطلبات'
-                      : 'يجب تفعيل حساب السائق لبدء الاستخدام',
-                  style: TextStyle(
-                      fontSize: 16,
-                      color: _driverProfileExists ? Colors.green : Colors.orange
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // زر التفعيل إذا لم يكن السائق مفعل
-          if (!_driverProfileExists)
-            Container(
-              padding: const EdgeInsets.all(16),
-              child: ElevatedButton(
-                onPressed: _createDriverProfile,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size(double.infinity, 55),
-                ),
-                child: const Text(
-                  'تفعيل حساب السائق',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-              ),
-            ),
-
-          // 🔥 زر تشخيص نظام التوزيع (للتطوير فقط)
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-            child: ElevatedButton(
-              onPressed: _debugDispatchSystem,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.purple,
-                foregroundColor: Colors.white,
-                minimumSize: const Size(double.infinity, 50),
-              ),
-              child: const Text('تشخيص نظام التوزيع'),
-            ),
-          ),
-
-          // باقي الواجهة...
-          Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator(color: Colors.orange))
-                : _requests.isEmpty
-                ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.inbox_outlined, size: 80, color: Colors.grey),
-                  const SizedBox(height: 20),
-                  const Text(
-                    'لا توجد طلبات حالياً',
-                    style: TextStyle(fontSize: 20, color: Colors.grey, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'سيتم عرض الطلبات هنا عندما يتم تخصيصها لك',
-                    style: TextStyle(fontSize: 14, color: Colors.grey),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            )
-                : ListView.builder(
-              itemCount: _requests.length,
-              itemBuilder: (context, index) {
-                final request = _requests[index];
-                final data = request.data() as Map<String, dynamic>;
-                return _buildRequestCard(request.id, data);
-              },
-            ),
-          ),
-
-          // Buttons Section
-          Container(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _showMyRequests,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange,
-                      foregroundColor: Colors.white,
-                      minimumSize: const Size(0, 55),
-                    ),
-                    child: const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.list_alt),
-                        SizedBox(width: 8),
-                        Text('عرض طلباتي', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

@@ -5,6 +5,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'services/firebase_options.dart';
 import 'screens/auth/login_screen.dart';
 import 'services/dispatch_service.dart';
+import 'services/language_service.dart';
 import 'providers/language_provider.dart';
 
 void main() async {
@@ -16,8 +17,11 @@ void main() async {
     );
     print('✅ Firebase initialized successfully');
 
+    final savedLanguage = await LanguageService.getLanguage();
+    print('🌍 اللغة المحفوظة: $savedLanguage');
+
     initializeDispatchSystem();
-    runApp(const MyApp());
+    runApp(MyApp(savedLanguage: savedLanguage));
   } catch (e) {
     print("❌ Firebase Initialization Error: $e");
     runApp(const ErrorApp());
@@ -35,16 +39,18 @@ void initializeDispatchSystem() {
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  final String savedLanguage;
+
+  const MyApp({super.key, required this.savedLanguage});
 
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (context) => LanguageProvider(),
+      create: (context) => LanguageProvider()..initialize(savedLanguage),
       child: Consumer<LanguageProvider>(
         builder: (context, languageProvider, child) {
           return MaterialApp(
-            title: 'Transport Management System',
+            title: 'Driver App - نظام السائقين',
             locale: Locale(languageProvider.currentLanguage),
             supportedLocales: const [
               Locale('ar'),
@@ -57,7 +63,7 @@ class MyApp extends StatelessWidget {
             ],
             theme: ThemeData(
               primarySwatch: Colors.orange,
-              fontFamily: languageProvider.currentLanguage == 'ar' ? 'Tajawal' : null,
+              fontFamily: languageProvider.currentLanguage == 'ar' ? 'Tajawal' : 'Roboto',
               useMaterial3: true,
             ),
             home: const LoginScreen(),

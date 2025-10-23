@@ -63,57 +63,20 @@ class _MyRequestsPageState extends State<MyRequestsPage> {
     }
   }
 
-  String _getStatusText(String status, String currentLanguage) {
-    switch (status) {
-      case 'PENDING':
-        return _translate('pending', currentLanguage);
-      case 'HR_PENDING':
-        return _translate('hr_pending', currentLanguage);
-      case 'APPROVED':
-        return _translate('approved', currentLanguage);
-      case 'REJECTED':
-        return _translate('rejected', currentLanguage);
-      case 'IN_PROGRESS':
-        return _translate('in_progress', currentLanguage);
-      case 'COMPLETED':
-        return _translate('completed', currentLanguage);
-      case 'ASSIGNED':
-        return _translate('assigned', currentLanguage);
-      default:
-        return status;
-    }
-  }
-
-  Color _getStatusColor(String status) {
-    switch (status) {
-      case 'PENDING':
-      case 'HR_PENDING':
-        return Colors.orange;
-      case 'APPROVED':
-      case 'ASSIGNED':
-        return Colors.blue;
-      case 'IN_PROGRESS':
-        return Colors.green;
-      case 'COMPLETED':
-        return Colors.green.shade700;
-      case 'REJECTED':
-        return Colors.red;
-      default:
-        return Colors.grey;
-    }
-  }
-
   Widget _buildRequestItem(Map<String, dynamic> request, String currentLanguage) {
     final createdAt = request['createdAt'] is Timestamp
         ? (request['createdAt'] as Timestamp).toDate()
         : DateTime.now();
 
+    // الحفاظ على اللغة الأصلية للمحتوى
     final title = request['title'] ?? _translate('transfer_request', currentLanguage);
     final fromLocation = request['fromLocation'] ?? '';
     final toLocation = request['toLocation'] ?? '';
     final status = request['status'] ?? 'PENDING';
     final description = request['details'] ?? request['description'] ?? '';
     final isUrgent = request['priority'] == 'Urgent';
+    final department = request['department'] ?? '';
+    final requesterName = request['requesterName'] ?? widget.userName;
 
     return Card(
       margin: const EdgeInsets.all(8),
@@ -155,7 +118,7 @@ class _MyRequestsPageState extends State<MyRequestsPage> {
                 ],
                 Expanded(
                   child: Text(
-                    title,
+                    title, // الحفاظ على اللغة الأصلية
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -183,7 +146,7 @@ class _MyRequestsPageState extends State<MyRequestsPage> {
 
             const SizedBox(height: 12),
 
-            // 🔥 اسم الموظف الطالب
+            // اسم الموظف الطالب
             Row(
               children: [
                 Icon(Icons.person, size: 16, color: Colors.grey.shade600),
@@ -197,7 +160,7 @@ class _MyRequestsPageState extends State<MyRequestsPage> {
                   ),
                 ),
                 Text(
-                  request['requesterName'] ?? widget.userName,
+                  requesterName, // الحفاظ على اللغة الأصلية
                   style: TextStyle(
                     fontSize: 14,
                     color: Colors.grey.shade700,
@@ -208,7 +171,7 @@ class _MyRequestsPageState extends State<MyRequestsPage> {
 
             const SizedBox(height: 8),
 
-            // 🔥 عنوان الطلب
+            // وصف الطلب (محفوظ كما هو بدون ترجمة)
             if (description.isNotEmpty) ...[
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -217,7 +180,7 @@ class _MyRequestsPageState extends State<MyRequestsPage> {
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      description,
+                      description, // الحفاظ على اللغة الأصلية
                       style: TextStyle(
                         fontSize: 14,
                         color: Colors.grey.shade700,
@@ -231,7 +194,7 @@ class _MyRequestsPageState extends State<MyRequestsPage> {
               const SizedBox(height: 8),
             ],
 
-            // المواقع
+            // المواقع (محفوظة كما هي بدون ترجمة)
             if (fromLocation.isNotEmpty || toLocation.isNotEmpty) ...[
               Row(
                 children: [
@@ -239,7 +202,7 @@ class _MyRequestsPageState extends State<MyRequestsPage> {
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      '$fromLocation → $toLocation',
+                      '$fromLocation → $toLocation', // الحفاظ على اللغة الأصلية
                       style: TextStyle(
                         fontSize: 14,
                         color: Colors.grey.shade700,
@@ -289,8 +252,8 @@ class _MyRequestsPageState extends State<MyRequestsPage> {
                   ),
                 ),
 
-                // القسم
-                if (request['department'] != null)
+                // القسم (محفوظ كما هو بدون ترجمة)
+                if (department.isNotEmpty)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
@@ -298,7 +261,7 @@ class _MyRequestsPageState extends State<MyRequestsPage> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
-                      '${_translate('department', currentLanguage)}: ${request['department']}',
+                      '${_translate('department', currentLanguage)}: $department', // الحفاظ على اللغة الأصلية
                       style: TextStyle(
                         fontSize: 10,
                         color: Colors.purple.shade800,
@@ -327,6 +290,46 @@ class _MyRequestsPageState extends State<MyRequestsPage> {
         ),
       ),
     );
+  }
+
+  String _getStatusText(String status, String currentLanguage) {
+    switch (status) {
+      case 'PENDING':
+        return _translate('pending', currentLanguage);
+      case 'HR_PENDING':
+        return _translate('hr_pending', currentLanguage);
+      case 'APPROVED':
+        return _translate('approved', currentLanguage);
+      case 'REJECTED':
+        return _translate('rejected', currentLanguage);
+      case 'IN_PROGRESS':
+        return _translate('in_progress', currentLanguage);
+      case 'COMPLETED':
+        return _translate('completed', currentLanguage);
+      case 'ASSIGNED':
+        return _translate('assigned', currentLanguage);
+      default:
+        return status;
+    }
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'PENDING':
+      case 'HR_PENDING':
+        return Colors.orange;
+      case 'APPROVED':
+      case 'ASSIGNED':
+        return Colors.blue;
+      case 'IN_PROGRESS':
+        return Colors.green;
+      case 'COMPLETED':
+        return Colors.green.shade700;
+      case 'REJECTED':
+        return Colors.red;
+      default:
+        return Colors.grey;
+    }
   }
 
   @override

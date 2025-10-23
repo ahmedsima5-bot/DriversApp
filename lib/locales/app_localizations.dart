@@ -58,6 +58,7 @@ class AppLocalizations {
       'username': 'اسم المستخدم',
       'not_specified': 'غير محدد',
       'logout': 'تسجيل الخروج',
+      'language_info': 'إعدادات اللغة سيتم تطبيقها على جميع شاشات التطبيق',
 
       // 🔥 الترجمات الجديدة للصفحات
       'requester_dashboard': 'لوحة مقدم الطلب',
@@ -154,6 +155,7 @@ class AppLocalizations {
       'username': 'Username',
       'not_specified': 'Not specified',
       'logout': 'Logout',
+      'language_info': 'Language settings will apply to all app screens',
 
       // 🔥 الترجمات الجديدة للصفحات
       'requester_dashboard': 'Requester Dashboard',
