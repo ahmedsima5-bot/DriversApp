@@ -2,7 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main ] # أو اسم الفرع الذي تستخدمه للنشر
 
 jobs:
   build:
@@ -14,12 +14,13 @@ jobs:
     - name: Setup Flutter
       uses: subosito/flutter-action@v2
       with:
-        flutter-version: '3.19.0'
+        flutter-version: '3.19.0' # 💡 تأكد من توافق هذا الإصدار مع إصدار Flutter لديك
     
     - name: Install dependencies
       run: flutter pub get
       
     - name: Build web
+      # 💡 هذا الخيار صحيح: تحديد المسار الأساسي
       run: flutter build web --base-href "/DriversApp/"
     
     - name: Deploy to GitHub Pages
@@ -27,4 +28,5 @@ jobs:
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
         publish_dir: ./build/web
+        # 💡 تأكد من أن هذا الفرع هو الذي تم إعداده للنشر في إعدادات GitHub Pages
         publish_branch: gh-pages 
