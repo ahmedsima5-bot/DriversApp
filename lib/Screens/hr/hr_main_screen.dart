@@ -5,6 +5,9 @@ import 'hr_requests_screen.dart';
 import 'hr_drivers_management.dart';
 import 'hr_reports_screen.dart';
 import 'hr_dashboard.dart';
+// 💡 استيراد شاشة طلب جديد (يجب التأكد من المسار الصحيح لديك)
+import '../requester/new_request_screen.dart';
+
 
 class HRMainScreen extends StatefulWidget {
   final String companyId;
@@ -22,10 +25,28 @@ class _HRMainScreenState extends State<HRMainScreen> {
   int _pendingRequestsCount = 0;
   bool _loadingPendingCount = true;
 
+  // 💡 تحديد بيانات افتراضية للمستخدم الحالي لعمل زر الطلب الجديد
+  String _currentUserId = 'HR_Admin_ID';
+  String _currentUserName = 'مسؤول الموارد البشرية';
+
+
   @override
   void initState() {
     super.initState();
     _loadPendingRequestsCount();
+    _getCurrentUserAndLoadCount(); // 💡 إضافة دالة جلب بيانات المستخدم
+  }
+
+  // 💡 دالة لجلب بيانات المستخدم الحالي
+  void _getCurrentUserAndLoadCount() {
+    final user = _auth.currentUser;
+    if (user != null) {
+      // في تطبيق حقيقي، يجب جلب اسم المستخدم من Firestore هنا
+      setState(() {
+        _currentUserId = user.uid;
+        _currentUserName = user.displayName ?? 'مسؤول الموارد البشرية';
+      });
+    }
   }
 
   Future<void> _loadPendingRequestsCount() async {
@@ -52,7 +73,10 @@ class _HRMainScreenState extends State<HRMainScreen> {
   Future<void> _logout() async {
     try {
       await _auth.signOut();
-      Navigator.pushReplacementNamed(context, '/login');
+      // تأكد من وجود مسار '/login' في ملف main.dart
+      if (mounted) {
+        Navigator.pushReplacementNamed(context, '/login');
+      }
     } catch (e) {
       print('❌ خطأ في تسجيل الخروج: $e');
     }
@@ -91,182 +115,15 @@ class _HRMainScreenState extends State<HRMainScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('الموارد البشرية - ${widget.companyId}'),
-        backgroundColor: Colors.blue[800],
-        foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: _showLogoutConfirmation,
-            tooltip: 'تسجيل الخروج',
-          ),
-        ],
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.people, size: 80, color: Colors.blue),
-            const SizedBox(height: 20),
-            const Text(
-              'مرحباً بك في الموارد البشرية',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'معرف الشركة: ${widget.companyId}',
-              style: const TextStyle(fontSize: 16, color: Colors.grey),
-            ),
-            const SizedBox(height: 30),
-
-            // زر لوحة التحكم
-            ElevatedButton(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => HRDashboard(companyId: widget.companyId),
-                  ),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                minimumSize: const Size(250, 60),
-                backgroundColor: Colors.orange[700],
-                foregroundColor: Colors.white,
-                elevation: 4,
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.dashboard, size: 24),
-                  SizedBox(width: 8),
-                  Text(
-                    'لوحة التحكم',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-            // زر إدارة الطلبات مع إشعار
-            Stack(
-              children: [
-                ElevatedButton(
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) => HRRequestsScreen(companyId: widget.companyId),
-                      ),
-                    ).then((_) => _loadPendingRequestsCount());
-                  },
-                  style: ElevatedButton.styleFrom(
-                    minimumSize: const Size(250, 50),
-                    backgroundColor: Colors.blue,
-                    foregroundColor: Colors.white,
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.request_page, size: 20),
-                      SizedBox(width: 8),
-                      Text(
-                        'إدارة الطلبات',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
-                ),
-                if (_pendingRequestsCount > 0 && !_loadingPendingCount)
-                  Positioned(
-                    right: 8,
-                    top: 8,
-                    child: Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: const BoxDecoration(
-                        color: Colors.red,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Text(
-                        _pendingRequestsCount > 9 ? '9+' : _pendingRequestsCount.toString(),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-
-            const SizedBox(height: 15),
-
-            // زر إدارة السائقين
-            ElevatedButton(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => HRDriversManagement(companyId: widget.companyId),
-                  ),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                minimumSize: const Size(250, 50),
-                backgroundColor: Colors.green,
-                foregroundColor: Colors.white,
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.directions_car, size: 20),
-                  SizedBox(width: 8),
-                  Text(
-                    'إدارة السائقين',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 15),
-
-            // زر التقارير
-            ElevatedButton(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => HRReportsScreen(companyId: widget.companyId),
-                  ),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                minimumSize: const Size(250, 50),
-                backgroundColor: Colors.purple,
-                foregroundColor: Colors.white,
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.analytics, size: 20),
-                  SizedBox(width: 8),
-                  Text(
-                    'التقارير والإحصائيات',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 25),
-
-            // معلومات سريعة
-            _buildQuickInfo(),
-          ],
+  // 💡 دالة لفتح شاشة إنشاء طلب جديد
+  void _navigateToNewRequestScreen() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        // يجب أن يكون هذا هو اسم الـ Class الصحيح لصفحة الطلب الجديد لديك
+        builder: (context) => NewTransferRequestScreen(
+          companyId: widget.companyId,
+          userId: _currentUserId, // نمرر الـ ID
+          userName: _currentUserName, // نمرر الاسم
         ),
       ),
     );
@@ -330,6 +187,218 @@ class _HRMainScreenState extends State<HRMainScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('الموارد البشرية - ${widget.companyId}'),
+        backgroundColor: Colors.blue[800],
+        foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: _showLogoutConfirmation,
+            tooltip: 'تسجيل الخروج',
+          ),
+        ],
+      ),
+      body: Center(
+        child: SingleChildScrollView( // 💡 استخدام SingleChildScrollView لضمان التمرير على الشاشات الصغيرة
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.people, size: 80, color: Colors.blue),
+              const SizedBox(height: 20),
+              Text(
+                // 💡 ترحيب باسم المستخدم
+                'مرحباً بك يا ${_currentUserName}',
+                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'معرف الشركة: ${widget.companyId}',
+                style: const TextStyle(fontSize: 16, color: Colors.grey),
+              ),
+              const SizedBox(height: 30),
+
+              // زر لوحة التحكم
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => HRDashboard(companyId: widget.companyId),
+                    ),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  minimumSize: const Size(280, 70), // زيادة حجم الزر
+                  backgroundColor: Colors.orange[700],
+                  foregroundColor: Colors.white,
+                  elevation: 6, // زيادة الظل
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.dashboard, size: 28), // زيادة حجم الأيقونة
+                    SizedBox(width: 12),
+                    Text(
+                      'لوحة التحكم',
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              // ❌ تم حذف الزر القديم لإنشاء طلب نقل جديد من هنا
+
+              // زر إدارة الطلبات مع إشعار
+              Stack(
+                alignment: AlignmentDirectional.centerEnd, // تعديل المحاذاة ليكون الإشعار على اليسار في التصميم العربي
+                children: [
+                  ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => HRRequestsScreen(companyId: widget.companyId),
+                        ),
+                      ).then((_) => _loadPendingRequestsCount());
+                    },
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size(280, 60), // توحيد الحجم
+                      backgroundColor: Colors.blue.shade600,
+                      foregroundColor: Colors.white,
+                      elevation: 4,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.request_page, size: 24),
+                        SizedBox(width: 12),
+                        Text(
+                          'إدارة الطلبات',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (_pendingRequestsCount > 0 && !_loadingPendingCount)
+                    Positioned(
+                      // 💡 تعديل وضع الإشعار ليكون على اليسار (بداية الـ Stack)
+                      left: 10,
+                      top: 10,
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: const BoxDecoration(
+                          color: Colors.red,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Text(
+                          _pendingRequestsCount > 9 ? '9+' : _pendingRequestsCount.toString(),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+
+              const SizedBox(height: 15),
+
+              // زر إدارة السائقين
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => HRDriversManagement(companyId: widget.companyId),
+                    ),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  minimumSize: const Size(280, 60),
+                  backgroundColor: Colors.indigo.shade600, // تغيير اللون لزيادة التباين
+                  foregroundColor: Colors.white,
+                  elevation: 4,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.directions_car, size: 24),
+                    SizedBox(width: 12),
+                    Text(
+                      'إدارة السائقين',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 15),
+
+              // زر التقارير
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => HRReportsScreen(companyId: widget.companyId),
+                    ),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  minimumSize: const Size(280, 60),
+                  backgroundColor: Colors.purple.shade600,
+                  foregroundColor: Colors.white,
+                  elevation: 4,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.analytics, size: 24),
+                    SizedBox(width: 12),
+                    Text(
+                      'التقارير والإحصائيات',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 25),
+
+              // معلومات سريعة
+              _buildQuickInfo(),
+            ],
+          ),
+        ),
+      ),
+      // 💡 إضافة الزر العائم في أسفل يسار الشاشة (Floating Action Button)
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _navigateToNewRequestScreen,
+        tooltip: 'إنشاء طلب جديد', // الإيحاء النصي
+        backgroundColor: Colors.green[600],
+        foregroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), // شكل مربع خفيف
+        icon: const Icon(Icons.add), // علامة +
+        label: const Text(
+          'طلب جديد', // النص المكتوب
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+        ),
+      ),
+      // 💡 وضع الزر في أسفل يسار الشاشة (EndDocked/End) ليتناسب مع التصميم العربي
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
 }
