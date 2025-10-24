@@ -12,18 +12,11 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.16.9'
+          flutter-version: '3.22.0'  # إصدار أحدث
 
       - run: flutter pub get
       - run: flutter clean
       - run: flutter build web --base-href /DriversApp/ --release
-
-      - name: Debug - List build contents
-        run: |
-          echo "=== محتويات build/web ==="
-          ls -la build/web/
-          echo "=== محتويات index.html ==="
-          cat build/web/index.html | head -20
 
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v3
