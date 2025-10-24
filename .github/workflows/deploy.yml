@@ -14,13 +14,16 @@ jobs:
         with:
           flutter-version: '3.16.9'
 
-      - name: Fix base href in index.html
-        run: |
-          sed -i 's|<base href=".*">|<base href="/DriversApp/">|g' web/index.html
-
       - run: flutter pub get
       - run: flutter clean
       - run: flutter build web --base-href /DriversApp/ --release
+
+      - name: Debug - List build contents
+        run: |
+          echo "=== محتويات build/web ==="
+          ls -la build/web/
+          echo "=== محتويات index.html ==="
+          cat build/web/index.html | head -20
 
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v3
