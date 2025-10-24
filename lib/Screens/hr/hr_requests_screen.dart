@@ -203,31 +203,13 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
         'assignedDriverId': driverId,
         'assignedDriverName': driverName,
         'assignedAt': FieldValue.serverTimestamp(),
+        'startedAt': FieldValue.serverTimestamp(), // 🔥 إضافة وقت البدء
         'lastUpdated': FieldValue.serverTimestamp(),
       });
-
-      // 🔥 تحديث حالة السائق ليكون غير متاح
-      await FirebaseFirestore.instance
-          .collection('companies')
-          .doc(widget.companyId)
-          .collection('drivers')
-          .doc(driverId)
-          .update({
-        'isAvailable': false,
-        'lastStatusUpdate': FieldValue.serverTimestamp(),
-      });
-
-      print('✅ تم تعيين السائق $driverName للطلب: ${request['id']}');
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('تم تعيين السائق $driverName للطلب #${request['id'].substring(0, 6)}'),
-          backgroundColor: Colors.green,
-        ),
-      );
-
-      _loadRequests(); // إعادة تحميل البيانات
+      // ... باقي الكود
     } catch (e) {
+      // ... معالجة الأخطاء
+
       print('❌ خطأ في تعيين السائق: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

@@ -25,6 +25,7 @@ class _HRDriversManagementState extends State<HRDriversManagement> {
   }
 
   Future<void> _loadRealDrivers() async {
+    setState(() => _loading = true); // تأكد من عرض شاشة التحميل عند التحديث
     try {
       final driversSnapshot = await _firestore
           .collection('companies')
@@ -49,12 +50,57 @@ class _HRDriversManagementState extends State<HRDriversManagement> {
         _loading = false;
       });
     } catch (e) {
+      // استخدم ScaffoldMessenger لعرض رسالة خطأ للمستخدم إذا لم تكن قادرة على استخدام حزمة logger
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('❌ خطأ في جلب السائقين: $e')),
+        );
+      }
       print('❌ خطأ في جلب السائقين: $e');
       setState(() {
         _loading = false;
       });
     }
   }
+
+  // ------------------------------------------------------------------
+  //  وظيفة تحديث حالة النشاط (تشغيل/إيقاف السائق)
+  // ------------------------------------------------------------------
+  Future<void> _toggleDriverActiveStatus(String driverId, bool newStatus) async {
+    try {
+      await _firestore
+          .collection('companies')
+          .doc(widget.companyId)
+          .collection('drivers')
+          .doc(driverId)
+          .update({
+        'isActive': newStatus,
+        // عند الإيقاف، من المنطقي جعله غير متاح أيضاً
+        if (!newStatus) 'isAvailable': false,
+      });
+
+      // إعادة تحميل البيانات بعد التحديث
+      await _loadRealDrivers();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              newStatus ? '✅ تم تشغيل السائق بنجاح.' : '🚫 تم إيقاف السائق بنجاح.',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('❌ خطأ في تحديث الحالة: $e')),
+        );
+      }
+      print('❌ خطأ في تحديث حالة السائق: $e');
+    }
+  }
+  // ------------------------------------------------------------------
 
   String _getStatus(bool isAvailable, bool isActive) {
     if (!isActive) return 'غير نشط';
@@ -68,7 +114,7 @@ class _HRDriversManagementState extends State<HRDriversManagement> {
       case 'مشغول':
         return Colors.orange;
       case 'غير نشط':
-        return Colors.grey;
+        return Colors.red.shade700; // تم تغيير اللون لتمييز الإيقاف
       default:
         return Colors.grey;
     }
@@ -123,8 +169,8 @@ class _HRDriversManagementState extends State<HRDriversManagement> {
       margin: const EdgeInsets.only(bottom: 10),
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: Colors.green.shade100,
-          child: const Icon(Icons.person, color: Colors.green),
+          backgroundColor: driver['isActive'] ? Colors.green.shade100 : Colors.grey.shade300,
+          child: Icon(Icons.person, color: driver['isActive'] ? Colors.green : Colors.grey.shade600),
         ),
         title: Text(driver['name']),
         subtitle: Column(
@@ -150,7 +196,8 @@ class _HRDriversManagementState extends State<HRDriversManagement> {
   }
 
   void _showDriverDetails(Map<String, dynamic> driver) {
-    final status = _getStatus(driver['isAvailable'], driver['isActive']);
+    final bool isActive = driver['isActive'];
+    final String status = _getStatus(driver['isAvailable'], isActive);
 
     showDialog(
       context: context,
@@ -163,9 +210,35 @@ class _HRDriversManagementState extends State<HRDriversManagement> {
             _buildDetailRow('رقم السائق:', driver['id']),
             _buildDetailRow('الهاتف:', driver['phone']),
             _buildDetailRow('البريد:', driver['email']),
-            _buildDetailRow('الحالة:', status),
+            _buildDetailRow('الحالة الحالية:', status, color: _getStatusColor(status)),
             _buildDetailRow('المشاوير المكتملة:', '${driver['completedRides']}'),
-            _buildDetailRow('نشط:', driver['isActive'] ? 'نعم' : 'لا'),
+            _buildDetailRow('متوفر حالياً:', driver['isAvailable'] ? 'نعم' : 'لا'),
+
+            const Divider(height: 20),
+            Text(
+              'إدارة حالة النشاط (تشغيل/إيقاف)',
+              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green.shade800),
+            ),
+            const SizedBox(height: 10),
+
+            // ------------------------------------------------------------------
+            // زر التحكم بحالة النشاط
+            // ------------------------------------------------------------------
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.pop(context); // إغلاق النافذة
+                // تبديل حالة النشاط: إذا كان نشطًا سيصبح غير نشط، والعكس صحيح
+                _toggleDriverActiveStatus(driver['id'], !isActive);
+              },
+              icon: Icon(isActive ? Icons.person_off : Icons.play_arrow),
+              label: Text(isActive ? 'إيقاف مؤقت (غير نشط)' : 'تشغيل (جعله نشطًا)'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: isActive ? Colors.red.shade600 : Colors.green,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 40),
+              ),
+            ),
+            // ------------------------------------------------------------------
           ],
         ),
         actions: [
@@ -178,14 +251,15 @@ class _HRDriversManagementState extends State<HRDriversManagement> {
     );
   }
 
-  Widget _buildDetailRow(String label, String value) {
+  Widget _buildDetailRow(String label, String value, {Color? color}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(width: 8),
-          Expanded(child: Text(value)),
+          Expanded(child: Text(value, style: TextStyle(color: color))),
         ],
       ),
     );
