@@ -17,7 +17,7 @@ dependencies:
   google_maps_flutter: ^2.5.0
   uuid: ^4.2.1
   connectivity_plus: ^5.0.2
-  intl: ^0.20.2
+  intl: any
   flutter_map: ^5.0.0
   geolocator: 9.0.2
   image_picker: ^1.0.4
