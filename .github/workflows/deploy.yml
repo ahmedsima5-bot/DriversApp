@@ -12,29 +12,20 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.19.5'
+          flutter-version: '3.16.9'
+
+      - name: Fix base href in index.html
+        run: |
+          sed -i 's|<base href=".*">|<base href="/DriversApp/">|g' web/index.html
 
       - run: flutter pub get
       - run: flutter clean
-      - run: flutter build web --base-href /DriversApp/ --web-renderer html --release
+      - run: flutter build web --base-href /DriversApp/ --release
 
-      - name: Create CNAME file
-        run: echo "ahmedsima5-bot.github.io/DriversApp" > build/web/CNAME
-
-      - name: List build contents
-        run: ls -la build/web/
-
-      - name: Upload to GitHub Pages
+      - name: Deploy
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./build/web
           publish_branch: gh-pages
           force_orphan: true
-
-  deploy:
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - name: Wait for pages
-        run: sleep 30
