@@ -1,0 +1,40 @@
+name: Deploy Flutter Web
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.19.5'
+
+      - run: flutter pub get
+      - run: flutter clean
+      - run: flutter build web --base-href /DriversApp/ --web-renderer html --release
+
+      - name: Create CNAME file
+        run: echo "ahmedsima5-bot.github.io/DriversApp" > build/web/CNAME
+
+      - name: List build contents
+        run: ls -la build/web/
+
+      - name: Upload to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./build/web
+          publish_branch: gh-pages
+          force_orphan: true
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Wait for pages
+        run: sleep 30
