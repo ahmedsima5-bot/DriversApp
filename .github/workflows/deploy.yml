@@ -10,15 +10,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.22.0'
-
-      - name: Show Flutter info
-        run: |
-          flutter --version
-          dart --version
 
       - run: flutter pub get
       - run: flutter clean
