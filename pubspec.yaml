@@ -12,16 +12,16 @@ dependencies:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
-  #syncfusion_flutter_charts: ^31.2.3
+
   # الحزم الأساسية
   google_maps_flutter: ^2.5.0
   uuid: ^4.2.1
   connectivity_plus: ^5.0.2
-  intl: any
+  intl: ^0.20.2  # ⬅️ حدد إصدار متوافق
   flutter_map: ^5.0.0
-  geolocator: 9.0.2
+  geolocator: ^9.0.2
   image_picker: ^1.0.4
-  #shared_preferences: ^2.2.2
+  shared_preferences: ^2.2.2
   provider: ^6.1.1
   google_translator: ^1.0.0
   http: ^1.1.0
@@ -32,10 +32,11 @@ dependencies:
   cloud_firestore: ^4.13.0
   firebase_messaging: ^14.7.2
   flutter_local_notifications: ^16.3.0
-
-  # 🔥 الحزم الناقصة للمنصات (لإزالة التحذيرات)
+  syncfusion_flutter_charts: ^31.2.3
+  # 🔥 الحزم الناقصة للمنصات (الحل النهائي)
   shared_preferences_linux: ^2.1.1
   shared_preferences_windows: ^2.1.1
+  shared_preferences_web: ^2.1.1  # ⬅️ أضف هذا أيضاً
 
 dev_dependencies:
   flutter_test:
