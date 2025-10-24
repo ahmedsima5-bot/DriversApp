@@ -32,7 +32,7 @@ dependencies:
   cloud_firestore: ^4.13.0
   firebase_messaging: ^14.7.2
   flutter_local_notifications: ^16.3.0
-  syncfusion_flutter_charts: ^32.0.0
+  syncfusion_flutter_charts: ^31.1.23
   # 🔥 الحزم الناقصة للمنصات (الحل النهائي)
   shared_preferences_linux: ^2.1.1
   shared_preferences_windows: ^2.1.1
