@@ -25,9 +25,11 @@ class ConnectivityService {
   // 3. Getter يتيح الوصول إلى Stream لمراقبة تغييرات الاتصال
   Stream<ConnectivityResult> get connectivityStream => _controller.stream;
 
-  // 4. دالة للتحقق الفوري من الحالة الحالية للاتصال
+  // هذا هو التعديل الوحيد المطلوب في ملف الخدمة
   static Future<bool> isConnected() async {
-    final result = await Connectivity().checkConnectivity();
-    return result != ConnectivityResult.none;
+    final results = await Connectivity().checkConnectivity();
+
+    // نستخدم results.contains(ConnectivityResult.none) للتحقق مما إذا كانت القائمة تحتوي على عدم اتصال
+    return !results.contains(ConnectivityResult.none);
   }
 }
