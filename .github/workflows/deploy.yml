@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -53,8 +56,8 @@ jobs:
       - name: Commit and Push to Main
         run: |
           echo "=== رفع التغييرات ==="
-          git config --local user.email "ahmedsima5@gmail.com"
-          git config --local user.name "ahmedsima5-bot"
+          git config --local user.email "github-actions@github.com"
+          git config --local user.name "github-actions[bot]"
           git add docs/
-          git commit -m "Deploy Flutter Web to Docs"
+          git commit -m "🚀 Deploy Flutter Web to Docs"
           git push
