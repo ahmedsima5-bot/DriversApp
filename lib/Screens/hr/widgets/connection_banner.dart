@@ -1,5 +1,7 @@
 // widgets/connection_banner.dart
 import 'package:flutter/material.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:drivers/services/connectivity_service.dart';
 
 class ConnectionBanner extends StatefulWidget {
   const ConnectionBanner({super.key});
