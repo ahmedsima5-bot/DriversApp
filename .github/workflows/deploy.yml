@@ -52,7 +52,7 @@ jobs:
           cp -r build/web/* docs/
           touch docs/.nojekyll
           echo "✅ تم نسخ الملفات إلى docs"
-
+###e
       - name: Commit and Push to Main
         run: |
           echo "=== رفع التغييرات ==="
