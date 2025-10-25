@@ -3,7 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'services/firebase_options.dart';
-import 'screens/auth/login_screen.dart';
+import 'Screens/auth/login_screen.dart';
 import 'services/dispatch_service.dart';
 import 'services/language_service.dart';
 import 'providers/language_provider.dart';
