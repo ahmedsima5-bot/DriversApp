@@ -4,62 +4,41 @@ on:
   push:
     branches: [main]
 
+# إضافة permissions صريحة
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      # 1. التحقق من هيكل الملفات (المضافة حديثاً)
-      - name: Check project structure
-        run: |
-          echo "=== Checking project structure ==="
-          find . -name "*.dart" | head -20
-          echo "=== Looking for main.dart and login_screen.dart ==="
-          find . -name "main.dart" -o -name "login_screen.dart" | grep -v ".dart_tool" || echo "Required files not found!"
-          echo "=== Project structure check completed ==="
+      - name: Fix Import Path
+        run: sed -i 's|screens/auth/login_screen|Screens/auth/login_screen|g' lib/main.dart
 
-      # 2. إعداد بيئة Flutter
-      - name: Setup Flutter SDK
+      - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
 
-      # 3. خطوة التخزين المؤقت لحزم الـ Pub
-      - name: Cache Pub Dependencies
-        uses: actions/cache@v3
-        with:
-          path: /home/runner/.pub-cache
-          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-pub-
-
-      # 4. الحصول على dependencies
-      - name: Get Dependencies
+      - name: Install Dependencies
         run: flutter pub get
 
-      # 5. التحقق من صحة المشروع قبل البناء
-      - name: Validate Project
-        run: |
-          echo "=== Running flutter analyze ==="
-          flutter analyze || echo "Analysis completed with warnings"
-          echo "=== Checking for missing imports ==="
-          dart --version
-
-      # 6. تنظيف ملفات البناء
-      - name: Clean Build Files
-        run: flutter clean
-
-      # 7. بناء تطبيق الويب
-      - name: Build Web Release
+      - name: Build Web
         run: flutter build web --base-href /DriversApp/ --release
 
-      # 8. النشر على صفحة GitHub
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
+      - name: Setup Pages
+        uses: actions/configure-pages@v3
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v2
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./build/web
-          publish_branch: gh-pages
-          force_orphan: true
+          path: './build/web'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v2
