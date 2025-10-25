@@ -11,20 +11,21 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 1. إعداد بيئة Flutter
+      - name: Fix Import Path
+        run: |
+          echo "=== إصلاح مسار الملف ==="
+          sed -i 's|screens/auth/login_screen|Screens/auth/login_screen|g' lib/main.dart
+          echo "✅ تم إصلاح المسار"
+
       - name: Setup Flutter SDK
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
 
-      # 2. خطوة التخزين المؤقت لحزم الـ Pub (المضافة/المحسنة)
-      # هذا يستهدف مجلد ~/.pub-cache لتسريع وثبات عملية flutter pub get
       - name: Cache Pub Dependencies
         uses: actions/cache@v3
         with:
-          # المسار القياسي لمجلد الـ Pub cache على خادم ubuntu-latest
           path: /home/runner/.pub-cache
-          # المفتاح يعتمد على pubspec.lock لضمان التحديث عند إضافة حزمة جديدة
           key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
           restore-keys: |
             ${{ runner.os }}-pub-
@@ -32,18 +33,26 @@ jobs:
       - name: Get Dependencies
         run: flutter pub get
 
-      - name: Clean Build Files (لضمان بناء نظيف)
+      - name: Clean Build Files
         run: flutter clean
 
-      # 3. بناء تطبيق الويب
       - name: Build Web Release
         run: flutter build web --base-href /DriversApp/ --release
 
-      # 4. النشر على صفحة GitHub (فرع gh-pages)
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./build/web
-          publish_branch: gh-pages
-          force_orphan: true
+      - name: Deploy to Docs Folder
+        run: |
+          echo "=== النشر على مجلد docs ==="
+          rm -rf docs
+          mkdir docs
+          cp -r build/web/* docs/
+          touch docs/.nojekyll
+          echo "✅ تم نسخ الملفات إلى docs"
+
+      - name: Commit and Push to Main
+        run: |
+          echo "=== رفع التغييرات ==="
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add docs/
+          git commit -m "Deploy Flutter Web to Docs"
+          git push
