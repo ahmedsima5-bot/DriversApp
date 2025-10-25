@@ -8,18 +8,40 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-      - uses: subosito/flutter-action@v2
+      # 1. إعداد بيئة Flutter
+      - name: Setup Flutter SDK
+        uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
+          # استخدام إصدار ثابت لزيادة الموثوقية (اختياري)
+          # flutter-version: '3.35.7'
 
-      - run: flutter doctor
-      - run: flutter pub get
-      - run: flutter clean
-      - run: flutter build web --base-href /DriversApp/ --release
+      # 2. استخدام الذاكرة المؤقتة لـ Pub (لتسريع عملية pub get)
+      - name: Cache Flutter dependencies
+        uses: actions/cache@v3
+        with:
+          path: ${{ runner.tool_cache }}/flutter
+          # استخدام pubspec.lock لتحديد ما إذا كانت الحزم قد تغيرت
+          key: ${{ runner.os }}-flutter-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-flutter-
 
-      - name: Deploy
+      - name: Get Dependencies
+        run: flutter pub get
+
+      - name: Clean Build Files (اختياري، لضمان بناء نظيف)
+        run: flutter clean
+
+      # 3. بناء تطبيق الويب
+      # تم الإبقاء على --base-href /DriversApp/
+      - name: Build Web Release
+        run: flutter build web --base-href /DriversApp/ --release
+
+      # 4. النشر على صفحة GitHub (فرع gh-pages)
+      - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
