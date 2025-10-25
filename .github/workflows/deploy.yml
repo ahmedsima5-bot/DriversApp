@@ -16,27 +16,26 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-          # استخدام إصدار ثابت لزيادة الموثوقية (اختياري)
-          # flutter-version: '3.35.7'
 
-      # 2. استخدام الذاكرة المؤقتة لـ Pub (لتسريع عملية pub get)
-      - name: Cache Flutter dependencies
+      # 2. خطوة التخزين المؤقت لحزم الـ Pub (المضافة/المحسنة)
+      # هذا يستهدف مجلد ~/.pub-cache لتسريع وثبات عملية flutter pub get
+      - name: Cache Pub Dependencies
         uses: actions/cache@v3
         with:
-          path: ${{ runner.tool_cache }}/flutter
-          # استخدام pubspec.lock لتحديد ما إذا كانت الحزم قد تغيرت
-          key: ${{ runner.os }}-flutter-${{ hashFiles('**/pubspec.lock') }}
+          # المسار القياسي لمجلد الـ Pub cache على خادم ubuntu-latest
+          path: /home/runner/.pub-cache
+          # المفتاح يعتمد على pubspec.lock لضمان التحديث عند إضافة حزمة جديدة
+          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
           restore-keys: |
-            ${{ runner.os }}-flutter-
+            ${{ runner.os }}-pub-
 
       - name: Get Dependencies
         run: flutter pub get
 
-      - name: Clean Build Files (اختياري، لضمان بناء نظيف)
+      - name: Clean Build Files (لضمان بناء نظيف)
         run: flutter clean
 
       # 3. بناء تطبيق الويب
-      # تم الإبقاء على --base-href /DriversApp/
       - name: Build Web Release
         run: flutter build web --base-href /DriversApp/ --release
 
