@@ -10,6 +10,8 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Fix Import Path
         run: |
@@ -51,8 +53,8 @@ jobs:
       - name: Commit and Push to Main
         run: |
           echo "=== رفع التغييرات ==="
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
+          git config --local user.email "ahmedsima5@gmail.com"
+          git config --local user.name "ahmedsima5-bot"
           git add docs/
           git commit -m "Deploy Flutter Web to Docs"
           git push
