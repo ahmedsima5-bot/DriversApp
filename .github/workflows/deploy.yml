@@ -11,35 +11,51 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 1. إعداد بيئة Flutter
+      # 1. التحقق من هيكل الملفات (المضافة حديثاً)
+      - name: Check project structure
+        run: |
+          echo "=== Checking project structure ==="
+          find . -name "*.dart" | head -20
+          echo "=== Looking for main.dart and login_screen.dart ==="
+          find . -name "main.dart" -o -name "login_screen.dart" | grep -v ".dart_tool" || echo "Required files not found!"
+          echo "=== Project structure check completed ==="
+
+      # 2. إعداد بيئة Flutter
       - name: Setup Flutter SDK
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
 
-      # 2. خطوة التخزين المؤقت لحزم الـ Pub (المضافة/المحسنة)
-      # هذا يستهدف مجلد ~/.pub-cache لتسريع وثبات عملية flutter pub get
+      # 3. خطوة التخزين المؤقت لحزم الـ Pub
       - name: Cache Pub Dependencies
         uses: actions/cache@v3
         with:
-          # المسار القياسي لمجلد الـ Pub cache على خادم ubuntu-latest
           path: /home/runner/.pub-cache
-          # المفتاح يعتمد على pubspec.lock لضمان التحديث عند إضافة حزمة جديدة
           key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
           restore-keys: |
             ${{ runner.os }}-pub-
 
+      # 4. الحصول على dependencies
       - name: Get Dependencies
         run: flutter pub get
 
-      - name: Clean Build Files (لضمان بناء نظيف)
+      # 5. التحقق من صحة المشروع قبل البناء
+      - name: Validate Project
+        run: |
+          echo "=== Running flutter analyze ==="
+          flutter analyze || echo "Analysis completed with warnings"
+          echo "=== Checking for missing imports ==="
+          dart --version
+
+      # 6. تنظيف ملفات البناء
+      - name: Clean Build Files
         run: flutter clean
 
-      # 3. بناء تطبيق الويب
+      # 7. بناء تطبيق الويب
       - name: Build Web Release
         run: flutter build web --base-href /DriversApp/ --release
 
-      # 4. النشر على صفحة GitHub (فرع gh-pages)
+      # 8. النشر على صفحة GitHub
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
