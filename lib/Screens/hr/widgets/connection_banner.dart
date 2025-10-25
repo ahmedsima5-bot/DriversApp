@@ -17,7 +17,7 @@ class _ConnectionBannerState extends State<ConnectionBanner> {
   void initState() {
     super.initState();
     _checkConnection();
-    ConnectivityService.connectivityStream.listen(_updateConnectionStatus);
+    ConnectivityService().connectivityStream.listen(_updateConnectionStatus);
   }
 
   void _updateConnectionStatus(ConnectivityResult result) {
