@@ -28,10 +28,19 @@ class _DriverDashboardState extends State<DriverDashboard> {
   bool _driverProfileExists = false;
   StreamSubscription? _requestsSubscription;
 
+  // 🔥 نظام السيارات
+  List<Map<String, dynamic>> _availableVehicles = [];
+  bool _loadingVehicles = false;
+
   // 🔥 مؤقتات للطلبات قيد التنفيذ
   final Map<String, Timer> _activeTimers = {};
   final Map<String, Duration> _rideDurations = {};
   final Map<String, DateTime> _rideStartTimes = {};
+
+  // 🔥 تحكمات لإدخال السيارة يدوياً
+  final TextEditingController _manualModelController = TextEditingController();
+  final TextEditingController _manualPlateController = TextEditingController();
+  final TextEditingController _manualTypeController = TextEditingController(text: 'سيارة');
 
   String _translate(String key, String languageCode) {
     return AppLocalizations.getTranslatedValue(key, languageCode);
@@ -48,21 +57,55 @@ class _DriverDashboardState extends State<DriverDashboard> {
   @override
   void dispose() {
     _requestsSubscription?.cancel();
-    // 🔥 تنظيف جميع المؤقتات
     _activeTimers.forEach((key, timer) => timer.cancel());
     _activeTimers.clear();
+    _manualModelController.dispose();
+    _manualPlateController.dispose();
+    _manualTypeController.dispose();
     super.dispose();
+  }
+
+  // 🔥 تحميل السيارات المتاحة
+  Future<void> _loadAvailableVehicles() async {
+    try {
+      setState(() {
+        _loadingVehicles = true;
+      });
+
+      final vehiclesSnapshot = await _firestore
+          .collection('companies')
+          .doc(_companyId)
+          .collection('vehicles')
+          .where('isAvailable', isEqualTo: true)
+          .get();
+
+      setState(() {
+        _availableVehicles = vehiclesSnapshot.docs.map((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          return {
+            'id': doc.id,
+            'model': data['model'] ?? 'غير محدد',
+            'plateNumber': data['plateNumber'] ?? 'غير محدد',
+            'type': data['type'] ?? 'سيارة',
+          };
+        }).toList();
+        _loadingVehicles = false;
+      });
+
+      debugPrint('✅ Loaded ${_availableVehicles.length} available vehicles');
+    } catch (e) {
+      setState(() {
+        _loadingVehicles = false;
+      });
+      debugPrint('❌ Error loading vehicles: $e');
+    }
   }
 
   // 🔥 بدء مؤقت للرحلة
   void _startRideTimer(String requestId, DateTime startTime) {
-    // إلغاء المؤقت القديم إذا كان موجوداً
     _activeTimers[requestId]?.cancel();
-
-    // حفظ وقت البدء
     _rideStartTimes[requestId] = startTime;
 
-    // بدء مؤقت جديد
     _activeTimers[requestId] = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (mounted) {
         setState(() {
@@ -134,7 +177,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
 
     } else if (changeType == DocumentChangeType.modified) {
       if (status == 'IN_PROGRESS') {
-        // 🔥 بدء المؤقت عند بدء الرحلة
         final rideStartTime = request['rideStartTime'] != null
             ? (request['rideStartTime'] as Timestamp).toDate()
             : DateTime.now();
@@ -143,9 +185,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
         SimpleNotificationService.notifyRideStarted(context, requestId);
 
       } else if (status == 'COMPLETED') {
-        // 🔥 إيقاف المؤقت عند انتهاء الرحلة
         _stopRideTimer(requestId);
-
         SimpleNotificationService.notifyRideCompleted(context, requestId);
         _loadDriverRequests();
       }
@@ -172,6 +212,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
           _companyId = companyId;
           _driverProfileExists = true;
 
+          _loadAvailableVehicles();
           debugPrint('✅ Driver found: $_driverId');
         } else {
           setState(() {
@@ -206,11 +247,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
           'isAvailable': true,
           'isActive': true,
           'completedRides': 0,
-          'vehicleInfo': {
-            'type': 'سيارة',
-            'model': '2024',
-            'plate': 'غير محدد'
-          },
           'createdAt': FieldValue.serverTimestamp(),
           'lastUpdated': FieldValue.serverTimestamp(),
         });
@@ -220,6 +256,8 @@ class _DriverDashboardState extends State<DriverDashboard> {
           _driverId = driverId;
           _companyId = companyId;
         });
+
+        _loadAvailableVehicles();
 
         SimpleNotificationService.notifySuccess(
             context,
@@ -237,6 +275,254 @@ class _DriverDashboardState extends State<DriverDashboard> {
           'خطأ في تفعيل الحساب: $e'
       );
     }
+  }
+
+  // 🔥 عرض اختيار السيارة
+  Future<void> _showVehicleSelectionDialog(String requestId, String currentLanguage) async {
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.directions_car, color: Colors.blue),
+            const SizedBox(width: 8),
+            Text(_translate('select_vehicle', currentLanguage)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              _translate('choose_vehicle_for_ride', currentLanguage),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+
+            if (_loadingVehicles)
+              const CircularProgressIndicator()
+            else if (_availableVehicles.isEmpty)
+              Column(
+                children: [
+                  const Icon(Icons.car_repair, size: 50, color: Colors.grey),
+                  const SizedBox(height: 8),
+                  Text(
+                    _translate('no_vehicles_available', currentLanguage),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              )
+            else
+              Column(
+                children: [
+                  ..._availableVehicles.map((vehicle) => ListTile(
+                    leading: const Icon(Icons.directions_car, color: Colors.green),
+                    title: Text(vehicle['model']),
+                    subtitle: Text('${vehicle['plateNumber']} - ${vehicle['type']}'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _startRideWithVehicle(requestId, vehicle);
+                    },
+                  )).toList(),
+                  const SizedBox(height: 8),
+                  const Divider(),
+                ],
+              ),
+
+            const SizedBox(height: 8),
+            ListTile(
+              leading: const Icon(Icons.add, color: Colors.orange),
+              title: Text(_translate('other_vehicle', currentLanguage)),
+              onTap: () {
+                Navigator.pop(context);
+                _showManualVehicleDialog(requestId, currentLanguage);
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(_translate('cancel', currentLanguage)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 🔥 عرض نافذة إدخال السيارة يدوياً
+  Future<void> _showManualVehicleDialog(String requestId, String currentLanguage) async {
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: Row(
+              children: [
+                const Icon(Icons.directions_car, color: Colors.orange),
+                const SizedBox(width: 8),
+                Text(_translate('enter_vehicle_info', currentLanguage)),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: _manualModelController,
+                    decoration: InputDecoration(
+                      labelText: _translate('vehicle_model', currentLanguage),
+                      border: const OutlineInputBorder(),
+                      prefixIcon: const Icon(Icons.directions_car),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _manualPlateController,
+                    decoration: InputDecoration(
+                      labelText: _translate('plate_number', currentLanguage),
+                      border: const OutlineInputBorder(),
+                      prefixIcon: const Icon(Icons.confirmation_number),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _manualTypeController,
+                    decoration: InputDecoration(
+                      labelText: _translate('vehicle_type', currentLanguage),
+                      border: const OutlineInputBorder(),
+                      prefixIcon: const Icon(Icons.category),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _manualModelController.clear();
+                  _manualPlateController.clear();
+                  _manualTypeController.text = 'سيارة';
+                },
+                child: Text(_translate('cancel', currentLanguage)),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  if (_manualModelController.text.isEmpty || _manualPlateController.text.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(_translate('enter_vehicle_info_required', currentLanguage)),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                    return;
+                  }
+
+                  Navigator.pop(context);
+                  _startRideWithManualVehicle(requestId);
+                },
+                child: Text(_translate('start_ride', currentLanguage)),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  // 🔥 بدء الرحلة مع سيارة محددة
+  Future<void> _startRideWithVehicle(String requestId, Map<String, dynamic> vehicle) async {
+    try {
+      final startTime = DateTime.now();
+
+      await _firestore
+          .collection('companies')
+          .doc(_companyId)
+          .collection('requests')
+          .doc(requestId)
+          .update({
+        'status': 'IN_PROGRESS',
+        'rideStartTime': FieldValue.serverTimestamp(),
+        'vehicleInfo': {
+          'vehicleId': vehicle['id'],
+          'model': vehicle['model'],
+          'plateNumber': vehicle['plateNumber'],
+          'type': vehicle['type'],
+          'source': 'fleet',
+        },
+        'lastUpdated': FieldValue.serverTimestamp(),
+      });
+
+      await _firestore
+          .collection('companies')
+          .doc(_companyId)
+          .collection('vehicles')
+          .doc(vehicle['id'])
+          .update({
+        'isAvailable': false,
+        'currentRequestId': requestId,
+      });
+
+      _startRideTimer(requestId, startTime);
+      SimpleNotificationService.notifyRideStarted(context, requestId);
+
+      debugPrint('🚗 Ride started: $requestId with vehicle: ${vehicle['plateNumber']}');
+      _loadDriverRequests();
+      _loadAvailableVehicles();
+    } catch (e) {
+      debugPrint('❌ Error starting ride: $e');
+      SimpleNotificationService.notifyError(
+          context,
+          'خطأ في بدء الرحلة: $e'
+      );
+    }
+  }
+
+  // 🔥 بدء الرحلة مع سيارة يدوية
+  Future<void> _startRideWithManualVehicle(String requestId) async {
+    try {
+      final startTime = DateTime.now();
+
+      await _firestore
+          .collection('companies')
+          .doc(_companyId)
+          .collection('requests')
+          .doc(requestId)
+          .update({
+        'status': 'IN_PROGRESS',
+        'rideStartTime': FieldValue.serverTimestamp(),
+        'vehicleInfo': {
+          'vehicleId': 'manual_${DateTime.now().millisecondsSinceEpoch}',
+          'model': _manualModelController.text,
+          'plateNumber': _manualPlateController.text,
+          'type': _manualTypeController.text,
+          'source': 'manual',
+        },
+        'lastUpdated': FieldValue.serverTimestamp(),
+      });
+
+      _startRideTimer(requestId, startTime);
+      SimpleNotificationService.notifyRideStarted(context, requestId);
+
+      _manualModelController.clear();
+      _manualPlateController.clear();
+      _manualTypeController.text = 'سيارة';
+
+      debugPrint('🚗 Ride started: $requestId with manual vehicle');
+      _loadDriverRequests();
+    } catch (e) {
+      debugPrint('❌ Error starting ride with manual vehicle: $e');
+      SimpleNotificationService.notifyError(
+          context,
+          'خطأ في بدء الرحلة: $e'
+      );
+    }
+  }
+
+  // 🔥 بدء الرحلة (الدالة الرئيسية)
+  Future<void> _startRide(String requestId) async {
+    final currentLanguage = Provider.of<LanguageProvider>(context, listen: false).currentLanguage;
+    await _showVehicleSelectionDialog(requestId, currentLanguage);
   }
 
   Future<void> _loadDriverRequests() async {
@@ -278,7 +564,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
             .orderBy('createdAt', descending: true)
             .get();
 
-        // 🔥 تهيئة المؤقتات للطلبات قيد التنفيذ
         for (var doc in requestsSnapshot.docs) {
           final data = doc.data() as Map<String, dynamic>? ?? {};
           if (data['status'] == 'IN_PROGRESS' && data['rideStartTime'] != null) {
@@ -307,7 +592,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
       });
       debugPrint('❌ Error loading requests: $e');
 
-      // 🔥 استخدام SnackBar بدلاً من SimpleNotificationService مؤقتاً
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -319,46 +603,25 @@ class _DriverDashboardState extends State<DriverDashboard> {
     }
   }
 
-  Future<void> _startRide(String requestId) async {
+  Future<void> _completeRide(String requestId) async {
     try {
-      final startTime = DateTime.now();
+      _stopRideTimer(requestId);
 
-      await _firestore
+      final endTime = DateTime.now();
+      final startTime = _rideStartTimes[requestId];
+      final totalDuration = startTime != null ? endTime.difference(startTime) : Duration.zero;
+
+      final requestDoc = await _firestore
           .collection('companies')
           .doc(_companyId)
           .collection('requests')
           .doc(requestId)
-          .update({
-        'status': 'IN_PROGRESS',
-        'rideStartTime': FieldValue.serverTimestamp(),
-        'lastUpdated': FieldValue.serverTimestamp(),
-      });
+          .get();
 
-      // 🔥 بدء المؤقت
-      _startRideTimer(requestId, startTime);
-
-      SimpleNotificationService.notifyRideStarted(context, requestId);
-
-      debugPrint('🚗 Ride started: $requestId');
-      _loadDriverRequests();
-    } catch (e) {
-      debugPrint('❌ Error starting ride: $e');
-      SimpleNotificationService.notifyError(
-          context,
-          'خطأ في بدء الرحلة: $e'
-      );
-    }
-  }
-
-  Future<void> _completeRide(String requestId) async {
-    try {
-      // 🔥 إيقاف المؤقت أولاً
-      _stopRideTimer(requestId);
-
-      // 🔥 حساب المدة النهائية
-      final endTime = DateTime.now();
-      final startTime = _rideStartTimes[requestId];
-      final totalDuration = startTime != null ? endTime.difference(startTime) : Duration.zero;
+      final requestData = requestDoc.data() as Map<String, dynamic>? ?? {};
+      final vehicleInfo = requestData['vehicleInfo'] as Map<String, dynamic>?;
+      final vehicleId = vehicleInfo?['vehicleId'] as String?;
+      final source = vehicleInfo?['source'] as String?;
 
       await _firestore
           .collection('companies')
@@ -371,6 +634,18 @@ class _DriverDashboardState extends State<DriverDashboard> {
         'rideDuration': totalDuration.inSeconds,
         'lastUpdated': FieldValue.serverTimestamp(),
       });
+
+      if (source == 'fleet' && vehicleId != null && !vehicleId.startsWith('manual_')) {
+        await _firestore
+            .collection('companies')
+            .doc(_companyId)
+            .collection('vehicles')
+            .doc(vehicleId)
+            .update({
+          'isAvailable': true,
+          'currentRequestId': null,
+        });
+      }
 
       await _firestore
           .collection('companies')
@@ -387,6 +662,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
 
       debugPrint('✅ Ride completed: $requestId - Duration: ${totalDuration.inMinutes} minutes');
       _loadDriverRequests();
+      _loadAvailableVehicles();
     } catch (e) {
       debugPrint('❌ Error completing ride: $e');
       SimpleNotificationService.notifyError(
@@ -686,44 +962,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
     );
   }
 
-  String _translateLocation(String location, String language) {
-    final locationTranslations = {
-      'المصنع': {
-        'en': 'Factory',
-        'ar': 'المصنع',
-      },
-      'Takhasusi': {
-        'en': 'Takhasusi',
-        'ar': 'التخصصي',
-      },
-      'Factory': {
-        'en': 'Factory',
-        'ar': 'المصنع',
-      },
-      'الدرس العزيزية': {
-        'en': 'Al-Dars Al-Aziziya',
-        'ar': 'الدرس العزيزية',
-      },
-    };
-
-    return locationTranslations[location]?[language] ?? location;
-  }
-
-  String _translatePriority(String priority, String language) {
-    final priorityTranslations = {
-      'Normal': {
-        'en': 'Normal',
-        'ar': 'عادي',
-      },
-      'Urgent': {
-        'en': 'Urgent',
-        'ar': 'عاجل',
-      },
-    };
-
-    return priorityTranslations[priority]?[language] ?? priority;
-  }
-
+  // 🔥 الدوال المفقودة - أضفها هنا
   String _getSafeString(Map<String, dynamic> data, String key, String defaultValue) {
     try {
       final value = data[key];
@@ -764,389 +1003,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
     return _translate('not_specified', currentLanguage);
   }
 
-  Widget _buildRequestCard(String requestId, Map<String, dynamic> data, String currentLanguage) {
-    try {
-      // 🔥 استخدام القيم الافتراضية مع التحقق من null
-      final status = _getSafeString(data, 'status', 'ASSIGNED');
-      final requesterName = _getRequesterName(data, currentLanguage);
-      final requesterDepartment = _getRequesterDepartment(data, currentLanguage);
-      final fromLocation = _getSafeString(data, 'fromLocation', '');
-      final toLocation = _getSafeString(data, 'toLocation', '');
-      final priority = _getSafeString(data, 'priority', 'Normal');
-      final description = _getSafeString(data, 'details', _getSafeString(data, 'description', ''));
-
-      Color statusColor = Colors.orange;
-      String statusText = _translate('assigned', currentLanguage);
-
-      if (status == 'IN_PROGRESS') {
-        statusColor = Colors.blue;
-        statusText = _translate('in_progress', currentLanguage);
-      } else if (status == 'COMPLETED') {
-        statusColor = Colors.green;
-        statusText = _translate('completed', currentLanguage);
-      }
-
-      return Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.grey.withOpacity(0.2),
-              blurRadius: 4,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header with request number and status
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    '${_translate('request', currentLanguage)} #${requestId.length > 6 ? requestId.substring(0, 6) : requestId}',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.orange.shade800),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: statusColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: statusColor),
-                    ),
-                    child: Text(
-                      statusText,
-                      style: TextStyle(
-                        color: statusColor,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 8),
-
-              // 🔥 عداد الوقت للرحلة قيد التنفيذ
-              if (status == 'IN_PROGRESS' && _rideDurations.containsKey(requestId))
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.blue.shade200),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.timer, size: 16, color: Colors.blue.shade700),
-                      const SizedBox(width: 6),
-                      Text(
-                        _translate('ride_duration', currentLanguage),
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.blue.shade700,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        _formatDuration(_rideDurations[requestId]!, currentLanguage),
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.blue.shade900,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-              const SizedBox(height: 8),
-
-              // Requester Information
-              Row(
-                children: [
-                  Icon(Icons.person, size: 16, color: Colors.grey.shade600),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      requesterName,
-                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 4),
-
-              // Department Information
-              Row(
-                children: [
-                  Icon(Icons.business, size: 16, color: Colors.grey.shade600),
-                  const SizedBox(width: 6),
-                  Text(
-                    '${_translate('department', currentLanguage)}: ',
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade700, fontWeight: FontWeight.bold),
-                  ),
-                  Text(
-                    requesterDepartment,
-                    style: TextStyle(fontSize: 12, color: Colors.blue.shade700),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 8),
-
-              // Locations
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.place, size: 16, color: Colors.grey.shade600),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('${_translate('from', currentLanguage)}: $fromLocation'),
-                        Text('${_translate('to', currentLanguage)}: $toLocation'),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 8),
-
-              // Description
-              if (description.isNotEmpty) ...[
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(Icons.description, size: 16, color: Colors.grey.shade600),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        description,
-                        style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-              ],
-
-              // Priority and Action Button
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: priority == 'Urgent' ? Colors.red.shade50 : Colors.green.shade50,
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(
-                        color: priority == 'Urgent' ? Colors.red.shade300 : Colors.green.shade300,
-                      ),
-                    ),
-                    child: Text(
-                      priority,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: priority == 'Urgent' ? Colors.red.shade800 : Colors.green.shade800,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  _buildActionButtons(requestId, status, currentLanguage),
-                ],
-              ),
-            ],
-          ),
-        ),
-      );
-    } catch (e) {
-      return _buildErrorCard('خطأ في عرض الطلب: $e', currentLanguage);
-    }
-  }
-
-  void _showRequestDetails(String requestId, Map<String, dynamic> data, String currentLanguage) {
-    try {
-      final status = _getSafeString(data, 'status', 'ASSIGNED');
-      final requesterName = _getRequesterName(data, currentLanguage);
-      final requesterDepartment = _getRequesterDepartment(data, currentLanguage);
-      final fromLocation = _translateLocation(_getSafeString(data, 'fromLocation', ''), currentLanguage);
-      final toLocation = _translateLocation(_getSafeString(data, 'toLocation', ''), currentLanguage);
-      final priority = _translatePriority(_getSafeString(data, 'priority', 'Normal'), currentLanguage);
-      final description = _getSafeString(data, 'details', _getSafeString(data, 'description', _translate('no_description', currentLanguage)));
-      final phoneNumber = _getSafeString(data, 'phoneNumber', _getSafeString(data, 'requesterPhone', _translate('not_specified', currentLanguage)));
-      final address = _getSafeString(data, 'address', _getSafeString(data, 'locationDetails', _translate('not_specified', currentLanguage)));
-
-      String statusText = _translate('assigned', currentLanguage);
-      Color statusColor = Colors.orange;
-
-      if (status == 'IN_PROGRESS') {
-        statusText = _translate('in_progress', currentLanguage);
-        statusColor = Colors.blue;
-      } else if (status == 'COMPLETED') {
-        statusText = _translate('completed', currentLanguage);
-        statusColor = Colors.green;
-      }
-
-      showDialog(
-        context: context,
-        builder: (context) {
-          return AlertDialog(
-            title: Row(
-              children: [
-                Icon(Icons.info_outline, color: statusColor),
-                const SizedBox(width: 8),
-                Text(_translate('request_details', currentLanguage)),
-              ],
-            ),
-            content: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildDetailRow('${_translate('request_number', currentLanguage)}:', requestId),
-
-                  if (status == 'IN_PROGRESS' && _rideDurations.containsKey(requestId))
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(12),
-                      margin: const EdgeInsets.symmetric(vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.blue.shade200),
-                      ),
-                      child: Column(
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.timer, color: Colors.blue.shade700),
-                              const SizedBox(width: 8),
-                              Text(
-                                _translate('current_ride_duration', currentLanguage),
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.blue.shade700,
-                                  fontSize: 16,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            _formatDuration(_rideDurations[requestId]!, currentLanguage),
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blue.shade900,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                  const SizedBox(height: 12),
-                  Text(
-                    _translate('requester_info', currentLanguage),
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blue.shade800),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildDetailRow('${_translate('requester_name', currentLanguage)}:', requesterName),
-                  _buildDetailRow('${_translate('department', currentLanguage)}:', requesterDepartment),
-                  _buildDetailRow('${_translate('phone_number', currentLanguage)}:', phoneNumber),
-
-                  const SizedBox(height: 12),
-                  Text(
-                    _translate('trip_info', currentLanguage),
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blue.shade800),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildDetailRow('${_translate('from', currentLanguage)}:', fromLocation),
-                  _buildDetailRow('${_translate('to', currentLanguage)}:', toLocation),
-                  _buildDetailRow('${_translate('address', currentLanguage)}:', address),
-
-                  const SizedBox(height: 12),
-                  Text(
-                    _translate('additional_info', currentLanguage),
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blue.shade800),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildDetailRow('${_translate('description', currentLanguage)}:', description),
-                  _buildDetailRow('${_translate('status', currentLanguage)}:', statusText),
-                  _buildDetailRow('${_translate('priority', currentLanguage)}:', priority),
-                  const SizedBox(height: 16),
-
-                  if (status == 'ASSIGNED')
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          _startRide(requestId);
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                        ),
-                        child: Text(_translate('start_ride', currentLanguage)),
-                      ),
-                    )
-                  else if (status == 'IN_PROGRESS')
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          _completeRide(requestId);
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                        ),
-                        child: Text(_translate('complete_ride', currentLanguage)),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text(_translate('close', currentLanguage)),
-              ),
-            ],
-          );
-        },
-      );
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطأ في عرض تفاصيل الطلب: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
   Widget _buildErrorCard(String errorMessage, String currentLanguage) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -1171,6 +1027,45 @@ class _DriverDashboardState extends State<DriverDashboard> {
     );
   }
 
+  String _translateLocation(String location, String language) {
+    final locationTranslations = {
+      'المصنع': {
+        'en': 'Factory',
+        'ar': 'المصنع',
+      },
+      'Takhasusi': {
+        'en': 'Takhasusi',
+        'ar': 'التخصصي',
+      },
+      'Factory': {
+        'en': 'Factory',
+        'ar': 'المصنع',
+      },
+      'الدرس العزيزية': {
+        'en': 'Al-Dars Al-Aziziya',
+        'ar': 'الدرس العزيزية',
+      },
+    };
+
+    return locationTranslations[location]?[language] ?? location;
+  }
+
+  String _translatePriority(String priority, String language) {
+    final priorityTranslations = {
+      'Normal': {
+        'en': 'Normal',
+        'ar': 'عادي',
+      },
+      'Urgent': {
+        'en': 'Urgent',
+        'ar': 'عاجل',
+      },
+    };
+
+    return priorityTranslations[priority]?[language] ?? priority;
+  }
+
+  // 🔥 دالة البناء الرئيسية - أضفها هنا
   @override
   Widget build(BuildContext context) {
     return Consumer<LanguageProvider>(
@@ -1373,5 +1268,263 @@ class _DriverDashboardState extends State<DriverDashboard> {
         }
       },
     );
+  }
+
+  Widget _buildRequestCard(String requestId, Map<String, dynamic> data, String currentLanguage) {
+    try {
+      final status = _getSafeString(data, 'status', 'ASSIGNED');
+      final requesterName = _getRequesterName(data, currentLanguage);
+      final requesterDepartment = _getRequesterDepartment(data, currentLanguage);
+      final fromLocation = _getSafeString(data, 'fromLocation', '');
+      final toLocation = _getSafeString(data, 'toLocation', '');
+      final priority = _getSafeString(data, 'priority', 'Normal');
+      final description = _getSafeString(data, 'details', _getSafeString(data, 'description', ''));
+      final vehicleInfo = data['vehicleInfo'] as Map<String, dynamic>?;
+
+      Color statusColor = Colors.orange;
+      String statusText = _translate('assigned', currentLanguage);
+
+      if (status == 'IN_PROGRESS') {
+        statusColor = Colors.blue;
+        statusText = _translate('in_progress', currentLanguage);
+      } else if (status == 'COMPLETED') {
+        statusColor = Colors.green;
+        statusText = _translate('completed', currentLanguage);
+      }
+
+      return Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.withOpacity(0.2),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header with request number and status
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '${_translate('request', currentLanguage)} #${requestId.length > 6 ? requestId.substring(0, 6) : requestId}',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.orange.shade800),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: statusColor),
+                    ),
+                    child: Text(
+                      statusText,
+                      style: TextStyle(
+                        color: statusColor,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 8),
+
+              // 🔥 معلومات السيارة
+              if (vehicleInfo != null && status != 'ASSIGNED')
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.green.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.directions_car, size: 16, color: Colors.green.shade700),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          '${vehicleInfo['model']} - ${vehicleInfo['plateNumber']}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green.shade700,
+                          ),
+                        ),
+                      ),
+                      if (vehicleInfo['source'] == 'manual')
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.shade100,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            _translate('manual', currentLanguage),
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.orange.shade800,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+
+              // 🔥 عداد الوقت للرحلة قيد التنفيذ
+              if (status == 'IN_PROGRESS' && _rideDurations.containsKey(requestId))
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue.shade200),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.timer, size: 16, color: Colors.blue.shade700),
+                      const SizedBox(width: 6),
+                      Text(
+                        _translate('ride_duration', currentLanguage),
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue.shade700,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        _formatDuration(_rideDurations[requestId]!, currentLanguage),
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue.shade900,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+              const SizedBox(height: 8),
+
+              // Requester Information
+              Row(
+                children: [
+                  Icon(Icons.person, size: 16, color: Colors.grey.shade600),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      requesterName,
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 4),
+
+              // Department Information
+              Row(
+                children: [
+                  Icon(Icons.business, size: 16, color: Colors.grey.shade600),
+                  const SizedBox(width: 6),
+                  Text(
+                    '${_translate('department', currentLanguage)}: ',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade700, fontWeight: FontWeight.bold),
+                  ),
+                  Text(
+                    requesterDepartment,
+                    style: TextStyle(fontSize: 12, color: Colors.blue.shade700),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 8),
+
+              // Locations
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.place, size: 16, color: Colors.grey.shade600),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('${_translate('from', currentLanguage)}: $fromLocation'),
+                        Text('${_translate('to', currentLanguage)}: $toLocation'),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 8),
+
+              // Description
+              if (description.isNotEmpty) ...[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.description, size: 16, color: Colors.grey.shade600),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        description,
+                        style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+              ],
+
+              // Priority and Action Button
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: priority == 'Urgent' ? Colors.red.shade50 : Colors.green.shade50,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: priority == 'Urgent' ? Colors.red.shade300 : Colors.green.shade300,
+                      ),
+                    ),
+                    child: Text(
+                      priority,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: priority == 'Urgent' ? Colors.red.shade800 : Colors.green.shade800,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  _buildActionButtons(requestId, status, currentLanguage),
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
+    } catch (e) {
+      return _buildErrorCard('خطأ في عرض الطلب: $e', currentLanguage);
+    }
   }
 }

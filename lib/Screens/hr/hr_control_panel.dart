@@ -1,5 +1,6 @@
 // hr_dashboard.dart
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class HRDashboard extends StatefulWidget {
   final String companyId;
@@ -10,10 +11,122 @@ class HRDashboard extends StatefulWidget {
 }
 
 class _HRDashboardState extends State<HRDashboard> {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final List<Vehicle> _vehicles = [];
   final _formKey = GlobalKey<FormState>();
   final _modelController = TextEditingController();
   final _plateController = TextEditingController();
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVehicles();
+  }
+
+  // 🔥 تحميل السيارات من Firebase
+  Future<void> _loadVehicles() async {
+    try {
+      final snapshot = await _firestore
+          .collection('companies')
+          .doc(widget.companyId)
+          .collection('vehicles')
+          .orderBy('createdAt', descending: true)
+          .get();
+
+      setState(() {
+        _vehicles.clear();
+        _vehicles.addAll(snapshot.docs.map((doc) {
+          final data = doc.data();
+          return Vehicle(
+            id: doc.id,
+            model: data['model'] ?? '',
+            plateNumber: data['plateNumber'] ?? '',
+            type: data['type'] ?? 'سيارة',
+            isAvailable: data['isAvailable'] ?? true,
+          );
+        }));
+        _loading = false;
+      });
+    } catch (e) {
+      debugPrint('❌ Error loading vehicles: $e');
+      setState(() {
+        _loading = false;
+      });
+    }
+  }
+
+  // 🔥 إضافة سيارة إلى Firebase
+  Future<void> _addVehicle() async {
+    if (_formKey.currentState!.validate()) {
+      try {
+        final newVehicle = {
+          'model': _modelController.text,
+          'plateNumber': _plateController.text,
+          'type': 'سيارة',
+          'isAvailable': true,
+          'createdAt': FieldValue.serverTimestamp(),
+        };
+
+        // إضافة السيارة إلى Firebase
+        await _firestore
+            .collection('companies')
+            .doc(widget.companyId)
+            .collection('vehicles')
+            .add(newVehicle);
+
+        // تنظيف الحقول
+        _modelController.clear();
+        _plateController.clear();
+
+        // إعادة تحميل القائمة
+        await _loadVehicles();
+
+        // إشعار بنجاح الإضافة
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تمت إضافة السيارة بنجاح'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطأ في إضافة السيارة: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // 🔥 حذف سيارة من Firebase
+  Future<void> _deleteVehicle(String vehicleId) async {
+    try {
+      await _firestore
+          .collection('companies')
+          .doc(widget.companyId)
+          .collection('vehicles')
+          .doc(vehicleId)
+          .delete();
+
+      await _loadVehicles();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('تم حذف السيارة'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('خطأ في حذف السيارة: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -100,7 +213,9 @@ class _HRDashboardState extends State<HRDashboard> {
 
             // قائمة السيارات
             Expanded(
-              child: _vehicles.isEmpty
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _vehicles.isEmpty
                   ? const Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -152,7 +267,8 @@ class _HRDashboardState extends State<HRDashboard> {
                             trailing: IconButton(
                               icon: const Icon(Icons.delete,
                                   color: Colors.red),
-                              onPressed: () => _deleteVehicle(index),
+                              onPressed: () =>
+                                  _deleteVehicle(vehicle.id!),
                             ),
                           ),
                         );
@@ -168,40 +284,6 @@ class _HRDashboardState extends State<HRDashboard> {
     );
   }
 
-  void _addVehicle() {
-    if (_formKey.currentState!.validate()) {
-      setState(() {
-        _vehicles.add(Vehicle(
-          model: _modelController.text,
-          plateNumber: _plateController.text,
-        ));
-        _modelController.clear();
-        _plateController.clear();
-      });
-
-      // إشعار بنج الإضافة
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('تمت إضافة السيارة بنجاح'),
-          backgroundColor: Colors.green,
-        ),
-      );
-    }
-  }
-
-  void _deleteVehicle(int index) {
-    setState(() {
-      _vehicles.removeAt(index);
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('تم حذف السيارة'),
-        backgroundColor: Colors.red,
-      ),
-    );
-  }
-
   @override
   void dispose() {
     _modelController.dispose();
@@ -211,8 +293,17 @@ class _HRDashboardState extends State<HRDashboard> {
 }
 
 class Vehicle {
+  final String? id;
   final String model;
   final String plateNumber;
+  final String type;
+  final bool isAvailable;
 
-  Vehicle({required this.model, required this.plateNumber});
+  Vehicle({
+    this.id,
+    required this.model,
+    required this.plateNumber,
+    this.type = 'سيارة',
+    this.isAvailable = true,
+  });
 }
