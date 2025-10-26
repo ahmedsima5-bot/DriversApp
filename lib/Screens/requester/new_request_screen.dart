@@ -31,10 +31,12 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
   final TextEditingController _toLocationController = TextEditingController();
   final TextEditingController _responsibleNameController = TextEditingController();
   final TextEditingController _responsiblePhoneController = TextEditingController();
-  final TextEditingController _additionalDetailsController = TextEditingController();
 
   String _selectedPriority = 'Normal';
   bool _isUrgent = false;
+  bool _isScheduled = false;
+  DateTime? _scheduledDate;
+  TimeOfDay? _scheduledTime;
   String? _userDepartment;
 
   File? _selectedImage;
@@ -53,7 +55,6 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
   // دالة محسنة لتحميل قسم المستخدم تلقائياً
   Future<void> _loadUserDepartment() async {
     try {
-      // البحث في مجموعة companies/C001/users أولاً
       final userDoc = await FirebaseFirestore.instance
           .collection('companies')
           .doc(widget.companyId)
@@ -69,7 +70,6 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
         return;
       }
 
-      // إذا لم يوجد، البحث في المجموعة العامة users
       final globalUserDoc = await FirebaseFirestore.instance
           .collection('users')
           .doc(widget.userId)
@@ -83,37 +83,60 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
         return;
       }
 
-      // إذا لم يوجد قسم، نستخدم القيمة الافتراضية من بيانات المستخدم
       setState(() {
-        _userDepartment = 'Maintenance'; // القيمة الافتراضية الصحيحة
+        _userDepartment = 'Maintenance';
       });
       debugPrint('⚠️ Using default department: $_userDepartment');
 
     } catch (e) {
       debugPrint('❌ Error loading user department: $e');
       setState(() {
-        _userDepartment = 'Maintenance'; // القيمة الافتراضية الصحيحة
+        _userDepartment = 'Maintenance';
       });
     }
   }
 
-  // دالة لاختيار الصورة
-  Future<void> _pickImage() async {
-    try {
-      final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
-      if (image != null) {
-        setState(() {
-          _selectedImage = File(image.path);
-        });
-      }
-    } catch (e) {
-      debugPrint('Error picking image: $e');
+  // دالة اختيار تاريخ الجدولة
+  Future<void> _selectScheduledDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now().add(const Duration(days: 1)),
+      firstDate: DateTime.now(),
+      lastDate: DateTime(2100),
+    );
+    if (picked != null) {
+      setState(() {
+        _scheduledDate = picked;
+      });
+      await _selectScheduledTime(context);
+    }
+  }
+
+  // دالة اختيار وقت الجدولة
+  Future<void> _selectScheduledTime(BuildContext context) async {
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.now(),
+    );
+    if (picked != null) {
+      setState(() {
+        _scheduledTime = picked;
+      });
     }
   }
 
   // دالة إرسال الطلب
   void _submitRequest() {
     if (_formKey.currentState!.validate()) {
+      if (_isScheduled && (_scheduledDate == null || _scheduledTime == null)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_translate('schedule_date_required', languageProvider.currentLanguage)),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
       _showPriorityConfirmationDialog(context, languageProvider.currentLanguage);
     }
   }
@@ -123,6 +146,19 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
     String message = _isUrgent
         ? _translate('urgent_request_message', currentLanguage)
         : _translate('normal_request_message', currentLanguage);
+
+    if (_isScheduled && _scheduledDate != null && _scheduledTime != null) {
+      final scheduledDateTime = DateTime(
+        _scheduledDate!.year,
+        _scheduledDate!.month,
+        _scheduledDate!.day,
+        _scheduledTime!.hour,
+        _scheduledTime!.minute,
+      );
+      final formatter = DateFormat('yyyy-MM-dd HH:mm');
+      message += '\n\n${_translate('scheduled_for', currentLanguage)}: ${formatter.format(scheduledDateTime)}';
+      message += '\n${_translate('needs_hr_approval', currentLanguage)}';
+    }
 
     showDialog(
       context: context,
@@ -175,57 +211,56 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
   // دالة حفظ الطلب في Firestore
   Future<void> _saveRequestToFirestore() async {
     try {
-      // تحديد حالة الطلب بناءً على الأولوية
-      String status = _isUrgent ? 'HR_PENDING' : 'PENDING';
+      String status;
+      if (_isScheduled) {
+        status = 'HR_PENDING';
+      } else {
+        status = _isUrgent ? 'HR_PENDING' : 'PENDING';
+      }
+
       String priority = _isUrgent ? 'Urgent' : 'Normal';
-
-      // إنشاء معرف فريد للطلب
       String requestId = 'req_${DateTime.now().millisecondsSinceEpoch}';
-
-      // التأكد من أن القسم ليس null
       final department = _userDepartment ?? 'Maintenance';
 
-      debugPrint('💾 Saving request with department: $department');
+      Timestamp? startTimeExpected;
+      if (_isScheduled && _scheduledDate != null && _scheduledTime != null) {
+        final scheduledDateTime = DateTime(
+          _scheduledDate!.year,
+          _scheduledDate!.month,
+          _scheduledDate!.day,
+          _scheduledTime!.hour,
+          _scheduledTime!.minute,
+        );
+        startTimeExpected = Timestamp.fromDate(scheduledDateTime);
+      } else {
+        startTimeExpected = Timestamp.fromDate(DateTime.now().add(const Duration(hours: 1)));
+      }
 
-      // البيانات الأساسية للطلب - مطابقة لهيكل النظام
       Map<String, dynamic> requestData = {
-        // المعلومات الأساسية (مطلوبة للنظام)
         'requestId': requestId,
         'companyId': widget.companyId,
         'requesterId': widget.userId,
         'requesterName': widget.userName,
-        'department': department, // استخدام القسم الصحيح
-
-        // معلومات الرحلة (مطلوبة للنظام)
-        'purposeType': 'نقل',
+        'department': department,
+        'purposeType': _translate('transfer', languageProvider.currentLanguage),
         'details': _descriptionController.text,
         'fromLocation': _fromLocationController.text,
         'toLocation': _toLocationController.text,
-
-        // الأولوية والحالة (مطلوبة للنظام)
         'priority': priority,
         'status': status,
-
-        // التواريخ (مطلوبة للنظام)
+        'isScheduled': _isScheduled,
         'createdAt': FieldValue.serverTimestamp(),
         'lastUpdated': FieldValue.serverTimestamp(),
-        'startTimeExpected': Timestamp.fromDate(DateTime.now().add(const Duration(hours: 1))),
-
-        // معلومات إضافية
+        'startTimeExpected': startTimeExpected,
         'title': _requestTitleController.text.isNotEmpty
             ? _requestTitleController.text
-            : 'طلب نقل',
-        'additionalDetails': _additionalDetailsController.text.isEmpty
-            ? null
-            : _additionalDetailsController.text,
+            : _translate('transfer_request', languageProvider.currentLanguage),
         'responsibleName': _responsibleNameController.text.isEmpty
             ? null
             : _responsibleNameController.text,
         'responsiblePhone': _responsiblePhoneController.text.isEmpty
             ? null
             : _responsiblePhoneController.text,
-
-        // حقول افتراضية للنظام
         'assignedDriverId': null,
         'assignedDriverName': null,
         'assignedTime': null,
@@ -233,7 +268,6 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
         'destinationLocation': const GeoPoint(24.7136, 46.6753),
       };
 
-      // حفظ في المسار الصحيح للنظام
       await FirebaseFirestore.instance
           .collection('companies')
           .doc(widget.companyId)
@@ -241,13 +275,12 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
           .doc(requestId)
           .set(requestData);
 
-      debugPrint('✅ Request saved successfully with department: $department');
-
-      // إشعار نجاح
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            _isUrgent
+            _isScheduled
+                ? _translate('scheduled_request_sent', languageProvider.currentLanguage)
+                : _isUrgent
                 ? _translate('urgent_request_sent', languageProvider.currentLanguage)
                 : _translate('normal_request_sent', languageProvider.currentLanguage),
           ),
@@ -256,7 +289,6 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
         ),
       );
 
-      // العودة للشاشة السابقة
       Navigator.pop(context);
 
     } catch (e) {
@@ -341,19 +373,16 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
                   ),
                   const SizedBox(height: 20),
 
-                  // مستوى الأولوية
-                  _buildSectionTitle(_translate('priority_level', currentLanguage), currentLanguage),
+                  // قسم واحد مدمج: تحديد نوع الطلب
+                  _buildSectionTitle(_translate('اختر نوع الطلب', currentLanguage), currentLanguage),
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(16),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            _translate('choose_priority', currentLanguage),
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                          ),
-                          const SizedBox(height: 10),
+                          // خيارات الأولوية والجدولة معاً
+
 
                           // خيار الطلب العادي
                           _buildPriorityOption(
@@ -388,22 +417,46 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
                             },
                             currentLanguage: currentLanguage,
                           ),
+
+                          const SizedBox(height: 12),
+
+                          // خيار جدولة الطلب
+                          _buildPriorityOption(
+                            title: _translate('جدولة طلب', currentLanguage),
+                            subtitle: _translate('schedule_request_desc', currentLanguage),
+                            icon: Icons.schedule,
+                            color: Colors.purple,
+                            isSelected: _isScheduled,
+                            onTap: () {
+                              setState(() {
+                                _isScheduled = true;
+                                _isUrgent = false; // إلغاء اختيار العاجل عند اختيار الجدولة
+                              });
+                            },
+                            currentLanguage: currentLanguage,
+                          ),
+
+                          // حقل اختيار التاريخ والوقت للطلبات المجدولة
+                          if (_isScheduled) ...[
+                            const SizedBox(height: 16),
+                            _buildDateTimeSelector(currentLanguage),
+                          ],
                         ],
                       ),
                     ),
                   ),
                   const SizedBox(height: 20),
 
-                  // وصف الطلب
-                  _buildSectionTitle(_translate('request_description', currentLanguage), currentLanguage),
+                  // وصف الطلب والتفاصيل الإضافية (مدمج)
+                  _buildSectionTitle(_translate('request_details', currentLanguage), currentLanguage),
                   _buildTextField(
                     controller: _descriptionController,
-                    label: '${_translate('request_description', currentLanguage)} *',
-                    hintText: _translate('description_hint', currentLanguage),
-                    maxLines: 4,
+                    label: '${_translate('تفاصيل الطلب', currentLanguage)} *',
+                    hintText: _translate('وضح نوع السيارة المطلوب وتفاصيل الطلب كاملة', currentLanguage),
+                    maxLines: 6,
                     validator: (value) {
                       if (value == null || value.isEmpty) {
-                        return _translate('description_required', currentLanguage);
+                        return _translate('details_required', currentLanguage);
                       }
                       return null;
                     },
@@ -461,11 +514,6 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
                   ),
                   const SizedBox(height: 20),
 
-                  // التاريخ
-                  _buildSectionTitle(_translate('date_time', currentLanguage), currentLanguage),
-                  _buildReadOnlyField(_translate('request_date', currentLanguage), TextEditingController(text: _getCurrentDate()), currentLanguage),
-                  const SizedBox(height: 20),
-
                   // المسؤول - خانات اختيارية
                   _buildSectionTitle(_translate('contact_info', currentLanguage), currentLanguage),
                   Row(
@@ -490,17 +538,6 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 20),
-
-                  // تفاصيل إضافية
-                  _buildSectionTitle(_translate('additional_details', currentLanguage), currentLanguage),
-                  _buildTextField(
-                    controller: _additionalDetailsController,
-                    label: _translate('additional_details_optional', currentLanguage),
-                    hintText: _translate('additional_details_hint', currentLanguage),
-                    maxLines: 4,
-                    currentLanguage: currentLanguage,
-                  ),
                   const SizedBox(height: 30),
 
                   // زر إرسال الطلب
@@ -514,7 +551,64 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
     );
   }
 
-  // واجهة خيار الأولوية
+  // واجهة اختيار التاريخ والوقت
+  Widget _buildDateTimeSelector(String currentLanguage) {
+    final dateText = _scheduledDate != null
+        ? DateFormat('yyyy-MM-dd').format(_scheduledDate!)
+        : _translate('select_date', currentLanguage);
+
+    final timeText = _scheduledTime != null
+        ? _scheduledTime!.format(context)
+        : _translate('select_time', currentLanguage);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          _translate('اختر التاريخ والوقت المطلوب', currentLanguage),
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => _selectScheduledDate(context),
+                icon: const Icon(Icons.calendar_today),
+                label: Text(dateText),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _scheduledDate != null ? () => _selectScheduledTime(context) : null,
+                icon: const Icon(Icons.access_time),
+                label: Text(timeText),
+              ),
+            ),
+          ],
+        ),
+        if (_scheduledDate != null && _scheduledTime != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            '${_translate('مجدول بتاريخ', currentLanguage)}: ${DateFormat('yyyy-MM-dd, الساعة : HH:mm').format(DateTime(
+              _scheduledDate!.year,
+              _scheduledDate!.month,
+              _scheduledDate!.day,
+              _scheduledTime!.hour,
+              _scheduledTime!.minute,
+            ))}',
+            style: TextStyle(
+              color: Colors.blue.shade700,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  // واجهة خيار الأولوية والجدولة
   Widget _buildPriorityOption({
     required String title,
     required String subtitle,
@@ -610,7 +704,7 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
       child: ElevatedButton(
         onPressed: _submitRequest,
         style: ElevatedButton.styleFrom(
-          backgroundColor: _isUrgent ? Colors.orange : Colors.green,
+          backgroundColor: _getButtonColor(),
           foregroundColor: Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -620,10 +714,10 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(_isUrgent ? Icons.warning_amber : Icons.send),
+            Icon(_getButtonIcon()),
             const SizedBox(width: 8),
             Text(
-              _isUrgent ? _translate('send_urgent', currentLanguage) : _translate('send_normal', currentLanguage),
+              _getButtonText(currentLanguage),
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
           ],
@@ -632,10 +726,22 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
     );
   }
 
-  String _getCurrentDate() {
-    final now = DateTime.now();
-    final formatter = DateFormat('yyyy-MM-dd HH:mm');
-    return formatter.format(now);
+  Color _getButtonColor() {
+    if (_isScheduled) return Colors.purple;
+    if (_isUrgent) return Colors.orange;
+    return Colors.green;
+  }
+
+  IconData _getButtonIcon() {
+    if (_isScheduled) return Icons.schedule;
+    if (_isUrgent) return Icons.warning_amber;
+    return Icons.send;
+  }
+
+  String _getButtonText(String currentLanguage) {
+    if (_isScheduled) return _translate('send_scheduled', currentLanguage);
+    if (_isUrgent) return _translate('send_urgent', currentLanguage);
+    return _translate('send_normal', currentLanguage);
   }
 
   Widget _buildSectionTitle(String title, String currentLanguage) {
@@ -678,34 +784,6 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
                 hintText: hintText,
                 border: const OutlineInputBorder(),
                 contentPadding: const EdgeInsets.all(12),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildReadOnlyField(String label, TextEditingController controller, String currentLanguage) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            TextFormField(
-              controller: controller,
-              readOnly: true,
-              decoration: InputDecoration(
-                border: const OutlineInputBorder(),
-                contentPadding: const EdgeInsets.all(12),
-                filled: true,
-                fillColor: Colors.grey[100],
               ),
             ),
           ],

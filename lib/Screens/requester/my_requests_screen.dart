@@ -76,6 +76,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
 
       if (e.toString().contains('index') || e.toString().contains('requires an index')) {
         setState(() {
+          // يجب توفير الترجمة 'index_creating'
           _errorMessage = _translate('index_creating', 'ar');
           _indexCreating = true;
           _isLoading = false;
@@ -86,6 +87,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
         });
       } else {
         setState(() {
+          // يجب توفير الترجمة 'load_requests_error'
           _errorMessage = '${_translate('load_requests_error', 'ar')}: $e';
           _isLoading = false;
         });
@@ -93,6 +95,69 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
     }
   }
 
+  // دالة جديدة لمعالجة إلغاء الطلب
+  Future<void> _cancelRequest(String requestId, String currentLanguage) async {
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text(_translate('cancel_request_confirmation_title', currentLanguage)),
+          content: Text(_translate('cancel_request_confirmation_body', currentLanguage)),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(_translate('no', currentLanguage)),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              child: Text(_translate('yes_cancel', currentLanguage)),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm == true) {
+      try {
+        await FirebaseFirestore.instance
+            .collection('companies')
+            .doc(widget.companyId)
+            .collection('requests')
+            .doc(requestId)
+            .update({
+          'status': 'CANCELED',
+          'canceledAt': FieldValue.serverTimestamp(),
+          'canceledBy': widget.userId,
+          // يمكن إضافة حقل إضافي لإعلام السائق في نظامك
+        });
+
+        // تحديث القائمة بعد الإلغاء
+        _loadMyRequests();
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(_translate('request_canceled_successfully', currentLanguage)),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } catch (e) {
+        print('Error canceling request: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('${_translate('cancel_request_error', currentLanguage)}: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  // تحديث دالة الترجمة لإضافة حالة CANCELED
   String _getStatusText(String status, String currentLanguage) {
     switch (status) {
       case 'PENDING':
@@ -111,11 +176,14 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
         return _translate('assigned', currentLanguage);
       case 'WAITING_FOR_DRIVER':
         return _translate('waiting_for_driver', currentLanguage);
+      case 'CANCELED': // الحالة الجديدة
+        return _translate('canceled', currentLanguage);
       default:
         return status;
     }
   }
 
+  // تحديث دالة الألوان لإضافة حالة CANCELED
   Color _getStatusColor(String status) {
     switch (status) {
       case 'PENDING':
@@ -134,6 +202,8 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
         return Colors.red;
       case 'WAITING_FOR_DRIVER':
         return Colors.purple;
+      case 'CANCELED': // اللون الرمادي للإلغاء
+        return Colors.grey;
       default:
         return Colors.grey;
     }
@@ -347,7 +417,19 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
     final fromLocation = request['fromLocation'] ?? '';
     final toLocation = request['toLocation'] ?? '';
     final hasDriver = _hasDriverAssigned(request);
+
+    // منطق الإلغاء: متاح إذا كان الطلب في حالة انتظار، أو تمت الموافقة عليه ولم يبدأ السائق الرحلة بعد.
+    // سنستخدم حالة (ASSIGNED) كحد أقصى للإلغاء دون تسبب بمشاكل في المهام الجارية.
+    final isCancellable = status == 'PENDING' || status == 'HR_PENDING' || status == 'APPROVED' || status == 'ASSIGNED' || status == 'WAITING_FOR_DRIVER';
+
+    // نمنع الإلغاء إذا كانت الحالة "قيد التنفيذ" أو "مكتمل" أو "مرفوض" أو "ملغى"
+    final isFinalStatus = status == 'IN_PROGRESS' || status == 'COMPLETED' || status == 'REJECTED' || status == 'CANCELED';
+
+    // الحالة النهائية لزر الإلغاء
+    final showCancelButton = isCancellable && !isFinalStatus;
+
     final driverName = _getDriverName(request);
+
 
     // البيانات الإضافية
     final additionalDetails = request['additionalDetails'] ?? '';
@@ -513,35 +595,56 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
 
             const Divider(height: 20),
 
-            // المعلومات الإضافية
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
+            // المعلومات الإضافية وزر الإلغاء
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                // القسم
-                if (request['department'] != null)
-                  _buildInfoChip(
-                    '${_translate('department', currentLanguage)}: ${request['department']}',
-                    Icons.business,
-                    color: Colors.purple,
-                    currentLanguage: currentLanguage,
+                Expanded(
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      // القسم
+                      if (request['department'] != null)
+                        _buildInfoChip(
+                          '${_translate('department', currentLanguage)}: ${request['department']}',
+                          Icons.business,
+                          color: Colors.purple,
+                          currentLanguage: currentLanguage,
+                        ),
+
+                      // الأولوية
+                      _buildInfoChip(
+                        '${_translate('priority', currentLanguage)}: ${_getPriorityText(request['priority'] ?? 'Normal', currentLanguage)}',
+                        Icons.flag,
+                        color: _getPriorityColor(request['priority'] ?? 'Normal'),
+                        currentLanguage: currentLanguage,
+                      ),
+
+                      // رقم الطلب
+                      _buildInfoChip(
+                        '${_translate('request_number', currentLanguage)}: ${request['requestId'] ?? ''}',
+                        Icons.numbers,
+                        color: Colors.orange,
+                        currentLanguage: currentLanguage,
+                      ),
+                    ],
                   ),
-
-                // الأولوية
-                _buildInfoChip(
-                  '${_translate('priority', currentLanguage)}: ${_getPriorityText(request['priority'] ?? 'Normal', currentLanguage)}',
-                  Icons.flag,
-                  color: _getPriorityColor(request['priority'] ?? 'Normal'),
-                  currentLanguage: currentLanguage,
                 ),
 
-                // رقم الطلب
-                _buildInfoChip(
-                  '${_translate('request_number', currentLanguage)}: ${request['requestId'] ?? ''}',
-                  Icons.numbers,
-                  color: Colors.orange,
-                  currentLanguage: currentLanguage,
-                ),
+                // زر الإلغاء (يظهر فقط إذا كانت الحالة تسمح بالإلغاء)
+                if (showCancelButton)
+                  OutlinedButton.icon(
+                    onPressed: () => _cancelRequest(request['id'], currentLanguage),
+                    icon: const Icon(Icons.cancel, size: 18),
+                    label: Text(_translate('cancel_request', currentLanguage)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red,
+                      side: const BorderSide(color: Colors.red),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
               ],
             ),
           ],
@@ -554,6 +657,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
     final driverName = _getDriverName(request);
     final driverImage = _getDriverImage(request);
     final status = request['status'] ?? 'PENDING';
+
+    // لا نعرض معلومات السائق إذا كان الطلب ملغيًا
+    if (status == 'CANCELED') return const SizedBox.shrink();
 
     return Container(
       padding: const EdgeInsets.all(12),

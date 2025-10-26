@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
+// في language_provider.dart
 class LanguageProvider with ChangeNotifier {
   String _currentLanguage = 'ar';
-
-  LanguageProvider() {
-    _initializeLanguage();
-  }
 
   String get currentLanguage => _currentLanguage;
 
@@ -37,6 +35,43 @@ class LanguageProvider with ChangeNotifier {
     }
 
     notifyListeners(); // يحدث كل التطبيق
+  }
+  Future<void> loadUserLanguage(String userId) async {
+    try {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .get();
+
+      if (userDoc.exists && userDoc.data()?['language'] != null) {
+        _currentLanguage = userDoc.data()?['language'];
+        notifyListeners();
+        debugPrint('✅ Loaded user language: $_currentLanguage');
+      }
+    } catch (e) {
+      debugPrint('❌ Error loading user language: $e');
+    }
+  }
+
+  // دالة جديدة لحفظ لغة المستخدم في Firebase
+  Future<void> saveUserLanguage(String userId, String language) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .update({'language': language});
+
+      _currentLanguage = language;
+      notifyListeners();
+      debugPrint('✅ Saved user language: $language');
+    } catch (e) {
+      debugPrint('❌ Error saving user language: $e');
+    }
+  }
+
+  void changeLanguage(String language) {
+    _currentLanguage = language;
+    notifyListeners();
   }
 
   // 🔥 التعديل: دالة تحميل اللغة المحسنة
