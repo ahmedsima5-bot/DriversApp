@@ -5,8 +5,8 @@ import 'package:provider/provider.dart';
 import '../../services/dispatch_service.dart';
 import '../../services/simple_notification_service.dart';
 import '../../providers/language_provider.dart';
-import '../../locales/app_localizations.dart';
 import 'dart:async';
+import 'my_requests_page.dart';
 
 class DriverDashboard extends StatefulWidget {
   final String userName;
@@ -42,8 +42,215 @@ class _DriverDashboardState extends State<DriverDashboard> {
   final TextEditingController _manualPlateController = TextEditingController();
   final TextEditingController _manualTypeController = TextEditingController(text: 'سيارة');
 
-  String _translate(String key, String languageCode) {
-    return AppLocalizations.getTranslatedValue(key, languageCode);
+  // 🔥 دالة الترجمة المعدلة
+  String _translate(String key, BuildContext context) {
+    final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
+    final String language = languageProvider.currentLanguage;
+
+    final Map<String, Map<String, String>> translations = {
+      'notes': {
+        'ar': 'ملاحظات',
+        'en': 'Notes',
+      },
+      'welcome': {
+        'ar': 'مرحباً بك',
+        'en': 'Welcome',
+      },
+      'account_active_ready': {
+        'ar': 'الحساب مفعل وجاهز',
+        'en': 'Account active and ready',
+      },
+      'trip_route': {
+        'ar': 'مسار الرحلة',
+        'en': 'Trip Route',
+      },
+      'from': {
+        'ar': 'من',
+        'en': 'From',
+      },
+      'to': {
+        'ar': 'إلى',
+        'en': 'To',
+      },
+      'urgent': {
+        'ar': 'عاجل',
+        'en': 'Urgent',
+      },
+      'performance_report': {
+        'ar': 'تقرير الأداء',
+        'en': 'Performance Report',
+      },
+      'show_my_requests': {
+        'ar': 'عرض طلباتي',
+        'en': 'Show My Requests',
+      },
+      'request': {
+        'ar': 'طلب',
+        'en': 'Request',
+      },
+      'assigned': {
+        'ar': 'مُعيّن',
+        'en': 'Assigned',
+      },
+      'in_progress': {
+        'ar': 'قيد التنفيذ',
+        'en': 'In Progress',
+      },
+      'completed': {
+        'ar': 'مكتمل',
+        'en': 'Completed',
+      },
+      'ride_duration': {
+        'ar': 'مدة الرحلة',
+        'en': 'Ride Duration',
+      },
+      'department': {
+        'ar': 'القسم',
+        'en': 'Department',
+      },
+      'start_ride': {
+        'ar': 'بدء الرحلة',
+        'en': 'Start Ride',
+      },
+      'complete_ride': {
+        'ar': 'إنهاء الرحلة',
+        'en': 'Complete Ride',
+      },
+      'driver_dashboard': {
+        'ar': 'لوحة السائق',
+        'en': 'Driver Dashboard',
+      },
+      'activate_driver_account': {
+        'ar': 'تفعيل حساب السائق',
+        'en': 'Activate Driver Account',
+      },
+      'activate_account_to_start': {
+        'ar': 'قم بتفعيل الحساب لبدء العمل',
+        'en': 'Activate account to start working',
+      },
+      'refresh_requests': {
+        'ar': 'تحديث الطلبات',
+        'en': 'Refresh Requests',
+      },
+      'profile': {
+        'ar': 'الملف الشخصي',
+        'en': 'Profile',
+      },
+      'logout': {
+        'ar': 'تسجيل الخروج',
+        'en': 'Logout',
+      },
+      'manual': {
+        'ar': 'يدوي',
+        'en': 'Manual',
+      },
+      'select_vehicle': {
+        'ar': 'اختر المركبة',
+        'en': 'Select Vehicle',
+      },
+      'choose_vehicle_for_ride': {
+        'ar': 'اختر المركبة للرحلة',
+        'en': 'Choose vehicle for ride',
+      },
+      'no_vehicles_available': {
+        'ar': 'لا توجد مركبات متاحة',
+        'en': 'No vehicles available',
+      },
+      'other_vehicle': {
+        'ar': 'مركبة أخرى',
+        'en': 'Other Vehicle',
+      },
+      'enter_vehicle_info': {
+        'ar': 'أدخل معلومات المركبة',
+        'en': 'Enter Vehicle Info',
+      },
+      'vehicle_model': {
+        'ar': 'موديل المركبة',
+        'en': 'Vehicle Model',
+      },
+      'plate_number': {
+        'ar': 'رقم اللوحة',
+        'en': 'Plate Number',
+      },
+      'vehicle_type': {
+        'ar': 'نوع المركبة',
+        'en': 'Vehicle Type',
+      },
+      'cancel': {
+        'ar': 'إلغاء',
+        'en': 'Cancel',
+      },
+      'enter_vehicle_info_required': {
+        'ar': 'يرجى إدخال معلومات المركبة',
+        'en': 'Please enter vehicle information',
+      },
+      'no_requests': {
+        'ar': 'لا توجد طلبات',
+        'en': 'No Requests',
+      },
+      'no_assigned_requests': {
+        'ar': 'لا توجد طلبات مخصصة لك حالياً',
+        'en': 'No requests assigned to you currently',
+      },
+      'my_requests': {
+        'ar': 'طلباتي',
+        'en': 'My Requests',
+      },
+      'total_requests': {
+        'ar': 'إجمالي الطلبات',
+        'en': 'Total Requests',
+      },
+      'close': {
+        'ar': 'إغلاق',
+        'en': 'Close',
+      },
+      'refresh': {
+        'ar': 'تحديث',
+        'en': 'Refresh',
+      },
+      'no_requests_currently': {
+        'ar': 'لا توجد طلبات حالياً',
+        'en': 'No requests currently',
+      },
+      'requests_will_appear_here_when_assigned': {
+        'ar': 'ستظهر الطلبات هنا عندما يتم تعيينها لك',
+        'en': 'Requests will appear here when assigned to you',
+      },
+      'name': {
+        'ar': 'الاسم',
+        'en': 'Name',
+      },
+      'email': {
+        'ar': 'البريد الإلكتروني',
+        'en': 'Email',
+      },
+      'driver_id': {
+        'ar': 'رقم السائق',
+        'en': 'Driver ID',
+      },
+      'status': {
+        'ar': 'الحالة',
+        'en': 'Status',
+      },
+      'driver_linked_to_hr': {
+        'ar': 'سائق مرتبط بشؤون الموظفين',
+        'en': 'Driver linked to HR',
+      },
+      'completed_rides': {
+        'ar': 'الرحلات المكتملة',
+        'en': 'Completed Rides',
+      },
+      'not_specified': {
+        'ar': 'غير محدد',
+        'en': 'Not specified',
+      },
+      'ok': {
+        'ar': 'موافق',
+        'en': 'OK',
+      },
+    };
+
+    return translations[key]?[language] ?? key;
   }
 
   @override
@@ -125,23 +332,28 @@ class _DriverDashboardState extends State<DriverDashboard> {
   }
 
   // 🔥 تنسيق مدة الرحلة لعرضها
-  String _formatDuration(Duration duration, String currentLanguage) {
+  String _formatDuration(Duration duration, BuildContext context) {
+    final currentLanguage = Provider.of<LanguageProvider>(context, listen: false).currentLanguage;
     final hours = duration.inHours;
     final minutes = duration.inMinutes.remainder(60);
     final seconds = duration.inSeconds.remainder(60);
 
-    if (hours > 0) {
-      return currentLanguage == 'ar'
-          ? '$hours ساعة $minutes دقيقة $seconds ثانية'
-          : '${hours}h ${minutes}m ${seconds}s';
-    } else if (minutes > 0) {
-      return currentLanguage == 'ar'
-          ? '$minutes دقيقة $seconds ثانية'
-          : '${minutes}m ${seconds}s';
+    if (currentLanguage == 'ar') {
+      if (hours > 0) {
+        return '$hours ساعة $minutes دقيقة $seconds ثانية';
+      } else if (minutes > 0) {
+        return '$minutes دقيقة $seconds ثانية';
+      } else {
+        return '$seconds ثانية';
+      }
     } else {
-      return currentLanguage == 'ar'
-          ? '$seconds ثانية'
-          : '${seconds}s';
+      if (hours > 0) {
+        return '${hours}h ${minutes}m ${seconds}s';
+      } else if (minutes > 0) {
+        return '${minutes}m ${seconds}s';
+      } else {
+        return '${seconds}s';
+      }
     }
   }
 
@@ -169,8 +381,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
   }
 
   void _handleRequestNotification(String requestId, Map<String, dynamic> request, String status, DocumentChangeType changeType) {
-    final currentLanguage = Provider.of<LanguageProvider>(context, listen: false).currentLanguage;
-
     if (changeType == DocumentChangeType.added && status == 'ASSIGNED') {
       SimpleNotificationService.notifyNewRequest(context, requestId);
       _loadDriverRequests();
@@ -278,7 +488,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
   }
 
   // 🔥 عرض اختيار السيارة
-  Future<void> _showVehicleSelectionDialog(String requestId, String currentLanguage) async {
+  Future<void> _showVehicleSelectionDialog(String requestId, BuildContext context) async {
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -286,14 +496,14 @@ class _DriverDashboardState extends State<DriverDashboard> {
           children: [
             const Icon(Icons.directions_car, color: Colors.blue),
             const SizedBox(width: 8),
-            Text(_translate('select_vehicle', currentLanguage)),
+            Text(_translate('select_vehicle', context)),
           ],
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              _translate('choose_vehicle_for_ride', currentLanguage),
+              _translate('choose_vehicle_for_ride', context),
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
@@ -306,7 +516,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
                   const Icon(Icons.car_repair, size: 50, color: Colors.grey),
                   const SizedBox(height: 8),
                   Text(
-                    _translate('no_vehicles_available', currentLanguage),
+                    _translate('no_vehicles_available', context),
                     textAlign: TextAlign.center,
                   ),
                 ],
@@ -331,10 +541,10 @@ class _DriverDashboardState extends State<DriverDashboard> {
             const SizedBox(height: 8),
             ListTile(
               leading: const Icon(Icons.add, color: Colors.orange),
-              title: Text(_translate('other_vehicle', currentLanguage)),
+              title: Text(_translate('other_vehicle', context)),
               onTap: () {
                 Navigator.pop(context);
-                _showManualVehicleDialog(requestId, currentLanguage);
+                _showManualVehicleDialog(requestId, context);
               },
             ),
           ],
@@ -342,7 +552,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text(_translate('cancel', currentLanguage)),
+            child: Text(_translate('cancel', context)),
           ),
         ],
       ),
@@ -350,7 +560,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
   }
 
   // 🔥 عرض نافذة إدخال السيارة يدوياً
-  Future<void> _showManualVehicleDialog(String requestId, String currentLanguage) async {
+  Future<void> _showManualVehicleDialog(String requestId, BuildContext context) async {
     await showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -360,7 +570,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
               children: [
                 const Icon(Icons.directions_car, color: Colors.orange),
                 const SizedBox(width: 8),
-                Text(_translate('enter_vehicle_info', currentLanguage)),
+                Text(_translate('enter_vehicle_info', context)),
               ],
             ),
             content: SingleChildScrollView(
@@ -370,7 +580,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
                   TextFormField(
                     controller: _manualModelController,
                     decoration: InputDecoration(
-                      labelText: _translate('vehicle_model', currentLanguage),
+                      labelText: _translate('vehicle_model', context),
                       border: const OutlineInputBorder(),
                       prefixIcon: const Icon(Icons.directions_car),
                     ),
@@ -379,7 +589,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
                   TextFormField(
                     controller: _manualPlateController,
                     decoration: InputDecoration(
-                      labelText: _translate('plate_number', currentLanguage),
+                      labelText: _translate('plate_number', context),
                       border: const OutlineInputBorder(),
                       prefixIcon: const Icon(Icons.confirmation_number),
                     ),
@@ -388,7 +598,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
                   TextFormField(
                     controller: _manualTypeController,
                     decoration: InputDecoration(
-                      labelText: _translate('vehicle_type', currentLanguage),
+                      labelText: _translate('vehicle_type', context),
                       border: const OutlineInputBorder(),
                       prefixIcon: const Icon(Icons.category),
                     ),
@@ -404,14 +614,14 @@ class _DriverDashboardState extends State<DriverDashboard> {
                   _manualPlateController.clear();
                   _manualTypeController.text = 'سيارة';
                 },
-                child: Text(_translate('cancel', currentLanguage)),
+                child: Text(_translate('cancel', context)),
               ),
               ElevatedButton(
                 onPressed: () {
                   if (_manualModelController.text.isEmpty || _manualPlateController.text.isEmpty) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text(_translate('enter_vehicle_info_required', currentLanguage)),
+                        content: Text(_translate('enter_vehicle_info_required', context)),
                         backgroundColor: Colors.red,
                       ),
                     );
@@ -421,7 +631,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
                   Navigator.pop(context);
                   _startRideWithManualVehicle(requestId);
                 },
-                child: Text(_translate('start_ride', currentLanguage)),
+                child: Text(_translate('start_ride', context)),
               ),
             ],
           );
@@ -521,8 +731,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
 
   // 🔥 بدء الرحلة (الدالة الرئيسية)
   Future<void> _startRide(String requestId) async {
-    final currentLanguage = Provider.of<LanguageProvider>(context, listen: false).currentLanguage;
-    await _showVehicleSelectionDialog(requestId, currentLanguage);
+    await _showVehicleSelectionDialog(requestId, context);
   }
 
   Future<void> _loadDriverRequests() async {
@@ -555,12 +764,19 @@ class _DriverDashboardState extends State<DriverDashboard> {
         _driverId = driverId;
         _companyId = companyId;
 
+        // 🔥 الحصول على تاريخ اليوم فقط
+        final now = DateTime.now();
+        final todayStart = DateTime(now.year, now.month, now.day);
+        final todayEnd = DateTime(now.year, now.month, now.day, 23, 59, 59);
+
         final requestsSnapshot = await _firestore
             .collection('companies')
             .doc(companyId)
             .collection('requests')
             .where('assignedDriverId', isEqualTo: driverId)
             .where('status', whereIn: ['ASSIGNED', 'IN_PROGRESS', 'COMPLETED'])
+            .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(todayStart))
+            .where('createdAt', isLessThanOrEqualTo: Timestamp.fromDate(todayEnd))
             .orderBy('createdAt', descending: true)
             .get();
 
@@ -577,7 +793,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
           _loading = false;
         });
 
-        debugPrint('✅ Assigned requests count: ${_requests.length}');
+        debugPrint('✅ Today\'s assigned requests count: ${_requests.length}');
       } else {
         setState(() {
           _loading = false;
@@ -704,7 +920,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
     }
   }
 
-  void _showProfile(BuildContext context, String currentLanguage) {
+  void _showProfile(BuildContext context) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -712,19 +928,19 @@ class _DriverDashboardState extends State<DriverDashboard> {
           children: [
             const Icon(Icons.person, color: Colors.orange),
             const SizedBox(width: 8),
-            Text(_translate('profile', currentLanguage)),
+            Text(_translate('profile', context)),
           ],
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildProfileRow('${_translate('name', currentLanguage)}:', widget.userName),
-            _buildProfileRow('${_translate('email', currentLanguage)}:', _auth.currentUser?.email ?? ''),
-            _buildProfileRow('${_translate('driver_id', currentLanguage)}:', _driverId ?? _translate('not_specified', currentLanguage)),
-            _buildProfileRow('${_translate('status', currentLanguage)}:', _translate('driver_linked_to_hr', currentLanguage)),
+            _buildProfileRow('${_translate('name', context)}:', widget.userName),
+            _buildProfileRow('${_translate('email', context)}:', _auth.currentUser?.email ?? ''),
+            _buildProfileRow('${_translate('driver_id', context)}:', _driverId ?? _translate('not_specified', context)),
+            _buildProfileRow('${_translate('status', context)}:', _translate('driver_linked_to_hr', context)),
             if (_driverProfileExists)
-              _buildProfileRow('${_translate('completed_rides', currentLanguage)}:',
+              _buildProfileRow('${_translate('completed_rides', context)}:',
                   _requests.where((r) {
                     final data = r.data() as Map<String, dynamic>? ?? {};
                     return data['status'] == 'COMPLETED';
@@ -734,7 +950,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text(_translate('ok', currentLanguage)),
+            child: Text(_translate('ok', context)),
           ),
         ],
       ),
@@ -753,15 +969,15 @@ class _DriverDashboardState extends State<DriverDashboard> {
     );
   }
 
-  void _showMyRequests(BuildContext context, String currentLanguage) {
+  void _showMyRequests(BuildContext context) {
     if (_requests.isEmpty) {
-      _showNoRequestsDialog(context, currentLanguage);
+      _showNoRequestsDialog(context);
     } else {
-      _showRequestsBottomSheet(context, currentLanguage);
+      _showRequestsBottomSheet(context);
     }
   }
 
-  void _showNoRequestsDialog(BuildContext context, String currentLanguage) {
+  void _showNoRequestsDialog(BuildContext context) {
     showDialog(
       context: context,
       builder: (context) {
@@ -770,13 +986,13 @@ class _DriverDashboardState extends State<DriverDashboard> {
             children: [
               const Icon(Icons.inventory_2, color: Colors.orange),
               const SizedBox(width: 8),
-              Text(_translate('no_requests', currentLanguage)),
+              Text(_translate('no_requests', context)),
             ],
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(_translate('no_assigned_requests', currentLanguage)),
+              Text(_translate('no_assigned_requests', context)),
               const SizedBox(height: 16),
               if (!_driverProfileExists)
                 ElevatedButton(
@@ -788,14 +1004,14 @@ class _DriverDashboardState extends State<DriverDashboard> {
                     backgroundColor: Colors.blue,
                     foregroundColor: Colors.white,
                   ),
-                  child: Text(_translate('activate_driver_account', currentLanguage)),
+                  child: Text(_translate('activate_driver_account', context)),
                 ),
             ],
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text(_translate('ok', currentLanguage)),
+              child: Text(_translate('ok', context)),
             ),
           ],
         );
@@ -803,7 +1019,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
     );
   }
 
-  void _showRequestsBottomSheet(BuildContext context, String currentLanguage) {
+  void _showRequestsBottomSheet(BuildContext context) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -818,7 +1034,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    _translate('my_requests', currentLanguage),
+                    _translate('my_requests', context),
                     style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.orange),
                   ),
                   IconButton(
@@ -840,7 +1056,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
                     const Icon(Icons.list_alt, color: Colors.orange),
                     const SizedBox(width: 8),
                     Text(
-                      '${_translate('total_requests', currentLanguage)}: ${_requests.length}',
+                      '${_translate('total_requests', context)}: ${_requests.length}',
                       style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.orange),
                     ),
                   ],
@@ -855,7 +1071,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
                     children: [
                       const Icon(Icons.inbox_outlined, size: 60, color: Colors.grey),
                       const SizedBox(height: 16),
-                      Text(_translate('no_requests', currentLanguage), style: const TextStyle(fontSize: 18, color: Colors.grey)),
+                      Text(_translate('no_requests', context), style: const TextStyle(fontSize: 18, color: Colors.grey)),
                     ],
                   ),
                 )
@@ -864,7 +1080,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
                   itemBuilder: (context, index) {
                     final request = _requests[index];
                     final data = request.data() as Map<String, dynamic>? ?? {};
-                    return _buildRequestCard(request.id, data, currentLanguage);
+                    return _buildRequestCard(request.id, data, context);
                   },
                 ),
               ),
@@ -874,7 +1090,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
                   Expanded(
                     child: OutlinedButton(
                       onPressed: () => Navigator.pop(context),
-                      child: Text(_translate('close', currentLanguage)),
+                      child: Text(_translate('close', context)),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -882,7 +1098,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
                     child: ElevatedButton(
                       onPressed: _loadDriverRequests,
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-                      child: Text(_translate('refresh', currentLanguage)),
+                      child: Text(_translate('refresh', context)),
                     ),
                   ),
                 ],
@@ -894,7 +1110,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
     );
   }
 
-  Widget _buildActionButtons(String requestId, String status, String currentLanguage) {
+  Widget _buildActionButtons(String requestId, String status, BuildContext context) {
     if (status == 'ASSIGNED') {
       return ElevatedButton(
         onPressed: () => _startRide(requestId),
@@ -902,11 +1118,11 @@ class _DriverDashboardState extends State<DriverDashboard> {
           backgroundColor: Colors.green,
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          minimumSize: const Size(0, 30),
+          minimumSize: const Size(0, 40),
         ),
         child: Text(
-          _translate('start_ride', currentLanguage),
-          style: const TextStyle(fontSize: 12),
+          _translate('start_ride', context),
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
         ),
       );
     } else if (status == 'IN_PROGRESS') {
@@ -916,11 +1132,11 @@ class _DriverDashboardState extends State<DriverDashboard> {
           backgroundColor: Colors.blue,
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          minimumSize: const Size(0, 30),
+          minimumSize: const Size(0, 40),
         ),
         child: Text(
-          _translate('complete_ride', currentLanguage),
-          style: const TextStyle(fontSize: 12),
+          _translate('complete_ride', context),
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
         ),
       );
     } else {
@@ -936,32 +1152,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
     }
   }
 
-  Widget _buildDetailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 100,
-            child: Text(
-              label,
-              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey.shade700, fontSize: 12),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(color: Colors.black87, fontSize: 12),
-              softWrap: true,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   // 🔥 الدوال المفقودة - أضفها هنا
   String _getSafeString(Map<String, dynamic> data, String key, String defaultValue) {
     try {
@@ -974,7 +1164,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
     }
   }
 
-  String _getRequesterName(Map<String, dynamic> data, String currentLanguage) {
+  String _getRequesterName(Map<String, dynamic> data, BuildContext context) {
     final names = [
       data['requesterName'],
       data['userName'],
@@ -986,10 +1176,10 @@ class _DriverDashboardState extends State<DriverDashboard> {
       if (name is String && name.isNotEmpty) return name;
     }
 
-    return _translate('not_specified', currentLanguage);
+    return _translate('not_specified', context);
   }
 
-  String _getRequesterDepartment(Map<String, dynamic> data, String currentLanguage) {
+  String _getRequesterDepartment(Map<String, dynamic> data, BuildContext context) {
     final departments = [
       data['department'],
       data['requesterDepartment'],
@@ -1000,10 +1190,10 @@ class _DriverDashboardState extends State<DriverDashboard> {
       if (dept is String && dept.isNotEmpty) return dept;
     }
 
-    return _translate('not_specified', currentLanguage);
+    return _translate('not_specified', context);
   }
 
-  Widget _buildErrorCard(String errorMessage, String currentLanguage) {
+  Widget _buildErrorCard(String errorMessage, BuildContext context) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
@@ -1027,7 +1217,10 @@ class _DriverDashboardState extends State<DriverDashboard> {
     );
   }
 
-  String _translateLocation(String location, String language) {
+  String _translateLocation(String location, BuildContext context) {
+    final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
+    final language = languageProvider.currentLanguage;
+
     final locationTranslations = {
       'المصنع': {
         'en': 'Factory',
@@ -1050,7 +1243,10 @@ class _DriverDashboardState extends State<DriverDashboard> {
     return locationTranslations[location]?[language] ?? location;
   }
 
-  String _translatePriority(String priority, String language) {
+  String _translatePriority(String priority, BuildContext context) {
+    final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
+    final language = languageProvider.currentLanguage;
+
     final priorityTranslations = {
       'Normal': {
         'en': 'Normal',
@@ -1065,7 +1261,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
     return priorityTranslations[priority]?[language] ?? priority;
   }
 
-  // 🔥 دالة البناء الرئيسية - أضفها هنا
+  // 🔥 دالة البناء الرئيسية
   @override
   Widget build(BuildContext context) {
     return Consumer<LanguageProvider>(
@@ -1085,24 +1281,22 @@ class _DriverDashboardState extends State<DriverDashboard> {
           );
         }
 
-        final currentLanguage = languageProvider.currentLanguage;
-
         return Scaffold(
           appBar: AppBar(
-            title: Text(_translate('driver_dashboard', currentLanguage)),
+            title: Text(_translate('driver_dashboard', context)),
             backgroundColor: Colors.orange,
             actions: [
               IconButton(
                 icon: const Icon(Icons.refresh),
                 onPressed: _loadDriverRequests,
-                tooltip: _translate('refresh_requests', currentLanguage),
+                tooltip: _translate('refresh_requests', context),
               ),
               PopupMenuButton<String>(
                 onSelected: (value) {
                   if (value == 'logout') {
                     _logout();
                   } else if (value == 'profile') {
-                    _showProfile(context, currentLanguage);
+                    _showProfile(context);
                   }
                 },
                 itemBuilder: (BuildContext context) => [
@@ -1112,7 +1306,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
                       children: [
                         const Icon(Icons.person, color: Colors.orange),
                         const SizedBox(width: 8),
-                        Text(_translate('profile', currentLanguage)),
+                        Text(_translate('profile', context)),
                       ],
                     ),
                   ),
@@ -1122,7 +1316,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
                       children: [
                         const Icon(Icons.logout, color: Colors.red),
                         const SizedBox(width: 8),
-                        Text(_translate('logout', currentLanguage)),
+                        Text(_translate('logout', context)),
                       ],
                     ),
                   ),
@@ -1130,102 +1324,178 @@ class _DriverDashboardState extends State<DriverDashboard> {
               ),
             ],
           ),
-          body: _buildBody(currentLanguage),
+          body: _buildBody(context),
         );
       },
     );
   }
 
-  Widget _buildBody(String currentLanguage) {
-    return Column(
-      children: [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Colors.orange.shade50, Colors.orange.shade100],
-            ),
-          ),
-          child: Column(
-            children: [
-              const CircleAvatar(
-                radius: 40,
-                backgroundColor: Colors.orange,
-                child: Icon(Icons.person, size: 40, color: Colors.white),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                '${_translate('welcome', currentLanguage)} ${widget.userName}',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.orange.shade800),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _driverProfileExists
-                    ? _translate('account_active_ready', currentLanguage)
-                    : _translate('activate_account_to_start', currentLanguage),
-                style: TextStyle(
-                    fontSize: 16,
-                    color: _driverProfileExists ? Colors.green : Colors.orange
+  Widget _buildBody(BuildContext context) {
+    return Consumer<LanguageProvider>(
+      builder: (context, languageProvider, child) {
+        return Column(
+          children: [
+            // 🔥 قسم الترحيب
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Colors.orange.shade50, Colors.orange.shade100],
                 ),
               ),
-            ],
-          ),
-        ),
-
-        if (!_driverProfileExists)
-          Container(
-            padding: const EdgeInsets.all(16),
-            child: ElevatedButton(
-              onPressed: _createDriverProfile,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                foregroundColor: Colors.white,
-                minimumSize: const Size(double.infinity, 55),
-              ),
-              child: Text(
-                _translate('activate_driver_account', currentLanguage),
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              child: Column(
+                children: [
+                  const CircleAvatar(
+                    radius: 40,
+                    backgroundColor: Colors.orange,
+                    child: Icon(Icons.person, size: 40, color: Colors.white),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    '${_translate('welcome', context)} ${widget.userName}',
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.orange.shade800),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: _driverProfileExists ? Colors.green.shade50 : Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: _driverProfileExists ? Colors.green : Colors.orange,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _driverProfileExists ? Icons.check_circle : Icons.info,
+                          color: _driverProfileExists ? Colors.green : Colors.orange,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          _driverProfileExists
+                              ? _translate('account_active_ready', context)
+                              : _translate('activate_account_to_start', context),
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: _driverProfileExists ? Colors.green : Colors.orange,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
 
-        Expanded(
-          child: _buildRequestsList(currentLanguage),
-        ),
-
-        Container(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Expanded(
+            // 🔥 زر التفعيل
+            if (!_driverProfileExists)
+              Container(
+                padding: const EdgeInsets.all(16),
                 child: ElevatedButton(
-                  onPressed: () => _showMyRequests(context, currentLanguage),
+                  onPressed: _createDriverProfile,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.orange,
+                    backgroundColor: Colors.blue,
                     foregroundColor: Colors.white,
-                    minimumSize: const Size(0, 55),
+                    minimumSize: const Size(double.infinity, 55),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Icon(Icons.list_alt),
+                      const Icon(Icons.person_add_alt_1),
                       const SizedBox(width: 8),
-                      Text(_translate('show_my_requests', currentLanguage), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      Text(
+                        _translate('activate_driver_account', context),
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
                     ],
                   ),
                 ),
               ),
-            ],
-          ),
-        ),
-      ],
+
+            // 🔥 قسم الطلبات
+            Expanded(
+              child: _buildRequestsList(context),
+            ),
+
+            // 🔥 الأزرار السفلية
+            Container(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () => _showMyRequests(context),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size(0, 55),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.list_alt),
+                          const SizedBox(width: 8),
+                          Text(_translate('show_my_requests', context),
+                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () => _showPerformanceReport(context),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.purple,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size(0, 55),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.analytics),
+                          const SizedBox(width: 8),
+                          Text(_translate('performance_report', context),
+                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
-  Widget _buildRequestsList(String currentLanguage) {
+  // 🔥 دالة لعرض تقرير الأداء
+  void _showPerformanceReport(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => MyRequestsPage(
+          companyId: _companyId ?? 'C001',
+          userId: _auth.currentUser?.uid ?? '',
+          userName: widget.userName,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRequestsList(BuildContext context) {
     if (_loading) {
       return const Center(child: CircularProgressIndicator(color: Colors.orange));
     }
@@ -1238,12 +1508,12 @@ class _DriverDashboardState extends State<DriverDashboard> {
             const Icon(Icons.inbox_outlined, size: 80, color: Colors.grey),
             const SizedBox(height: 20),
             Text(
-              _translate('no_requests_currently', currentLanguage),
+              _translate('no_requests_currently', context),
               style: const TextStyle(fontSize: 20, color: Colors.grey, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             Text(
-              _translate('requests_will_appear_here_when_assigned', currentLanguage),
+              _translate('requests_will_appear_here_when_assigned', context),
               style: const TextStyle(fontSize: 14, color: Colors.grey),
               textAlign: TextAlign.center,
             ),
@@ -1254,27 +1524,28 @@ class _DriverDashboardState extends State<DriverDashboard> {
 
     return ListView.builder(
       itemCount: _requests.length,
+      padding: const EdgeInsets.all(16),
       itemBuilder: (context, index) {
         try {
           final request = _requests[index];
           if (!request.exists) {
-            return _buildErrorCard('طلب غير موجود', currentLanguage);
+            return _buildErrorCard('طلب غير موجود', context);
           }
 
           final data = request.data() as Map<String, dynamic>? ?? {};
-          return _buildRequestCard(request.id, data, currentLanguage);
+          return _buildRequestCard(request.id, data, context);
         } catch (e) {
-          return _buildErrorCard('خطأ في عرض الطلب: $e', currentLanguage);
+          return _buildErrorCard('خطأ في عرض الطلب: $e', context);
         }
       },
     );
   }
 
-  Widget _buildRequestCard(String requestId, Map<String, dynamic> data, String currentLanguage) {
+  Widget _buildRequestCard(String requestId, Map<String, dynamic> data, BuildContext context) {
     try {
       final status = _getSafeString(data, 'status', 'ASSIGNED');
-      final requesterName = _getRequesterName(data, currentLanguage);
-      final requesterDepartment = _getRequesterDepartment(data, currentLanguage);
+      final requesterName = _getRequesterName(data, context);
+      final requesterDepartment = _getRequesterDepartment(data, context);
       final fromLocation = _getSafeString(data, 'fromLocation', '');
       final toLocation = _getSafeString(data, 'toLocation', '');
       final priority = _getSafeString(data, 'priority', 'Normal');
@@ -1282,44 +1553,51 @@ class _DriverDashboardState extends State<DriverDashboard> {
       final vehicleInfo = data['vehicleInfo'] as Map<String, dynamic>?;
 
       Color statusColor = Colors.orange;
-      String statusText = _translate('assigned', currentLanguage);
+      String statusText = _translate('assigned', context);
 
       if (status == 'IN_PROGRESS') {
         statusColor = Colors.blue;
-        statusText = _translate('in_progress', currentLanguage);
+        statusText = _translate('in_progress', context);
       } else if (status == 'COMPLETED') {
         statusColor = Colors.green;
-        statusText = _translate('completed', currentLanguage);
+        statusText = _translate('completed', context);
       }
 
       return Container(
-        margin: const EdgeInsets.only(bottom: 12),
+        margin: const EdgeInsets.only(bottom: 16),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: Colors.grey.withOpacity(0.2),
-              blurRadius: 4,
-              offset: const Offset(0, 2),
+              color: Colors.grey.withOpacity(0.3),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
             ),
           ],
+          border: Border.all(color: Colors.grey.shade200),
         ),
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header with request number and status
+              // 🔥 رأس البطاقة - رقم الطلب والحالة
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    '${_translate('request', currentLanguage)} #${requestId.length > 6 ? requestId.substring(0, 6) : requestId}',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.orange.shade800),
+                  Expanded(
+                    child: Text(
+                      '${_translate('request', context)} #${requestId.length > 6 ? requestId.substring(0, 6) : requestId}',
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                          color: Colors.orange.shade800
+                      ),
+                    ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                     decoration: BoxDecoration(
                       color: statusColor.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(20),
@@ -1329,7 +1607,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
                       statusText,
                       style: TextStyle(
                         color: statusColor,
-                        fontSize: 12,
+                        fontSize: 14,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -1337,43 +1615,56 @@ class _DriverDashboardState extends State<DriverDashboard> {
                 ],
               ),
 
-              const SizedBox(height: 8),
+              const SizedBox(height: 16),
 
               // 🔥 معلومات السيارة
               if (vehicleInfo != null && status != 'ASSIGNED')
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: Colors.green.shade50,
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: Colors.green.shade200),
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.directions_car, size: 16, color: Colors.green.shade700),
-                      const SizedBox(width: 6),
+                      Icon(Icons.directions_car, size: 20, color: Colors.green.shade700),
+                      const SizedBox(width: 8),
                       Expanded(
-                        child: Text(
-                          '${vehicleInfo['model']} - ${vehicleInfo['plateNumber']}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.green.shade700,
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${vehicleInfo['model']}',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green.shade700,
+                              ),
+                            ),
+                            Text(
+                              '${vehicleInfo['plateNumber']}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.green.shade600,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       if (vehicleInfo['source'] == 'manual')
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
                             color: Colors.orange.shade100,
-                            borderRadius: BorderRadius.circular(4),
+                            borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
-                            _translate('manual', currentLanguage),
+                            _translate('manual', context),
                             style: TextStyle(
                               fontSize: 10,
+                              fontWeight: FontWeight.bold,
                               color: Colors.orange.shade800,
                             ),
                           ),
@@ -1382,34 +1673,35 @@ class _DriverDashboardState extends State<DriverDashboard> {
                   ),
                 ),
 
-              // 🔥 عداد الوقت للرحلة قيد التنفيذ
+              // 🔥 عداد الوقت
               if (status == 'IN_PROGRESS' && _rideDurations.containsKey(requestId))
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.all(12),
+                  margin: const EdgeInsets.only(top: 8),
                   decoration: BoxDecoration(
                     color: Colors.blue.shade50,
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: Colors.blue.shade200),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.timer, size: 16, color: Colors.blue.shade700),
-                      const SizedBox(width: 6),
+                      Icon(Icons.timer, size: 20, color: Colors.blue.shade700),
+                      const SizedBox(width: 8),
                       Text(
-                        _translate('ride_duration', currentLanguage),
+                        _translate('ride_duration', context),
                         style: TextStyle(
-                          fontSize: 12,
+                          fontSize: 14,
                           fontWeight: FontWeight.bold,
                           color: Colors.blue.shade700,
                         ),
                       ),
-                      const SizedBox(width: 6),
+                      const SizedBox(width: 8),
                       Text(
-                        _formatDuration(_rideDurations[requestId]!, currentLanguage),
+                        _formatDuration(_rideDurations[requestId]!, context),
                         style: TextStyle(
-                          fontSize: 14,
+                          fontSize: 16,
                           fontWeight: FontWeight.bold,
                           color: Colors.blue.shade900,
                         ),
@@ -1418,105 +1710,182 @@ class _DriverDashboardState extends State<DriverDashboard> {
                   ),
                 ),
 
-              const SizedBox(height: 8),
+              const SizedBox(height: 16),
 
-              // Requester Information
-              Row(
-                children: [
-                  Icon(Icons.person, size: 16, color: Colors.grey.shade600),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      requesterName,
-                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 4),
-
-              // Department Information
-              Row(
-                children: [
-                  Icon(Icons.business, size: 16, color: Colors.grey.shade600),
-                  const SizedBox(width: 6),
-                  Text(
-                    '${_translate('department', currentLanguage)}: ',
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade700, fontWeight: FontWeight.bold),
-                  ),
-                  Text(
-                    requesterDepartment,
-                    style: TextStyle(fontSize: 12, color: Colors.blue.shade700),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 8),
-
-              // Locations
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.place, size: 16, color: Colors.grey.shade600),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+              // 🔥 معلومات الراكب
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  children: [
+                    Row(
                       children: [
-                        Text('${_translate('from', currentLanguage)}: $fromLocation'),
-                        Text('${_translate('to', currentLanguage)}: $toLocation'),
+                        Icon(Icons.person, size: 20, color: Colors.orange.shade700),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            requesterName,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.black87,
+                            ),
+                          ),
+                        ),
                       ],
                     ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 8),
-
-              // Description
-              if (description.isNotEmpty) ...[
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(Icons.description, size: 16, color: Colors.grey.shade600),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        description,
-                        style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Icon(Icons.business, size: 20, color: Colors.blue.shade700),
+                        const SizedBox(width: 8),
+                        Text(
+                          '${_translate('department', context)}: ',
+                          style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey.shade700,
+                              fontWeight: FontWeight.bold
+                          ),
+                        ),
+                        Text(
+                          requesterDepartment,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.blue.shade700,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
+              ),
+
+              const SizedBox(height: 16),
+
+              // 🔥 مسار الرحلة
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.place, size: 20, color: Colors.red.shade700),
+                        const SizedBox(width: 8),
+                        Text(
+                          _translate('trip_route', context),
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black87,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    _buildLocationRow(
+                        Icons.arrow_upward,
+                        Colors.green,
+                        _translate('from', context),
+                        fromLocation
+                    ),
+                    const SizedBox(height: 8),
+                    _buildLocationRow(
+                        Icons.arrow_downward,
+                        Colors.red,
+                        _translate('to', context),
+                        toLocation
+                    ),
+                  ],
+                ),
+              ),
+
+              // 🔥 الوصف والملاحظات
+              if (description.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.description, size: 20, color: Colors.orange.shade700),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _translate('notes', context), // ✅ الآن سيتم الترجمة الصحيحة
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.orange.shade800,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              description,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey.shade700,
+                              ),
+                              textAlign: TextAlign.start,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ],
 
-              // Priority and Action Button
+              const SizedBox(height: 16),
+
+              // 🔥 الأولوية والزر
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
                       color: priority == 'Urgent' ? Colors.red.shade50 : Colors.green.shade50,
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: BorderRadius.circular(20),
                       border: Border.all(
                         color: priority == 'Urgent' ? Colors.red.shade300 : Colors.green.shade300,
                       ),
                     ),
-                    child: Text(
-                      priority,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: priority == 'Urgent' ? Colors.red.shade800 : Colors.green.shade800,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          priority == 'Urgent' ? Icons.warning : Icons.check_circle,
+                          size: 16,
+                          color: priority == 'Urgent' ? Colors.red.shade800 : Colors.green.shade800,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          _translatePriority(priority, context),
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: priority == 'Urgent' ? Colors.red.shade800 : Colors.green.shade800,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  _buildActionButtons(requestId, status, currentLanguage),
+                  _buildActionButtons(requestId, status, context),
                 ],
               ),
             ],
@@ -1524,7 +1893,41 @@ class _DriverDashboardState extends State<DriverDashboard> {
         ),
       );
     } catch (e) {
-      return _buildErrorCard('خطأ في عرض الطلب: $e', currentLanguage);
+      return _buildErrorCard('خطأ في عرض الطلب: $e', context);
     }
+  }
+
+  // 🔥 دالة مساعدة لعرض سطور الموقع
+  Widget _buildLocationRow(IconData icon, Color color, String label, String location) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 16, color: color),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey.shade600,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Text(
+                location,
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: Colors.black87,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 }

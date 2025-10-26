@@ -13,6 +13,8 @@
     flutter_localizations:
       sdk: flutter
 
+
+    google_translate: ^2.0.0
     # الحزم الأساسية
     google_maps_flutter: ^2.5.0
     uuid: ^4.2.1
