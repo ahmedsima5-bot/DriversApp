@@ -452,7 +452,7 @@ class _NewTransferRequestScreenState extends State<NewTransferRequestScreen> {
                   _buildTextField(
                     controller: _descriptionController,
                     label: '${_translate('تفاصيل الطلب', currentLanguage)} *',
-                    hintText: _translate('وضح نوع السيارة المطلوب وتفاصيل الطلب كاملة', currentLanguage),
+                    hintText: _translate('وضح نوع السيارة المطلوب للشحنة وتفاصيل الطلب كاملة', currentLanguage),
                     maxLines: 6,
                     validator: (value) {
                       if (value == null || value.isEmpty) {

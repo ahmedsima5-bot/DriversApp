@@ -48,13 +48,24 @@ class _MyRequestsPageState extends State<MyRequestsPage> {
           .get();
 
       setState(() {
-        _allRequests = snapshot.docs.map((doc) {
+        // نُنشئ قائمة بجميع الطلبات أولاً
+        final allUserRequests = snapshot.docs.map((doc) {
           final data = doc.data() as Map<String, dynamic>;
           return {
             'id': doc.id,
             ...data,
           };
         }).toList();
+
+        // تصفية الطلبات لعرض الطلبات السابقة فقط
+        // الطلبات السابقة هي: المكتملة، المرفوضة، أو الملغاة
+        _allRequests = allUserRequests.where((request) {
+          final status = request['status'] ?? 'PENDING';
+          return status == 'COMPLETED' ||
+              status == 'REJECTED' ||
+              status == 'CANCELED';
+        }).toList();
+
         _applyFilter(0);
         _isLoading = false;
       });
@@ -104,137 +115,6 @@ class _MyRequestsPageState extends State<MyRequestsPage> {
           break;
       }
     });
-  }
-
-  // 🔥 دالة لحساب إحصائيات الأداء
-  // 🔥 دالة لحساب إحصائيات الأداء
-  // 🔥 دالة لحساب إحصائيات الأداء
-  Map<String, dynamic> _calculatePerformanceStats() {
-    final completed = _allRequests.where((r) => r['status'] == 'COMPLETED').length;
-    final inProgress = _allRequests.where((r) => r['status'] == 'IN_PROGRESS').length;
-    final assigned = _allRequests.where((r) => r['status'] == 'ASSIGNED').length;
-    final total = _allRequests.length;
-
-    // حساب متوسط مدة الرحلة
-    double avgDuration = 0;
-    final completedRequests = _allRequests.where((r) => r['status'] == 'COMPLETED' && r['rideDuration'] != null);
-    if (completedRequests.isNotEmpty) {
-      final totalDuration = completedRequests.fold<int>(0, (sum, r) => sum + ((r['rideDuration'] ?? 0) as int));
-      avgDuration = totalDuration / completedRequests.length;
-    }
-
-    return {
-      'total': total,
-      'completed': completed,
-      'inProgress': inProgress,
-      'assigned': assigned,
-      'completionRate': total > 0 ? (completed / total * 100) : 0,
-      'avgDuration': avgDuration,
-    };
-  }
-
-  // 🔥 بطاقة إحصائيات الأداء
-  Widget _buildPerformanceCard(String currentLanguage) {
-    final stats = _calculatePerformanceStats();
-
-    return Card(
-      margin: const EdgeInsets.all(16),
-      elevation: 4,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.analytics, color: Colors.purple),
-                const SizedBox(width: 8),
-                Text(
-                  _translate('performance_report', currentLanguage),
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            // الإحصائيات الرئيسية
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildStatItem(
-                  _translate('total_rides', currentLanguage),
-                  stats['total'].toString(),
-                  Colors.blue,
-                ),
-                _buildStatItem(
-                  _translate('completed', currentLanguage),
-                  stats['completed'].toString(),
-                  Colors.green,
-                ),
-                _buildStatItem(
-                  _translate('completion_rate', currentLanguage),
-                  '${stats['completionRate'].toStringAsFixed(1)}%',
-                  Colors.orange,
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 12),
-
-            // معلومات إضافية
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildStatItem(
-                  _translate('in_progress', currentLanguage),
-                  stats['inProgress'].toString(),
-                  Colors.blue,
-                ),
-                _buildStatItem(
-                  _translate('assigned', currentLanguage),
-                  stats['assigned'].toString(),
-                  Colors.orange,
-                ),
-                _buildStatItem(
-                  _translate('avg_duration', currentLanguage),
-                  '${(stats['avgDuration'] / 60).toStringAsFixed(1)} ${_translate('minutes', currentLanguage)}',
-                  Colors.purple,
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatItem(String label, String value, Color color) {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            shape: BoxShape.circle,
-            border: Border.all(color: color),
-          ),
-          child: Text(
-            value,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-              color: color,
-            ),
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: const TextStyle(fontSize: 12, color: Colors.grey),
-          textAlign: TextAlign.center,
-        ),
-      ],
-    );
   }
 
   Widget _buildRequestItem(Map<String, dynamic> request, String currentLanguage) {
@@ -321,7 +201,7 @@ class _MyRequestsPageState extends State<MyRequestsPage> {
             const SizedBox(height: 12),
 
             // معلومات السيارة إذا كانت متوفرة
-            if (vehicleInfo != null)
+            if (vehicleInfo != null && vehicleInfo['model'] != null && vehicleInfo['plateNumber'] != null)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
@@ -508,6 +388,8 @@ class _MyRequestsPageState extends State<MyRequestsPage> {
         return _translate('completed', currentLanguage);
       case 'ASSIGNED':
         return _translate('assigned', currentLanguage);
+      case 'CANCELED':
+        return _translate('canceled', currentLanguage);
       default:
         return status;
     }
@@ -527,6 +409,8 @@ class _MyRequestsPageState extends State<MyRequestsPage> {
         return Colors.green.shade700;
       case 'REJECTED':
         return Colors.red;
+      case 'CANCELED':
+        return Colors.grey;
       default:
         return Colors.grey;
     }
@@ -540,7 +424,8 @@ class _MyRequestsPageState extends State<MyRequestsPage> {
 
         return Scaffold(
           appBar: AppBar(
-            title: Text(_translate('my_requests', currentLanguage)),
+            // تم تغيير العنوان إلى "طلباتي السابقة"
+            title: const Text('طلباتي السابقة'),
             backgroundColor: Colors.orange,
             foregroundColor: Colors.white,
             leading: IconButton(
@@ -559,10 +444,9 @@ class _MyRequestsPageState extends State<MyRequestsPage> {
               ? const Center(child: CircularProgressIndicator())
               : Column(
             children: [
-              // 🔥 بطاقة الأداء
-              _buildPerformanceCard(currentLanguage),
+              // ❌ تمت إزالة بطاقة الأداء بالكامل
 
-              // 🔥 أزرار التصفية
+              // أزرار التصفية
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 height: 50,
@@ -577,7 +461,7 @@ class _MyRequestsPageState extends State<MyRequestsPage> {
                 ),
               ),
 
-              // 🔥 عدد النتائج
+              // عدد النتائج
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Text(
@@ -586,7 +470,7 @@ class _MyRequestsPageState extends State<MyRequestsPage> {
                 ),
               ),
 
-              // 🔥 قائمة الطلبات
+              // قائمة الطلبات
               Expanded(
                 child: _filteredRequests.isEmpty
                     ? Center(

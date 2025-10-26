@@ -59,7 +59,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
         'en': 'Welcome',
       },
       'account_active_ready': {
-        'ar': 'الحساب مفعل وجاهز',
+        'ar': 'Online',
         'en': 'Account active and ready',
       },
       'trip_route': {
@@ -135,7 +135,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
         'en': 'Refresh Requests',
       },
       'profile': {
-        'ar': 'الملف الشخصي',
+        'ar': 'بياناتي',
         'en': 'Profile',
       },
       'logout': {
@@ -235,13 +235,11 @@ class _DriverDashboardState extends State<DriverDashboard> {
         'en': 'Status',
       },
       'driver_linked_to_hr': {
-        'ar': 'سائق مرتبط بشؤون الموظفين',
+        'ar': 'الموارد البشرية',
         'en': 'Driver linked to HR',
       },
-      'completed_rides': {
-        'ar': 'الرحلات المكتملة',
-        'en': 'Completed Rides',
-      },
+
+
       'not_specified': {
         'ar': 'غير محدد',
         'en': 'Not specified',
