@@ -7,6 +7,8 @@ import '../../services/simple_notification_service.dart';
 import '../../providers/language_provider.dart';
 import 'dart:async';
 import 'my_requests_page.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert'; // 🔥 أضف هذا
 
 class DriverDashboard extends StatefulWidget {
   final String userName;
@@ -42,7 +44,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
   final TextEditingController _manualPlateController = TextEditingController();
   final TextEditingController _manualTypeController = TextEditingController(text: 'سيارة');
 
-  // 🔥 دالة الترجمة المعدلة
+  // 🔥 دالة الترجمة الأساسية
   String _translate(String key, BuildContext context) {
     final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
     final String language = languageProvider.currentLanguage;
@@ -251,6 +253,48 @@ class _DriverDashboardState extends State<DriverDashboard> {
     };
 
     return translations[key]?[language] ?? key;
+  }
+
+  // 🔥 دالة الترجمة التلقائية الحقيقية
+  Future<String> _translateDynamicContent(String text, BuildContext context) async {
+    if (text.isEmpty) return text;
+
+    final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
+    final String targetLanguage = languageProvider.currentLanguage;
+
+    if (targetLanguage == 'ar' || text.trim().isEmpty) {
+      return text;
+    }
+
+    try {
+      // 🔥 استخدام LibreTranslate API المجاني
+      final url = Uri.parse('https://libretranslate.de/translate');
+
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'q': text,
+          'source': 'en',
+          'target': 'ar',
+          'format': 'text'
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = json.decode(response.body);
+        final translatedText = data['translatedText'];
+        debugPrint('✅ Translated: "$text" -> "$translatedText"');
+        return translatedText;
+      } else {
+        debugPrint('❌ Translation error: ${response.statusCode}');
+        return text;
+      }
+
+    } catch (e) {
+      debugPrint('❌ Translation failed: $e');
+      return text;
+    }
   }
 
   @override
@@ -1795,59 +1839,66 @@ class _DriverDashboardState extends State<DriverDashboard> {
                         Icons.arrow_upward,
                         Colors.green,
                         _translate('from', context),
-                        fromLocation
+                        _translateLocation(fromLocation, context)
                     ),
                     const SizedBox(height: 8),
                     _buildLocationRow(
                         Icons.arrow_downward,
                         Colors.red,
                         _translate('to', context),
-                        toLocation
+                        _translateLocation(toLocation, context)
                     ),
                   ],
                 ),
               ),
 
-              // 🔥 الوصف والملاحظات
+              // 🔥 الوصف والملاحظات (مع الترجمة التلقائية الحقيقية)
               if (description.isNotEmpty) ...[
                 const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.shade50,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(Icons.description, size: 20, color: Colors.orange.shade700),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _translate('notes', context), // ✅ الآن سيتم الترجمة الصحيحة
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.orange.shade800,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              description,
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey.shade700,
-                              ),
-                              textAlign: TextAlign.start,
-                            ),
-                          ],
-                        ),
+                FutureBuilder<String>(
+                  future: _translateDynamicContent(description, context),
+                  builder: (context, snapshot) {
+                    final translatedDescription = snapshot.data ?? description;
+
+                    return Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade50,
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                    ],
-                  ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.description, size: 20, color: Colors.orange.shade700),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _translate('notes', context),
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.orange.shade800,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  translatedDescription, // ✅ الملاحظات المترجمة تلقائياً
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey.shade700,
+                                  ),
+                                  textAlign: TextAlign.start,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
               ],
 
