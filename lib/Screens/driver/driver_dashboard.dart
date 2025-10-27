@@ -1112,11 +1112,24 @@ class _DriverDashboardState extends State<DriverDashboard> {
 
   Widget _buildRequestCard(String requestId, Map<String, dynamic> requestData, BuildContext context) {
     final status = requestData['status'] as String? ?? 'UNKNOWN';
-    final from = requestData['fromLocationName'] as String? ?? 'N/A';
-    final to = requestData['toLocationName'] as String? ?? 'N/A';
-    final department = requestData['requesterDepartment'] as String? ?? 'N/A';
-    final isUrgent = requestData['isUrgent'] as bool? ?? false;
-    final notes = requestData['notes'] as String? ?? '';
+
+    // 🔥 تم التعديل: استخدام fromLocation بدلاً من fromLocationName
+    final from = requestData['fromLocation'] as String? ?? 'N/A';
+
+    // 🔥 تم التعديل: استخدام toLocation بدلاً من toLocationName
+    final to = requestData['toLocation'] as String? ?? 'N/A';
+
+    // 🔥 تم التعديل: استخدام department بدلاً من requesterDepartment
+    final department = requestData['department'] as String? ?? 'N/A';
+
+    // حقل isUrgent غير موجود في بياناتك، لكن priority موجود.
+    // سنعتمد على priority:
+    final priority = requestData['priority'] as String? ?? 'Normal';
+    final isUrgent = priority == 'Urgent';
+
+    // حقل notes غير موجود، لكن details موجود:
+    final notes = requestData['details'] as String? ?? requestData['additionalDetails'] as String? ?? '';
+
     final isCompleted = status == 'COMPLETED';
     final isInProgress = status == 'IN_PROGRESS';
 
