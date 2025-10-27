@@ -26,7 +26,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   // قائمة الأقسام ستُجلب من Firestore
   List<String> _departmentOptions = [];
   // الخيارات الثابتة للأدوار
-  final List<String> _roleOptions = ['Requester', 'Driver', 'HR'];
+  final List<String> _roleOptions = ['Requester', 'Driver']; //سحل مسؤولي الموارد البشرية يدوي في فايبر بيز افضل
 
   String? _selectedDepartment;
   String? _selectedRole;
