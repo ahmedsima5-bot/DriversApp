@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_map/flutter_map.dart'; // 🔥 حزمة الخرائط (مجانية ولا تحتاج API Key)
+import 'package:latlong2/latlong.dart';      // 🔥 لحساب الإحداثيات
 
 class HRDriversManagement extends StatefulWidget {
   final String companyId;
@@ -25,7 +27,7 @@ class _HRDriversManagementState extends State<HRDriversManagement> {
   }
 
   Future<void> _loadRealDrivers() async {
-    setState(() => _loading = true); // تأكد من عرض شاشة التحميل عند التحديث
+    setState(() => _loading = true);
     try {
       final driversSnapshot = await _firestore
           .collection('companies')
@@ -45,12 +47,12 @@ class _HRDriversManagementState extends State<HRDriversManagement> {
             'isActive': data['isActive'] ?? false,
             'completedRides': data['completedRides'] ?? 0,
             'currentRequestId': data['currentRequestId'],
+            'location': data['location'] as Map<String, dynamic>?, // 🔥 جلب بيانات الموقع
           };
         }).toList();
         _loading = false;
       });
     } catch (e) {
-      // استخدم ScaffoldMessenger لعرض رسالة خطأ للمستخدم إذا لم تكن قادرة على استخدام حزمة logger
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('❌ خطأ في جلب السائقين: $e')),
@@ -63,9 +65,6 @@ class _HRDriversManagementState extends State<HRDriversManagement> {
     }
   }
 
-  // ------------------------------------------------------------------
-  //  وظيفة تحديث حالة النشاط (تشغيل/إيقاف السائق)
-  // ------------------------------------------------------------------
   Future<void> _toggleDriverActiveStatus(String driverId, bool newStatus) async {
     try {
       await _firestore
@@ -75,11 +74,9 @@ class _HRDriversManagementState extends State<HRDriversManagement> {
           .doc(driverId)
           .update({
         'isActive': newStatus,
-        // عند الإيقاف، من المنطقي جعله غير متاح أيضاً
         if (!newStatus) 'isAvailable': false,
       });
 
-      // إعادة تحميل البيانات بعد التحديث
       await _loadRealDrivers();
 
       if (mounted) {
@@ -100,11 +97,54 @@ class _HRDriversManagementState extends State<HRDriversManagement> {
       print('❌ خطأ في تحديث حالة السائق: $e');
     }
   }
+
   // ------------------------------------------------------------------
+  // 🔥 وظيفة فتح شاشة التتبع على الخريطة (باستخدام flutter_map)
+  // ------------------------------------------------------------------
+  void _showDriverLocation(Map<String, dynamic> driver) {
+    final driverId = driver['id'] as String;
+    final driverName = driver['name'] as String;
+    final locationData = driver['location'] as Map<String, dynamic>?;
+
+    if (locationData == null || locationData['latitude'] == null || locationData['longitude'] == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('❌ لا تتوفر بيانات موقع حالية لهذا السائق.')),
+        );
+      }
+      return;
+    }
+
+    // تحويل الإحداثيات إلى نوع LatLng لاستخدامه في الخريطة
+    final initialLocation = LatLng(
+      (locationData['latitude'] as num).toDouble(),
+      (locationData['longitude'] as num).toDouble(),
+    );
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.85,
+      ),
+      builder: (context) {
+        return DriverLocationTracker(
+          companyId: widget.companyId,
+          driverId: driverId,
+          driverName: driverName,
+          initialLocation: initialLocation,
+        );
+      },
+    );
+  }
+  // ------------------------------------------------------------------
+
 
   String _getStatus(bool isAvailable, bool isActive) {
     if (!isActive) return 'غير نشط';
-    return isAvailable ? 'متاح' : 'مشغول';
+    // تحديد حالة "قيد العمل"
+    if (!isAvailable) return 'مشغول';
+    return 'متاح';
   }
 
   Color _getStatusColor(String status) {
@@ -114,7 +154,7 @@ class _HRDriversManagementState extends State<HRDriversManagement> {
       case 'مشغول':
         return Colors.orange;
       case 'غير نشط':
-        return Colors.red.shade700; // تم تغيير اللون لتمييز الإيقاف
+        return Colors.red.shade700;
       default:
         return Colors.grey;
     }
@@ -198,6 +238,7 @@ class _HRDriversManagementState extends State<HRDriversManagement> {
   void _showDriverDetails(Map<String, dynamic> driver) {
     final bool isActive = driver['isActive'];
     final String status = _getStatus(driver['isAvailable'], isActive);
+    final bool locationAvailable = (driver['location'] as Map<String, dynamic>?) != null;
 
     showDialog(
       context: context,
@@ -221,13 +262,10 @@ class _HRDriversManagementState extends State<HRDriversManagement> {
             ),
             const SizedBox(height: 10),
 
-            // ------------------------------------------------------------------
             // زر التحكم بحالة النشاط
-            // ------------------------------------------------------------------
             ElevatedButton.icon(
               onPressed: () {
                 Navigator.pop(context); // إغلاق النافذة
-                // تبديل حالة النشاط: إذا كان نشطًا سيصبح غير نشط، والعكس صحيح
                 _toggleDriverActiveStatus(driver['id'], !isActive);
               },
               icon: Icon(isActive ? Icons.person_off : Icons.play_arrow),
@@ -238,10 +276,20 @@ class _HRDriversManagementState extends State<HRDriversManagement> {
                 minimumSize: const Size(double.infinity, 40),
               ),
             ),
-            // ------------------------------------------------------------------
           ],
         ),
         actions: [
+          // 🔥 زر التتبع المباشر
+          TextButton.icon(
+            icon: const Icon(Icons.location_on, color: Colors.blue),
+            label: const Text('تتبع مباشر'),
+            onPressed: locationAvailable
+                ? () {
+              Navigator.pop(context); // إغلاق نافذة التفاصيل
+              _showDriverLocation(driver); // فتح نافذة التتبع
+            }
+                : null, // تعطيل الزر إذا لم يكن هناك موقع
+          ),
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('إغلاق'),
@@ -261,6 +309,143 @@ class _HRDriversManagementState extends State<HRDriversManagement> {
           const SizedBox(width: 8),
           Expanded(child: Text(value, style: TextStyle(color: color))),
         ],
+      ),
+    );
+  }
+}
+
+// ===================================================================
+// 🔥 الكلاس الجديد لتتبع السائق على الخريطة (باستخدام flutter_map)
+// ===================================================================
+
+class DriverLocationTracker extends StatelessWidget {
+  final String companyId;
+  final String driverId;
+  final String driverName;
+  final LatLng initialLocation;
+
+  const DriverLocationTracker({
+    super.key,
+    required this.companyId,
+    required this.driverId,
+    required this.driverName,
+    required this.initialLocation,
+  });
+
+  // ------------------------------------------------------------------
+  // دالة تُنشئ Stream لجلب تحديثات الموقع من Firestore
+  // ------------------------------------------------------------------
+  Stream<DocumentSnapshot<Map<String, dynamic>>> _getLocationStream() {
+    return FirebaseFirestore.instance
+        .collection('companies')
+        .doc(companyId)
+        .collection('drivers')
+        .doc(driverId)
+        .snapshots();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('تتبع مباشر: $driverName'),
+        backgroundColor: Colors.blue.shade800,
+        foregroundColor: Colors.white,
+      ),
+      body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+        stream: _getLocationStream(),
+        builder: (context, snapshot) {
+          LatLng currentPosition = initialLocation;
+          String statusText = 'جاري الاتصال...';
+
+          if (snapshot.hasError) {
+            statusText = 'خطأ في جلب البيانات: ${snapshot.error}';
+          } else if (snapshot.connectionState == ConnectionState.waiting) {
+            statusText = 'جاري تحميل الموقع الأولي...';
+          } else if (snapshot.hasData && snapshot.data!.exists) {
+            final data = snapshot.data!.data();
+            final location = data?['location'] as Map<String, dynamic>?;
+
+            if (location != null && location['latitude'] != null && location['longitude'] != null) {
+              currentPosition = LatLng(
+                (location['latitude'] as num).toDouble(),
+                (location['longitude'] as num).toDouble(),
+              );
+              statusText = 'موقع السائق مُحدَّث لحظياً.';
+            } else {
+              statusText = 'السائق لم يُرسل موقعه بعد.';
+            }
+          }
+
+          return Stack(
+            children: [
+              // 🛑 مكون الخريطة (FlutterMap)
+              FlutterMap(
+                // مفتاح يسمح للخريطة بتحديث العرض عند تغير initialCenter
+                key: ValueKey(currentPosition),
+                options: MapOptions(
+                  initialCenter: currentPosition,
+                  initialZoom: 16.0,
+                  interactionOptions: const InteractionOptions(
+                    flags: InteractiveFlag.all,
+                  ),
+                ),
+                children: [
+                  // طبقة الخرائط (TileLayer) من OpenStreetMap
+                  TileLayer(
+                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    userAgentPackageName: 'com.example.hrdriversmanagement', // استبدلها باسم تطبيقك
+                    // إعدادات الكاش إذا لزم الأمر
+                  ),
+                  // طبقة العلامات (Markers)
+                  MarkerLayer(
+                    markers: [
+                      Marker(
+                        point: currentPosition,
+                        width: 80,
+                        height: 80,
+                        child: const Icon(
+                          Icons.location_on,
+                          color: Colors.red,
+                          size: 40,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              // شريط معلومات الحالة
+              Positioned(
+                top: 10,
+                left: 10,
+                right: 10,
+                child: Card(
+                  elevation: 4,
+                  child: Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          statusText,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: snapshot.hasError ? Colors.red : Colors.blueGrey,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          'الإحداثيات: (${currentPosition.latitude.toStringAsFixed(5)}, ${currentPosition.longitude.toStringAsFixed(5)})',
+                          style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

@@ -2,13 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
-import '../../services/dispatch_service.dart';
 import '../../services/simple_notification_service.dart';
 import '../../providers/language_provider.dart';
 import 'dart:async';
-import 'my_requests_page.dart';
 import 'package:http/http.dart' as http;
-import 'dart:convert'; // 🔥 أضف هذا
+import 'dart:convert';
+import 'package:geolocator/geolocator.dart'; // 🔥 مضافة
 
 class DriverDashboard extends StatefulWidget {
   final String userName;
@@ -30,8 +29,13 @@ class _DriverDashboardState extends State<DriverDashboard> {
   bool _driverProfileExists = false;
   StreamSubscription? _requestsSubscription;
 
+  // 🔥 متغيرات تتبع الموقع الجديدة
+  StreamSubscription<Position>? _positionStreamSubscription;
+  bool _isLocationServiceEnabled = true; // نفترض أنها تعمل حتى نتحقق
+
   // 🔥 نظام السيارات
   List<Map<String, dynamic>> _availableVehicles = [];
+
   bool _loadingVehicles = false;
 
   // 🔥 مؤقتات للطلبات قيد التنفيذ
@@ -50,204 +54,57 @@ class _DriverDashboardState extends State<DriverDashboard> {
     final String language = languageProvider.currentLanguage;
 
     final Map<String, Map<String, String>> translations = {
-      'notes': {
-        'ar': 'ملاحظات',
-        'en': 'Notes',
-      },
-      'welcome': {
-        'ar': 'مرحباً بك',
-        'en': 'Welcome',
-      },
-      'account_active_ready': {
-        'ar': 'Online',
-        'en': 'Account active and ready',
-      },
-      'trip_route': {
-        'ar': 'مسار الرحلة',
-        'en': 'Trip Route',
-      },
-      'from': {
-        'ar': 'من',
-        'en': 'From',
-      },
-      'to': {
-        'ar': 'إلى',
-        'en': 'To',
-      },
-      'urgent': {
-        'ar': 'عاجل',
-        'en': 'Urgent',
-      },
-      'performance_report': {
-        'ar': 'تقرير الأداء',
-        'en': 'Performance Report',
-      },
-      'show_my_requests': {
-        'ar': 'عرض طلباتي',
-        'en': 'Show My Requests',
-      },
-      'request': {
-        'ar': 'طلب',
-        'en': 'Request',
-      },
-      'assigned': {
-        'ar': 'مُعيّن',
-        'en': 'Assigned',
-      },
-      'in_progress': {
-        'ar': 'قيد التنفيذ',
-        'en': 'In Progress',
-      },
-      'completed': {
-        'ar': 'مكتمل',
-        'en': 'Completed',
-      },
-      'ride_duration': {
-        'ar': 'مدة الرحلة',
-        'en': 'Ride Duration',
-      },
-      'department': {
-        'ar': 'القسم',
-        'en': 'Department',
-      },
-      'start_ride': {
-        'ar': 'بدء الرحلة',
-        'en': 'Start Ride',
-      },
-      'complete_ride': {
-        'ar': 'إنهاء الرحلة',
-        'en': 'Complete Ride',
-      },
-      'driver_dashboard': {
-        'ar': 'لوحة السائق',
-        'en': 'Driver Dashboard',
-      },
-      'activate_driver_account': {
-        'ar': 'تفعيل حساب السائق',
-        'en': 'Activate Driver Account',
-      },
-      'activate_account_to_start': {
-        'ar': 'قم بتفعيل الحساب لبدء العمل',
-        'en': 'Activate account to start working',
-      },
-      'refresh_requests': {
-        'ar': 'تحديث الطلبات',
-        'en': 'Refresh Requests',
-      },
-      'profile': {
-        'ar': 'بياناتي',
-        'en': 'Profile',
-      },
-      'logout': {
-        'ar': 'تسجيل الخروج',
-        'en': 'Logout',
-      },
-      'manual': {
-        'ar': 'يدوي',
-        'en': 'Manual',
-      },
-      'select_vehicle': {
-        'ar': 'اختر المركبة',
-        'en': 'Select Vehicle',
-      },
-      'choose_vehicle_for_ride': {
-        'ar': 'اختر المركبة للرحلة',
-        'en': 'Choose vehicle for ride',
-      },
-      'no_vehicles_available': {
-        'ar': 'لا توجد مركبات متاحة',
-        'en': 'No vehicles available',
-      },
-      'other_vehicle': {
-        'ar': 'مركبة أخرى',
-        'en': 'Other Vehicle',
-      },
-      'enter_vehicle_info': {
-        'ar': 'أدخل معلومات المركبة',
-        'en': 'Enter Vehicle Info',
-      },
-      'vehicle_model': {
-        'ar': 'موديل المركبة',
-        'en': 'Vehicle Model',
-      },
-      'plate_number': {
-        'ar': 'رقم اللوحة',
-        'en': 'Plate Number',
-      },
-      'vehicle_type': {
-        'ar': 'نوع المركبة',
-        'en': 'Vehicle Type',
-      },
-      'cancel': {
-        'ar': 'إلغاء',
-        'en': 'Cancel',
-      },
-      'enter_vehicle_info_required': {
-        'ar': 'يرجى إدخال معلومات المركبة',
-        'en': 'Please enter vehicle information',
-      },
-      'no_requests': {
-        'ar': 'لا توجد طلبات',
-        'en': 'No Requests',
-      },
-      'no_assigned_requests': {
-        'ar': 'لا توجد طلبات مخصصة لك حالياً',
-        'en': 'No requests assigned to you currently',
-      },
-      'my_requests': {
-        'ar': 'طلباتي',
-        'en': 'My Requests',
-      },
-      'total_requests': {
-        'ar': 'إجمالي الطلبات',
-        'en': 'Total Requests',
-      },
-      'close': {
-        'ar': 'إغلاق',
-        'en': 'Close',
-      },
-      'refresh': {
-        'ar': 'تحديث',
-        'en': 'Refresh',
-      },
-      'no_requests_currently': {
-        'ar': 'لا توجد طلبات حالياً',
-        'en': 'No requests currently',
-      },
-      'requests_will_appear_here_when_assigned': {
-        'ar': 'ستظهر الطلبات هنا عندما يتم تعيينها لك',
-        'en': 'Requests will appear here when assigned to you',
-      },
-      'name': {
-        'ar': 'الاسم',
-        'en': 'Name',
-      },
-      'email': {
-        'ar': 'البريد الإلكتروني',
-        'en': 'Email',
-      },
-      'driver_id': {
-        'ar': 'رقم السائق',
-        'en': 'Driver ID',
-      },
-      'status': {
-        'ar': 'الحالة',
-        'en': 'Status',
-      },
-      'driver_linked_to_hr': {
-        'ar': 'الموارد البشرية',
-        'en': 'Driver linked to HR',
-      },
-
-
-      'not_specified': {
-        'ar': 'غير محدد',
-        'en': 'Not specified',
-      },
-      'ok': {
-        'ar': 'موافق',
-        'en': 'OK',
-      },
+      'location_service_disabled': {'ar': '⚠️ خدمة الموقع مغلقة. لن يتمكن المدير من تتبعك.', 'en': '⚠️ Location service is disabled. The manager will not be able to track you.'},
+      'notes': {'ar': 'ملاحظات', 'en': 'Notes'},
+      'welcome': {'ar': 'مرحباً بك', 'en': 'Welcome'},
+      'account_active_ready': {'ar': 'Online', 'en': 'Account active and ready'},
+      'trip_route': {'ar': 'مسار الرحلة', 'en': 'Trip Route'},
+      'from': {'ar': 'من', 'en': 'From'},
+      'to': {'ar': 'إلى', 'en': 'To'},
+      'urgent': {'ar': 'عاجل', 'en': 'Urgent'},
+      'performance_report': {'ar': 'تقرير الأداء', 'en': 'Performance Report'},
+      'show_my_requests': {'ar': 'عرض طلباتي', 'en': 'Show My Requests'},
+      'request': {'ar': 'طلب', 'en': 'Request'},
+      'assigned': {'ar': 'مُعيّن', 'en': 'Assigned'},
+      'in_progress': {'ar': 'قيد التنفيذ', 'en': 'In Progress'},
+      'completed': {'ar': 'مكتمل', 'en': 'Completed'},
+      'ride_duration': {'ar': 'مدة الرحلة', 'en': 'Ride Duration'},
+      'department': {'ar': 'القسم', 'en': 'Department'},
+      'start_ride': {'ar': 'بدء الرحلة', 'en': 'Start Ride'},
+      'complete_ride': {'ar': 'إنهاء الرحلة', 'en': 'Complete Ride'},
+      'driver_dashboard': {'ar': 'لوحة السائق', 'en': 'Driver Dashboard'},
+      'activate_driver_account': {'ar': 'تفعيل حساب السائق', 'en': 'Activate Driver Account'},
+      'activate_account_to_start': {'ar': 'قم بتفعيل الحساب لبدء العمل', 'en': 'Activate account to start working'},
+      'refresh_requests': {'ar': 'تحديث الطلبات', 'en': 'Refresh Requests'},
+      'profile': {'ar': 'بياناتي', 'en': 'Profile'},
+      'logout': {'ar': 'تسجيل الخروج', 'en': 'Logout'},
+      'manual': {'ar': 'يدوي', 'en': 'Manual'},
+      'select_vehicle': {'ar': 'اختر المركبة', 'en': 'Select Vehicle'},
+      'choose_vehicle_for_ride': {'ar': 'اختر المركبة للرحلة', 'en': 'Choose vehicle for ride'},
+      'no_vehicles_available': {'ar': 'لا توجد مركبات متاحة', 'en': 'No vehicles available'},
+      'other_vehicle': {'ar': 'مركبة أخرى', 'en': 'Other Vehicle'},
+      'enter_vehicle_info': {'ar': 'أدخل معلومات المركبة', 'en': 'Enter Vehicle Info'},
+      'vehicle_model': {'ar': 'موديل المركبة', 'en': 'Vehicle Model'},
+      'plate_number': {'ar': 'رقم اللوحة', 'en': 'Plate Number'},
+      'vehicle_type': {'ar': 'نوع المركبة', 'en': 'Vehicle Type'},
+      'cancel': {'ar': 'إلغاء', 'en': 'Cancel'},
+      'enter_vehicle_info_required': {'ar': 'يرجى إدخال معلومات المركبة', 'en': 'Please enter vehicle information'},
+      'no_requests': {'ar': 'لا توجد طلبات', 'en': 'No Requests'},
+      'no_assigned_requests': {'ar': 'لا توجد طلبات مخصصة لك حالياً', 'en': 'No requests assigned to you currently'},
+      'my_requests': {'ar': 'طلباتي', 'en': 'My Requests'},
+      'total_requests': {'ar': 'إجمالي الطلبات', 'en': 'Total Requests'},
+      'close': {'ar': 'إغلاق', 'en': 'Close'},
+      'refresh': {'ar': 'تحديث', 'en': 'Refresh'},
+      'no_requests_currently': {'ar': 'لا توجد طلبات حالياً', 'en': 'No requests currently'},
+      'requests_will_appear_here_when_assigned': {'ar': 'ستظهر الطلبات هنا عندما يتم تعيينها لك', 'en': 'Requests will appear here when assigned to you'},
+      'name': {'ar': 'الاسم', 'en': 'Name'},
+      'email': {'ar': 'البريد الإلكتروني', 'en': 'Email'},
+      'driver_id': {'ar': 'رقم السائق', 'en': 'Driver ID'},
+      'status': {'ar': 'الحالة', 'en': 'Status'},
+      'driver_linked_to_hr': {'ar': 'الموارد البشرية', 'en': 'Driver linked to HR'},
+      'completed_rides': {'ar': 'الرحلات المكتملة', 'en': 'Completed Rides'},
+      'not_specified': {'ar': 'غير محدد', 'en': 'Not specified'},
+      'ok': {'ar': 'موافق', 'en': 'OK'},
     };
 
     return translations[key]?[language] ?? key;
@@ -271,24 +128,19 @@ class _DriverDashboardState extends State<DriverDashboard> {
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
-        body: json.encode({
-          'q': text,
-          'source': 'en',
-          'target': 'ar',
-          'format': 'text'
-        }),
+        body: json.encode({'q': text, 'source': 'en', 'target': 'ar', 'format': 'text'}),
       );
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = json.decode(response.body);
-        final translatedText = data['translatedText'];
+        // تم تأمين الوصول إلى `data` باستخدام `?[]` و `??`
+        final translatedText = data['translatedText'] ?? text;
         debugPrint('✅ Translated: "$text" -> "$translatedText"');
         return translatedText;
       } else {
         debugPrint('❌ Translation error: ${response.statusCode}');
         return text;
       }
-
     } catch (e) {
       debugPrint('❌ Translation failed: $e');
       return text;
@@ -306,6 +158,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
   @override
   void dispose() {
     _requestsSubscription?.cancel();
+    _positionStreamSubscription?.cancel(); // 🔥 إيقاف تتبع الموقع
     _activeTimers.forEach((key, timer) => timer.cancel());
     _activeTimers.clear();
     _manualModelController.dispose();
@@ -314,8 +167,93 @@ class _DriverDashboardState extends State<DriverDashboard> {
     super.dispose();
   }
 
+  // ===================================================================
+  // 🔥 دوال تتبع الموقع
+  // ===================================================================
+
+  // 🔥 التحقق من أذونات الموقع وتفعيل التتبع
+  Future<void> _checkLocationPermissionsAndStart() async {
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    // 1. التحقق من تفعيل خدمة الموقع في الجهاز
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      setState(() => _isLocationServiceEnabled = false);
+      return;
+    }
+    setState(() => _isLocationServiceEnabled = true);
+
+    // 2. التحقق من الأذونات
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+        // فشل في الحصول على الإذن
+        return;
+      }
+    }
+
+    // 3. بدء التحديث إذا كانت الأذونات جيدة
+    if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
+      _startLocationUpdates();
+    }
+  }
+
+  // 🔥 بدء الاستماع وتحديث الموقع في Firestore
+  void _startLocationUpdates() {
+    if (_driverId == null || _companyId == null) return;
+
+    // ❌ إيقاف أي اشتراك سابق لتجنب التكرار
+    _positionStreamSubscription?.cancel();
+
+    const locationSettings = LocationSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 10, // تحديث الموقع كل 10 أمتار تحرك
+    );
+
+    _positionStreamSubscription = Geolocator.getPositionStream(locationSettings: locationSettings).listen(
+          (Position position) {
+        debugPrint('🌍 Location Updated: ${position.latitude}, ${position.longitude}');
+        _updateDriverLocationInFirestore(position);
+      },
+      onError: (e) {
+        debugPrint('❌ Location Stream Error: $e');
+      },
+    );
+  }
+
+  // 🔥 دالة تحديث الموقع في Firestore
+  Future<void> _updateDriverLocationInFirestore(Position position) async {
+    if (_driverId == null || _companyId == null) return;
+
+    try {
+      await _firestore
+          .collection('companies')
+          .doc(_companyId)
+          .collection('drivers')
+          .doc(_driverId)
+          .update({
+        // 🔥 هذا هو الحقل الذي تبحث عنه صفحة الإدارة
+        'location': {
+          'latitude': position.latitude,
+          'longitude': position.longitude,
+          'timestamp': FieldValue.serverTimestamp(),
+        },
+        'lastUpdated': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('❌ Error updating driver location: $e');
+    }
+  }
+
+  // ===================================================================
+  // 🔥 بقية الدوال
+  // ===================================================================
+
   // 🔥 تحميل السيارات المتاحة
   Future<void> _loadAvailableVehicles() async {
+    if (_companyId == null) return;
     try {
       setState(() {
         _loadingVehicles = true;
@@ -330,7 +268,8 @@ class _DriverDashboardState extends State<DriverDashboard> {
 
       setState(() {
         _availableVehicles = vehiclesSnapshot.docs.map((doc) {
-          final data = doc.data() as Map<String, dynamic>;
+          // تأمين تحويل البيانات
+          final data = doc.data() as Map<String, dynamic>? ?? {};
           return {
             'id': doc.id,
             'model': data['model'] ?? 'غير محدد',
@@ -409,8 +348,10 @@ class _DriverDashboardState extends State<DriverDashboard> {
         .listen((snapshot) {
       for (var change in snapshot.docChanges) {
         if (change.type == DocumentChangeType.added || change.type == DocumentChangeType.modified) {
+          // تأمين تحويل البيانات
           final request = change.doc.data() as Map<String, dynamic>? ?? {};
           final requestId = change.doc.id;
+          // استخدام `?[]` و `??` للوصول الآمن
           final assignedDriverId = request['assignedDriverId'] as String?;
           final status = request['status'] as String?;
 
@@ -426,7 +367,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
     if (changeType == DocumentChangeType.added && status == 'ASSIGNED') {
       SimpleNotificationService.notifyNewRequest(context, requestId);
       _loadDriverRequests();
-
     } else if (changeType == DocumentChangeType.modified) {
       if (status == 'IN_PROGRESS') {
         final rideStartTime = request['rideStartTime'] != null
@@ -435,7 +375,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
         _startRideTimer(requestId, rideStartTime);
 
         SimpleNotificationService.notifyRideStarted(context, requestId);
-
       } else if (status == 'COMPLETED') {
         _stopRideTimer(requestId);
         SimpleNotificationService.notifyRideCompleted(context, requestId);
@@ -465,6 +404,10 @@ class _DriverDashboardState extends State<DriverDashboard> {
           _driverProfileExists = true;
 
           _loadAvailableVehicles();
+
+          // 🔥 بدأ تتبع الموقع هنا
+          _checkLocationPermissionsAndStart();
+
           debugPrint('✅ Driver found: $_driverId');
         } else {
           setState(() {
@@ -511,21 +454,18 @@ class _DriverDashboardState extends State<DriverDashboard> {
 
         _loadAvailableVehicles();
 
-        SimpleNotificationService.notifySuccess(
-            context,
-            'تم تفعيل حساب السائق بنجاح'
-        );
+        SimpleNotificationService.notifySuccess(context, 'تم تفعيل حساب السائق بنجاح');
 
         debugPrint('✅ Driver record created: $driverId');
         _loadDriverRequests();
         _startRequestsListener();
+
+        // 🔥 بدأ تتبع الموقع بعد الإنشاء
+        _checkLocationPermissionsAndStart();
       }
     } catch (e) {
       debugPrint('❌ Error creating driver record: $e');
-      SimpleNotificationService.notifyError(
-          context,
-          'خطأ في تفعيل الحساب: $e'
-      );
+      SimpleNotificationService.notifyError(context, 'خطأ في تفعيل الحساب: $e');
     }
   }
 
@@ -549,7 +489,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
-
             if (_loadingVehicles)
               const CircularProgressIndicator()
             else if (_availableVehicles.isEmpty)
@@ -566,20 +505,22 @@ class _DriverDashboardState extends State<DriverDashboard> {
             else
               Column(
                 children: [
-                  ..._availableVehicles.map((vehicle) => ListTile(
+                  ..._availableVehicles
+                      .map((vehicle) => ListTile(
                     leading: const Icon(Icons.directions_car, color: Colors.green),
-                    title: Text(vehicle['model']),
-                    subtitle: Text('${vehicle['plateNumber']} - ${vehicle['type']}'),
+                    // استخدام الوصول الآمن للبيانات
+                    title: Text(vehicle['model'] ?? 'N/A'),
+                    subtitle: Text('${vehicle['plateNumber'] ?? 'N/A'} - ${vehicle['type'] ?? 'N/A'}'),
                     onTap: () {
                       Navigator.pop(context);
                       _startRideWithVehicle(requestId, vehicle);
                     },
-                  )).toList(),
+                  ))
+                      .toList(),
                   const SizedBox(height: 8),
                   const Divider(),
                 ],
               ),
-
             const SizedBox(height: 8),
             ListTile(
               leading: const Icon(Icons.add, color: Colors.orange),
@@ -684,8 +625,15 @@ class _DriverDashboardState extends State<DriverDashboard> {
 
   // 🔥 بدء الرحلة مع سيارة محددة
   Future<void> _startRideWithVehicle(String requestId, Map<String, dynamic> vehicle) async {
+    if (_companyId == null) return;
     try {
       final startTime = DateTime.now();
+
+      // تأمين الوصول باستخدام `?? 'N/A'`
+      final vehicleId = vehicle['id'] ?? 'N/A';
+      final model = vehicle['model'] ?? 'غير محدد';
+      final plateNumber = vehicle['plateNumber'] ?? 'غير محدد';
+      final type = vehicle['type'] ?? 'سيارة';
 
       await _firestore
           .collection('companies')
@@ -696,42 +644,44 @@ class _DriverDashboardState extends State<DriverDashboard> {
         'status': 'IN_PROGRESS',
         'rideStartTime': FieldValue.serverTimestamp(),
         'vehicleInfo': {
-          'vehicleId': vehicle['id'],
-          'model': vehicle['model'],
-          'plateNumber': vehicle['plateNumber'],
-          'type': vehicle['type'],
+          'vehicleId': vehicleId,
+          'model': model,
+          'plateNumber': plateNumber,
+          'type': type,
           'source': 'fleet',
         },
         'lastUpdated': FieldValue.serverTimestamp(),
       });
 
-      await _firestore
-          .collection('companies')
-          .doc(_companyId)
-          .collection('vehicles')
-          .doc(vehicle['id'])
-          .update({
-        'isAvailable': false,
-        'currentRequestId': requestId,
-      });
+      // التحقق من صلاحية vehicleId قبل التحديث
+      if (vehicleId != 'N/A' && !vehicleId.startsWith('manual_')) {
+        await _firestore
+            .collection('companies')
+            .doc(_companyId)
+            .collection('vehicles')
+            .doc(vehicleId)
+            .update({
+          'isAvailable': false,
+          'currentRequestId': requestId,
+        });
+      }
+
 
       _startRideTimer(requestId, startTime);
       SimpleNotificationService.notifyRideStarted(context, requestId);
 
-      debugPrint('🚗 Ride started: $requestId with vehicle: ${vehicle['plateNumber']}');
+      debugPrint('🚗 Ride started: $requestId with vehicle: ${plateNumber}');
       _loadDriverRequests();
       _loadAvailableVehicles();
     } catch (e) {
       debugPrint('❌ Error starting ride: $e');
-      SimpleNotificationService.notifyError(
-          context,
-          'خطأ في بدء الرحلة: $e'
-      );
+      SimpleNotificationService.notifyError(context, 'خطأ في بدء الرحلة: $e');
     }
   }
 
   // 🔥 بدء الرحلة مع سيارة يدوية
   Future<void> _startRideWithManualVehicle(String requestId) async {
+    if (_companyId == null) return;
     try {
       final startTime = DateTime.now();
 
@@ -764,10 +714,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
       _loadDriverRequests();
     } catch (e) {
       debugPrint('❌ Error starting ride with manual vehicle: $e');
-      SimpleNotificationService.notifyError(
-          context,
-          'خطأ في بدء الرحلة: $e'
-      );
+      SimpleNotificationService.notifyError(context, 'خطأ في بدء الرحلة: $e');
     }
   }
 
@@ -806,6 +753,12 @@ class _DriverDashboardState extends State<DriverDashboard> {
         _driverId = driverId;
         _companyId = companyId;
 
+        if (_companyId == null) {
+          // إذا لم يتم تحديد الشركة، توقف عن التحميل.
+          setState(() { _loading = false; });
+          return;
+        }
+
         // 🔥 الحصول على تاريخ اليوم فقط
         final now = DateTime.now();
         final todayStart = DateTime(now.year, now.month, now.day);
@@ -813,7 +766,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
 
         final requestsSnapshot = await _firestore
             .collection('companies')
-            .doc(companyId)
+            .doc(_companyId)
             .collection('requests')
             .where('assignedDriverId', isEqualTo: driverId)
             .where('status', whereIn: ['ASSIGNED', 'IN_PROGRESS', 'COMPLETED'])
@@ -823,6 +776,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
             .get();
 
         for (var doc in requestsSnapshot.docs) {
+          // تأمين تحويل البيانات
           final data = doc.data() as Map<String, dynamic>? ?? {};
           if (data['status'] == 'IN_PROGRESS' && data['rideStartTime'] != null) {
             final startTime = (data['rideStartTime'] as Timestamp).toDate();
@@ -862,6 +816,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
   }
 
   Future<void> _completeRide(String requestId) async {
+    if (_companyId == null || _driverId == null) return;
     try {
       _stopRideTimer(requestId);
 
@@ -876,10 +831,13 @@ class _DriverDashboardState extends State<DriverDashboard> {
           .doc(requestId)
           .get();
 
+      // تأمين تحويل البيانات
       final requestData = requestDoc.data() as Map<String, dynamic>? ?? {};
-      final vehicleInfo = requestData['vehicleInfo'] as Map<String, dynamic>?;
-      final vehicleId = vehicleInfo?['vehicleId'] as String?;
-      final source = vehicleInfo?['source'] as String?;
+      // استخدام `?[]` و `?? {}` للوصول الآمن للـ Map
+      final vehicleInfo = requestData['vehicleInfo'] as Map<String, dynamic>? ?? {};
+      // استخدام `?[]` و `??` للوصول الآمن للحقول
+      final vehicleId = vehicleInfo['vehicleId'] as String?;
+      final source = vehicleInfo['source'] as String?;
 
       await _firestore
           .collection('companies')
@@ -893,6 +851,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
         'lastUpdated': FieldValue.serverTimestamp(),
       });
 
+      // التحقق من vehicleId و source قبل التحديث
       if (source == 'fleet' && vehicleId != null && !vehicleId.startsWith('manual_')) {
         await _firestore
             .collection('companies')
@@ -923,15 +882,13 @@ class _DriverDashboardState extends State<DriverDashboard> {
       _loadAvailableVehicles();
     } catch (e) {
       debugPrint('❌ Error completing ride: $e');
-      SimpleNotificationService.notifyError(
-          context,
-          'خطأ في إنهاء الرحلة: $e'
-      );
+      SimpleNotificationService.notifyError(context, 'خطأ في إنهاء الرحلة: $e');
     }
   }
 
   Future<void> _logout() async {
     try {
+      // التحقق من القيمة الفارغة قبل استخدامها
       if (_driverId != null && _companyId != null) {
         await _firestore
             .collection('companies')
@@ -946,19 +903,13 @@ class _DriverDashboardState extends State<DriverDashboard> {
 
       await _auth.signOut();
 
-      SimpleNotificationService.notifySuccess(
-          context,
-          'تم تسجيل الخروج بنجاح'
-      );
+      SimpleNotificationService.notifySuccess(context, 'تم تسجيل الخروج بنجاح');
 
+      // يجب استخدام Navigator.pushReplacementNamed لضمان العودة لصفحة تسجيل الدخول
       Navigator.pushReplacementNamed(context, '/login');
-
     } catch (e) {
       debugPrint('❌ Error logging out: $e');
-      SimpleNotificationService.notifyError(
-          context,
-          'خطأ في تسجيل الخروج: $e'
-      );
+      SimpleNotificationService.notifyError(context, 'خطأ في تسجيل الخروج: $e');
     }
   }
 
@@ -982,11 +933,16 @@ class _DriverDashboardState extends State<DriverDashboard> {
             _buildProfileRow('${_translate('driver_id', context)}:', _driverId ?? _translate('not_specified', context)),
             _buildProfileRow('${_translate('status', context)}:', _translate('driver_linked_to_hr', context)),
             if (_driverProfileExists)
-              _buildProfileRow('${_translate('completed_rides', context)}:',
-                  _requests.where((r) {
+              _buildProfileRow(
+                  '${_translate('completed_rides', context)}:',
+                  // استخدام `r.data()` بأمان ثم الوصول إلى `['status']`
+                  _requests
+                      .where((r) {
                     final data = r.data() as Map<String, dynamic>? ?? {};
                     return data['status'] == 'COMPLETED';
-                  }).length.toString()),
+                  })
+                      .length
+                      .toString()),
           ],
         ),
         actions: [
@@ -1053,7 +1009,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text(_translate('ok', context)),
+              child: Text(_translate('close', context)),
             ),
           ],
         );
@@ -1065,193 +1021,257 @@ class _DriverDashboardState extends State<DriverDashboard> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
       builder: (context) {
-        return Container(
-          height: MediaQuery.of(context).size.height * 0.8,
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    _translate('my_requests', context),
-                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.orange),
+        // فلترة الطلبات التي لم تكتمل بعد
+        final activeRequests = _requests.where((r) {
+          final data = r.data() as Map<String, dynamic>? ?? {};
+          return data['status'] != 'COMPLETED';
+        }).toList();
+
+        final completedRequests = _requests.where((r) {
+          final data = r.data() as Map<String, dynamic>? ?? {};
+          return data['status'] == 'COMPLETED';
+        }).toList();
+
+        return DefaultTabController(
+          length: 2,
+          child: Container(
+            constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.9),
+            child: Scaffold(
+              appBar: AppBar(
+                title: Text(_translate('my_requests', context)),
+                automaticallyImplyLeading: false,
+                actions: [
+                  IconButton(
+                    icon: const Icon(Icons.refresh),
+                    onPressed: _loadDriverRequests,
+                    tooltip: _translate('refresh', context),
                   ),
                   IconButton(
                     icon: const Icon(Icons.close),
                     onPressed: () => Navigator.pop(context),
+                    tooltip: _translate('close', context),
                   ),
                 ],
-              ),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.orange.shade50,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.list_alt, color: Colors.orange),
-                    const SizedBox(width: 8),
-                    Text(
-                      '${_translate('total_requests', context)}: ${_requests.length}',
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.orange),
-                    ),
+                bottom: TabBar(
+                  tabs: [
+                    Tab(text: 'الطلبات النشطة (${activeRequests.length})'),
+                    Tab(text: 'الطلبات المكتملة (${completedRequests.length})'),
                   ],
                 ),
               ),
-              const SizedBox(height: 16),
-              Expanded(
-                child: _requests.isEmpty
-                    ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.inbox_outlined, size: 60, color: Colors.grey),
-                      const SizedBox(height: 16),
-                      Text(_translate('no_requests', context), style: const TextStyle(fontSize: 18, color: Colors.grey)),
-                    ],
-                  ),
-                )
-                    : ListView.builder(
-                  itemCount: _requests.length,
-                  itemBuilder: (context, index) {
-                    final request = _requests[index];
-                    final data = request.data() as Map<String, dynamic>? ?? {};
-                    return _buildRequestCard(request.id, data, context);
-                  },
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
+              body: TabBarView(
                 children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: Text(_translate('close', context)),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: _loadDriverRequests,
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-                      child: Text(_translate('refresh', context)),
-                    ),
-                  ),
+                  _buildRequestsList(activeRequests, context),
+                  _buildRequestsList(completedRequests, context),
                 ],
               ),
-            ],
+            ),
           ),
         );
       },
     );
   }
 
-  Widget _buildActionButtons(String requestId, String status, BuildContext context) {
-    if (status == 'ASSIGNED') {
-      return ElevatedButton(
-        onPressed: () => _startRide(requestId),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.green,
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          minimumSize: const Size(0, 40),
-        ),
-        child: Text(
-          _translate('start_ride', context),
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-        ),
-      );
-    } else if (status == 'IN_PROGRESS') {
-      return ElevatedButton(
-        onPressed: () => _completeRide(requestId),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.blue,
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          minimumSize: const Size(0, 40),
-        ),
-        child: Text(
-          _translate('complete_ride', context),
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+  Widget _buildRequestsList(List<QueryDocumentSnapshot> requests, BuildContext context) {
+    if (requests.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.assignment_turned_in_outlined, size: 60, color: Colors.grey),
+              const SizedBox(height: 16),
+              Text(
+                _translate('no_requests_currently', context),
+                style: const TextStyle(fontSize: 18, color: Colors.grey),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _translate('requests_will_appear_here_when_assigned', context),
+                style: const TextStyle(fontSize: 14, color: Colors.grey),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
       );
-    } else {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: Colors.green.shade50,
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: Colors.green),
+    }
+
+    return ListView.builder(
+      itemCount: requests.length,
+      itemBuilder: (context, index) {
+        final doc = requests[index];
+        final data = doc.data() as Map<String, dynamic>? ?? {};
+        return _buildRequestCard(doc.id, data, context);
+      },
+    );
+  }
+
+  Widget _buildRequestCard(String requestId, Map<String, dynamic> requestData, BuildContext context) {
+    final status = requestData['status'] as String? ?? 'UNKNOWN';
+    final from = requestData['fromLocationName'] as String? ?? 'N/A';
+    final to = requestData['toLocationName'] as String? ?? 'N/A';
+    final department = requestData['requesterDepartment'] as String? ?? 'N/A';
+    final isUrgent = requestData['isUrgent'] as bool? ?? false;
+    final notes = requestData['notes'] as String? ?? '';
+    final isCompleted = status == 'COMPLETED';
+    final isInProgress = status == 'IN_PROGRESS';
+
+    Color statusColor = Colors.grey;
+    IconData statusIcon = Icons.help_outline;
+    String statusText = '';
+
+    switch (status) {
+      case 'ASSIGNED':
+        statusColor = Colors.blue.shade600;
+        statusIcon = Icons.assignment_turned_in;
+        statusText = _translate('assigned', context);
+        break;
+      case 'IN_PROGRESS':
+        statusColor = Colors.orange.shade700;
+        statusIcon = Icons.schedule;
+        statusText = _translate('in_progress', context);
+        break;
+      case 'COMPLETED':
+        statusColor = Colors.green.shade700;
+        statusIcon = Icons.check_circle;
+        statusText = _translate('completed', context);
+        break;
+    }
+
+    return Card(
+      margin: const EdgeInsets.all(8),
+      elevation: 4,
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Chip(
+                  label: Text(
+                    statusText,
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  ),
+                  avatar: Icon(statusIcon, color: Colors.white, size: 18),
+                  backgroundColor: statusColor,
+                ),
+                if (isUrgent)
+                  Chip(
+                    label: Text(_translate('urgent', context)),
+                    backgroundColor: Colors.red.shade600,
+                    labelStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              '#$requestId',
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+            ),
+            const Divider(),
+            _buildTripDetailRow(Icons.location_on, _translate('from', context), from, context, color: Colors.green),
+            _buildTripDetailRow(Icons.flag, _translate('to', context), to, context, color: Colors.red),
+            _buildTripDetailRow(Icons.business, _translate('department', context), department, context),
+            if (notes.isNotEmpty)
+              _buildTripDetailRow(Icons.notes, _translate('notes', context), notes, context),
+
+            if (isInProgress)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                child: Row(
+                  children: [
+                    const Icon(Icons.timer, color: Colors.purple, size: 20),
+                    const SizedBox(width: 8),
+                    Text(
+                      '${_translate('ride_duration', context)}: ',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    // 🔥 عرض مدة الرحلة المُحدّثة
+                    Text(
+                      _formatDuration(_rideDurations[requestId] ?? Duration.zero, context),
+                      style: const TextStyle(color: Colors.purple, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ),
+
+            // ------------------------------------------------------------------
+            // أزرار الإجراءات
+            // ------------------------------------------------------------------
+            const SizedBox(height: 10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                if (status == 'ASSIGNED')
+                  ElevatedButton.icon(
+                    onPressed: _loading ? null : () => _startRide(requestId),
+                    icon: const Icon(Icons.play_arrow),
+                    label: Text(_translate('start_ride', context)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                if (isInProgress)
+                  ElevatedButton.icon(
+                    onPressed: _loading ? null : () => _completeRide(requestId),
+                    icon: const Icon(Icons.stop),
+                    label: Text(_translate('complete_ride', context)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                if (isCompleted)
+                  TextButton.icon(
+                    onPressed: null,
+                    icon: const Icon(Icons.history, color: Colors.grey),
+                    label: Text(_translate('completed', context)),
+                  ),
+              ],
+            ),
+            // ------------------------------------------------------------------
+          ],
         ),
-        child: const Icon(Icons.check, size: 16, color: Colors.green),
-      );
-    }
-  }
-
-  // 🔥 الدوال المفقودة - أضفها هنا
-  String _getSafeString(Map<String, dynamic> data, String key, String defaultValue) {
-    try {
-      final value = data[key];
-      if (value is String) return value;
-      if (value != null) return value.toString();
-      return defaultValue;
-    } catch (e) {
-      return defaultValue;
-    }
-  }
-
-  String _getRequesterName(Map<String, dynamic> data, BuildContext context) {
-    final names = [
-      data['requesterName'],
-      data['userName'],
-      data['employeeName'],
-      widget.userName
-    ];
-
-    for (final name in names) {
-      if (name is String && name.isNotEmpty) return name;
-    }
-
-    return _translate('not_specified', context);
-  }
-
-  String _getRequesterDepartment(Map<String, dynamic> data, BuildContext context) {
-    final departments = [
-      data['department'],
-      data['requesterDepartment'],
-      data['employeeDepartment']
-    ];
-
-    for (final dept in departments) {
-      if (dept is String && dept.isNotEmpty) return dept;
-    }
-
-    return _translate('not_specified', context);
-  }
-
-  Widget _buildErrorCard(String errorMessage, BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.red.shade50,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.red.shade200),
       ),
+    );
+  }
+
+  Widget _buildTripDetailRow(IconData icon, String label, String value, BuildContext context, {Color color = Colors.blueGrey}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.error_outline, color: Colors.red.shade700),
+          Icon(icon, color: color, size: 20),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(
-              errorMessage,
-              style: TextStyle(color: Colors.red.shade700, fontSize: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$label: ',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                FutureBuilder<String>(
+                  future: _translateDynamicContent(value, context),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return Text(value); // عرض النص الأصلي أثناء التحميل
+                    }
+                    return Text(
+                      snapshot.data ?? value,
+                      style: const TextStyle(fontSize: 14),
+                    );
+                  },
+                ),
+              ],
             ),
           ),
         ],
@@ -1259,724 +1279,275 @@ class _DriverDashboardState extends State<DriverDashboard> {
     );
   }
 
-  String _translateLocation(String location, BuildContext context) {
-    final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
-    final language = languageProvider.currentLanguage;
-
-    final locationTranslations = {
-      'المصنع': {
-        'en': 'Factory',
-        'ar': 'المصنع',
-      },
-      'Takhasusi': {
-        'en': 'Takhasusi',
-        'ar': 'التخصصي',
-      },
-      'Factory': {
-        'en': 'Factory',
-        'ar': 'المصنع',
-      },
-      'الدرس العزيزية': {
-        'en': 'Al-Dars Al-Aziziya',
-        'ar': 'الدرس العزيزية',
-      },
-    };
-
-    return locationTranslations[location]?[language] ?? location;
-  }
-
-  String _translatePriority(String priority, BuildContext context) {
-    final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
-    final language = languageProvider.currentLanguage;
-
-    final priorityTranslations = {
-      'Normal': {
-        'en': 'Normal',
-        'ar': 'عادي',
-      },
-      'Urgent': {
-        'en': 'Urgent',
-        'ar': 'عاجل',
-      },
-    };
-
-    return priorityTranslations[priority]?[language] ?? priority;
-  }
-
-  // 🔥 دالة البناء الرئيسية
   @override
   Widget build(BuildContext context) {
-    return Consumer<LanguageProvider>(
-      builder: (context, languageProvider, child) {
-        if (languageProvider == null) {
-          return Scaffold(
-            body: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(_translate('driver_dashboard', context)),
+        backgroundColor: Colors.blue.shade800,
+        foregroundColor: Colors.white,
+      ),
+      drawer: _buildDrawer(context),
+      body: Column(
+        children: [
+          // 🔥 شريط حالة الموقع
+          if (!_isLocationServiceEnabled && _driverProfileExists)
+            Container(
+              padding: const EdgeInsets.all(12),
+              color: Colors.yellow.shade800,
+              child: Row(
                 children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
-                  Text('جاري التحميل...'),
+                  const Icon(Icons.warning, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _translate('location_service_disabled', context),
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      textAlign: TextAlign.start,
+                    ),
+                  ),
                 ],
               ),
             ),
-          );
-        }
+          // ------------------------------------
 
-        return Scaffold(
-          appBar: AppBar(
-            title: Text(_translate('driver_dashboard', context)),
-            backgroundColor: Colors.orange,
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.refresh),
-                onPressed: _loadDriverRequests,
-                tooltip: _translate('refresh_requests', context),
-              ),
-              PopupMenuButton<String>(
-                onSelected: (value) {
-                  if (value == 'logout') {
-                    _logout();
-                  } else if (value == 'profile') {
-                    _showProfile(context);
-                  }
-                },
-                itemBuilder: (BuildContext context) => [
-                  PopupMenuItem(
-                    value: 'profile',
-                    child: Row(
-                      children: [
-                        const Icon(Icons.person, color: Colors.orange),
-                        const SizedBox(width: 8),
-                        Text(_translate('profile', context)),
-                      ],
-                    ),
-                  ),
-                  PopupMenuItem(
-                    value: 'logout',
-                    child: Row(
-                      children: [
-                        const Icon(Icons.logout, color: Colors.red),
-                        const SizedBox(width: 8),
-                        Text(_translate('logout', context)),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ],
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _driverProfileExists
+                ? _buildDashboardContent(context)
+                : _buildActivationView(context),
           ),
-          body: _buildBody(context),
-        );
-      },
+        ],
+      ),
     );
   }
 
-  Widget _buildBody(BuildContext context) {
-    return Consumer<LanguageProvider>(
-      builder: (context, languageProvider, child) {
-        return Column(
-          children: [
-            // 🔥 قسم الترحيب
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Colors.orange.shade50, Colors.orange.shade100],
-                ),
-              ),
+  Widget _buildDashboardContent(BuildContext context) {
+    final activeRequestsCount = _requests.where((r) {
+      final data = r.data() as Map<String, dynamic>? ?? {};
+      return data['status'] != 'COMPLETED';
+    }).length;
+
+    return RefreshIndicator(
+      onRefresh: _loadDriverRequests,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Card(
+            color: Colors.green.shade50,
+            elevation: 0,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.green.shade300)),
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const CircleAvatar(
-                    radius: 40,
-                    backgroundColor: Colors.orange,
-                    child: Icon(Icons.person, size: 40, color: Colors.white),
-                  ),
-                  const SizedBox(height: 16),
+                  Text(_translate('welcome', context), style: TextStyle(fontSize: 14, color: Colors.green.shade800)),
+                  const SizedBox(height: 4),
                   Text(
-                    '${_translate('welcome', context)} ${widget.userName}',
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.orange.shade800),
-                    textAlign: TextAlign.center,
+                    widget.userName,
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.green.shade900),
                   ),
                   const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: _driverProfileExists ? Colors.green.shade50 : Colors.orange.shade50,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: _driverProfileExists ? Colors.green : Colors.orange,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          _driverProfileExists ? Icons.check_circle : Icons.info,
-                          color: _driverProfileExists ? Colors.green : Colors.orange,
-                          size: 16,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          _driverProfileExists
-                              ? _translate('account_active_ready', context)
-                              : _translate('activate_account_to_start', context),
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: _driverProfileExists ? Colors.green : Colors.orange,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // 🔥 زر التفعيل
-            if (!_driverProfileExists)
-              Container(
-                padding: const EdgeInsets.all(16),
-                child: ElevatedButton(
-                  onPressed: _createDriverProfile,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(double.infinity, 55),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                  Row(
                     children: [
-                      const Icon(Icons.person_add_alt_1),
+                      const Icon(Icons.check_circle, color: Colors.green, size: 20),
                       const SizedBox(width: 8),
                       Text(
-                        _translate('activate_driver_account', context),
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        _translate('account_active_ready', context),
+                        style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
                       ),
                     ],
                   ),
-                ),
-              ),
-
-            // 🔥 قسم الطلبات
-            Expanded(
-              child: _buildRequestsList(context),
-            ),
-
-            // 🔥 الأزرار السفلية
-            Container(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () => _showMyRequests(context),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orange,
-                        foregroundColor: Colors.white,
-                        minimumSize: const Size(0, 55),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.list_alt),
-                          const SizedBox(width: 8),
-                          Text(_translate('show_my_requests', context),
-                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () => _showPerformanceReport(context),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.purple,
-                        foregroundColor: Colors.white,
-                        minimumSize: const Size(0, 55),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.analytics),
-                          const SizedBox(width: 8),
-                          Text(_translate('performance_report', context),
-                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                    ),
-                  ),
                 ],
               ),
             ),
-          ],
-        );
-      },
+          ),
+          const SizedBox(height: 20),
+
+          Text(
+            _translate('my_requests', context),
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueGrey),
+          ),
+          const SizedBox(height: 10),
+
+          // عرض زر طلباتي
+          ListTile(
+            leading: const Icon(Icons.assignment, color: Colors.blue),
+            title: Text(_translate('show_my_requests', context)),
+            trailing: Chip(
+              label: Text(
+                activeRequestsCount.toString(),
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+              backgroundColor: activeRequestsCount > 0 ? Colors.orange : Colors.grey,
+            ),
+            onTap: () => _showMyRequests(context),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+              side: BorderSide(color: Colors.blue.shade100),
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          Text(
+            _translate('performance_report', context),
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueGrey),
+          ),
+          const SizedBox(height: 10),
+
+          // كروت الأداء
+          Row(
+            children: [
+              Expanded(
+                child: _buildMetricCard(
+                  context,
+                  _translate('total_requests', context),
+                  _requests.length.toString(),
+                  Icons.all_inbox,
+                  Colors.blue.shade700,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _buildMetricCard(
+                  context,
+                  _translate('completed_rides', context),
+                  _requests.where((r) {
+                    final data = r.data() as Map<String, dynamic>? ?? {};
+                    return data['status'] == 'COMPLETED';
+                  }).length.toString(),
+                  Icons.check_circle,
+                  Colors.green.shade700,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
-  // 🔥 دالة لعرض تقرير الأداء
-  void _showPerformanceReport(BuildContext context) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => MyRequestsPage(
-          companyId: _companyId ?? 'C001',
-          userId: _auth.currentUser?.uid ?? '',
-          userName: widget.userName,
+  Widget _buildActivationView(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.person_off, size: 80, color: Colors.red.shade400),
+            const SizedBox(height: 20),
+            Text(
+              _translate('activate_driver_account', context),
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.red.shade700),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              _translate('activate_account_to_start', context),
+              style: const TextStyle(fontSize: 16, color: Colors.grey),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 30),
+            ElevatedButton.icon(
+              onPressed: _loading ? null : _createDriverProfile,
+              icon: const Icon(Icons.power_settings_new),
+              label: Text(_translate('activate_driver_account', context)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green.shade600,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+                textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildRequestsList(BuildContext context) {
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator(color: Colors.orange));
-    }
-
-    if (_requests.isEmpty) {
-      return Center(
+  Widget _buildMetricCard(BuildContext context, String title, String value, IconData icon, Color color) {
+    return Card(
+      color: color.withOpacity(0.1),
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: color.withOpacity(0.3))),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(Icons.inbox_outlined, size: 80, color: Colors.grey),
-            const SizedBox(height: 20),
-            Text(
-              _translate('no_requests_currently', context),
-              style: const TextStyle(fontSize: 20, color: Colors.grey, fontWeight: FontWeight.bold),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Icon(icon, color: color, size: 30),
+                Text(
+                  value,
+                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: color),
+                ),
+              ],
             ),
             const SizedBox(height: 8),
             Text(
-              _translate('requests_will_appear_here_when_assigned', context),
-              style: const TextStyle(fontSize: 14, color: Colors.grey),
-              textAlign: TextAlign.center,
+              title,
+              style: TextStyle(fontSize: 14, color: color),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),
-      );
-    }
-
-    return ListView.builder(
-      itemCount: _requests.length,
-      padding: const EdgeInsets.all(16),
-      itemBuilder: (context, index) {
-        try {
-          final request = _requests[index];
-          if (!request.exists) {
-            return _buildErrorCard('طلب غير موجود', context);
-          }
-
-          final data = request.data() as Map<String, dynamic>? ?? {};
-          return _buildRequestCard(request.id, data, context);
-        } catch (e) {
-          return _buildErrorCard('خطأ في عرض الطلب: $e', context);
-        }
-      },
+      ),
     );
   }
 
-  Widget _buildRequestCard(String requestId, Map<String, dynamic> data, BuildContext context) {
-    try {
-      final status = _getSafeString(data, 'status', 'ASSIGNED');
-      final requesterName = _getRequesterName(data, context);
-      final requesterDepartment = _getRequesterDepartment(data, context);
-      final fromLocation = _getSafeString(data, 'fromLocation', '');
-      final toLocation = _getSafeString(data, 'toLocation', '');
-      final priority = _getSafeString(data, 'priority', 'Normal');
-      final description = _getSafeString(data, 'details', _getSafeString(data, 'description', ''));
-      final vehicleInfo = data['vehicleInfo'] as Map<String, dynamic>?;
-
-      Color statusColor = Colors.orange;
-      String statusText = _translate('assigned', context);
-
-      if (status == 'IN_PROGRESS') {
-        statusColor = Colors.blue;
-        statusText = _translate('in_progress', context);
-      } else if (status == 'COMPLETED') {
-        statusColor = Colors.green;
-        statusText = _translate('completed', context);
-      }
-
-      return Container(
-        margin: const EdgeInsets.only(bottom: 16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.grey.withOpacity(0.3),
-              blurRadius: 8,
-              offset: const Offset(0, 4),
+  Drawer _buildDrawer(BuildContext context) {
+    return Drawer(
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: <Widget>[
+          UserAccountsDrawerHeader(
+            accountName: Text(widget.userName, style: const TextStyle(fontWeight: FontWeight.bold)),
+            accountEmail: Text(_auth.currentUser?.email ?? 'N/A'),
+            currentAccountPicture: CircleAvatar(
+              backgroundColor: Colors.white,
+              child: Icon(Icons.person, color: Colors.blue.shade800, size: 50),
             ),
-          ],
-          border: Border.all(color: Colors.grey.shade200),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 🔥 رأس البطاقة - رقم الطلب والحالة
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Text(
-                      '${_translate('request', context)} #${requestId.length > 6 ? requestId.substring(0, 6) : requestId}',
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                          color: Colors.orange.shade800
-                      ),
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: statusColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: statusColor),
-                    ),
-                    child: Text(
-                      statusText,
-                      style: TextStyle(
-                        color: statusColor,
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 16),
-
-              // 🔥 معلومات السيارة
-              if (vehicleInfo != null && status != 'ASSIGNED')
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.green.shade50,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.green.shade200),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.directions_car, size: 20, color: Colors.green.shade700),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '${vehicleInfo['model']}',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.green.shade700,
-                              ),
-                            ),
-                            Text(
-                              '${vehicleInfo['plateNumber']}',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.green.shade600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (vehicleInfo['source'] == 'manual')
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.orange.shade100,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            _translate('manual', context),
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.orange.shade800,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-
-              // 🔥 عداد الوقت
-              if (status == 'IN_PROGRESS' && _rideDurations.containsKey(requestId))
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  margin: const EdgeInsets.only(top: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.blue.shade200),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.timer, size: 20, color: Colors.blue.shade700),
-                      const SizedBox(width: 8),
-                      Text(
-                        _translate('ride_duration', context),
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.blue.shade700,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        _formatDuration(_rideDurations[requestId]!, context),
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.blue.shade900,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-              const SizedBox(height: 16),
-
-              // 🔥 معلومات الراكب
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.person, size: 20, color: Colors.orange.shade700),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            requesterName,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.black87,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Icon(Icons.business, size: 20, color: Colors.blue.shade700),
-                        const SizedBox(width: 8),
-                        Text(
-                          '${_translate('department', context)}: ',
-                          style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey.shade700,
-                              fontWeight: FontWeight.bold
-                          ),
-                        ),
-                        Text(
-                          requesterDepartment,
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.blue.shade700,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // 🔥 مسار الرحلة
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.place, size: 20, color: Colors.red.shade700),
-                        const SizedBox(width: 8),
-                        Text(
-                          _translate('trip_route', context),
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black87,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    _buildLocationRow(
-                        Icons.arrow_upward,
-                        Colors.green,
-                        _translate('from', context),
-                        _translateLocation(fromLocation, context)
-                    ),
-                    const SizedBox(height: 8),
-                    _buildLocationRow(
-                        Icons.arrow_downward,
-                        Colors.red,
-                        _translate('to', context),
-                        _translateLocation(toLocation, context)
-                    ),
-                  ],
-                ),
-              ),
-
-              // 🔥 الوصف والملاحظات (مع الترجمة التلقائية الحقيقية)
-              if (description.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                FutureBuilder<String>(
-                  future: _translateDynamicContent(description, context),
-                  builder: (context, snapshot) {
-                    final translatedDescription = snapshot.data ?? description;
-
-                    return Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.shade50,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(Icons.description, size: 20, color: Colors.orange.shade700),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  _translate('notes', context),
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.orange.shade800,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  translatedDescription, // ✅ الملاحظات المترجمة تلقائياً
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.grey.shade700,
-                                  ),
-                                  textAlign: TextAlign.start,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ],
-
-              const SizedBox(height: 16),
-
-              // 🔥 الأولوية والزر
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: priority == 'Urgent' ? Colors.red.shade50 : Colors.green.shade50,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: priority == 'Urgent' ? Colors.red.shade300 : Colors.green.shade300,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          priority == 'Urgent' ? Icons.warning : Icons.check_circle,
-                          size: 16,
-                          color: priority == 'Urgent' ? Colors.red.shade800 : Colors.green.shade800,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          _translatePriority(priority, context),
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: priority == 'Urgent' ? Colors.red.shade800 : Colors.green.shade800,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  _buildActionButtons(requestId, status, context),
-                ],
-              ),
-            ],
+            decoration: BoxDecoration(
+              color: Colors.blue.shade800,
+            ),
           ),
-        ),
-      );
-    } catch (e) {
-      return _buildErrorCard('خطأ في عرض الطلب: $e', context);
-    }
-  }
-
-  // 🔥 دالة مساعدة لعرض سطور الموقع
-  Widget _buildLocationRow(IconData icon, Color color, String label, String location) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 16, color: color),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey.shade600,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              Text(
-                location,
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: Colors.black87,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
+          ListTile(
+            leading: const Icon(Icons.dashboard),
+            title: Text(_translate('driver_dashboard', context)),
+            onTap: () {
+              Navigator.pop(context);
+            },
           ),
-        ),
-      ],
+          ListTile(
+            leading: const Icon(Icons.person_outline),
+            title: Text(_translate('profile', context)),
+            onTap: () {
+              Navigator.pop(context);
+              _showProfile(context);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.assignment),
+            title: Text(_translate('my_requests', context)),
+            onTap: () {
+              Navigator.pop(context);
+              _showMyRequests(context);
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.logout, color: Colors.red),
+            title: Text(_translate('logout', context), style: const TextStyle(color: Colors.red)),
+            onTap: _logout,
+          ),
+        ],
+      ),
     );
   }
 }
