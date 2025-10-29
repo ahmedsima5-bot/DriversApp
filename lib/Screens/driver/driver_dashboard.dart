@@ -3,10 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 import '../../services/simple_notification_service.dart';
-import '../../providers/language_provider.dart';
 import 'dart:async';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
 import 'package:geolocator/geolocator.dart';
 
 class DriverDashboard extends StatefulWidget {
@@ -29,95 +26,33 @@ class _DriverDashboardState extends State<DriverDashboard> {
   bool _driverProfileExists = false;
   StreamSubscription? _requestsSubscription;
 
-  // 🔥 متغيرات تتبع الموقع
+  // 🔥 Location tracking variables
   StreamSubscription<Position>? _positionStreamSubscription;
   bool _isLocationServiceEnabled = true;
 
-  // 🔥 نظام السيارات
+  // 🔥 Vehicles system
   List<Map<String, dynamic>> _availableVehicles = [];
   bool _loadingVehicles = false;
 
-  // 🔥 مؤقتات للطلبات
+  // 🔥 Ride timers
   final Map<String, Timer> _activeTimers = {};
   final Map<String, Duration> _rideDurations = {};
   final Map<String, DateTime> _rideStartTimes = {};
 
-  // 🔥 إحصائيات إجمالية جديدة
+  // 🔥 New overall statistics
   int _totalCompletedRides = 0;
   int _totalAssignedRides = 0;
   bool _loadingStatistics = false;
 
-  // 🔥 تحكمات لإدخال السيارة
+  // 🔥 Traffic news - NOW DYNAMIC
+  List<Map<String, dynamic>> _trafficNews = [];
+  bool _loadingNews = false;
+  StreamSubscription? _trafficNewsSubscription;
+
+  // 🔥 Manual vehicle input controllers
   final TextEditingController _manualModelController = TextEditingController();
   final TextEditingController _manualPlateController = TextEditingController();
-  final TextEditingController _manualTypeController = TextEditingController(text: 'سيارة');
-
-  // 🔥 دالة الترجمة الأساسية
-  String _translate(String key, BuildContext context) {
-    final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
-    final String language = languageProvider.currentLanguage;
-
-    final Map<String, Map<String, String>> translations = {
-      'location_service_disabled': {'ar': '⚠️ خدمة الموقع مغلقة. لن يتمكن المدير من تتبعك.', 'en': '⚠️ Location service is disabled. The manager will not be able to track you.'},
-      'notes': {'ar': 'ملاحظات', 'en': 'Notes'},
-      'welcome': {'ar': 'مرحباً بك', 'en': 'Welcome'},
-      'account_active_ready': {'ar': 'Online', 'en': 'Account active and ready'},
-      'trip_route': {'ar': 'مسار الرحلة', 'en': 'Trip Route'},
-      'from': {'ar': 'من', 'en': 'From'},
-      'to': {'ar': 'إلى', 'en': 'To'},
-      'urgent': {'ar': 'عاجل', 'en': 'Urgent'},
-      'performance_report': {'ar': 'تقرير الأداء', 'en': 'Performance Report'},
-      'today_performance': {'ar': 'أداء اليوم', 'en': 'Today\'s Performance'},
-      'total_performance': {'ar': 'الإحصائيات الإجمالية', 'en': 'Total Performance'},
-      'show_my_requests': {'ar': 'عرض طلباتي', 'en': 'Show My Requests'},
-      'request': {'ar': 'طلب', 'en': 'Request'},
-      'assigned': {'ar': 'مُعيّن', 'en': 'Assigned'},
-      'in_progress': {'ar': 'قيد التنفيذ', 'en': 'In Progress'},
-      'completed': {'ar': 'مكتمل', 'en': 'Completed'},
-      'ride_duration': {'ar': 'مدة الرحلة', 'en': 'Ride Duration'},
-      'department': {'ar': 'القسم', 'en': 'Department'},
-      'start_ride': {'ar': 'بدء الرحلة', 'en': 'Start Ride'},
-      'complete_ride': {'ar': 'إنهاء الرحلة', 'en': 'Complete Ride'},
-      'driver_dashboard': {'ar': 'لوحة السائق', 'en': 'Driver Dashboard'},
-      'activate_driver_account': {'ar': 'تفعيل حساب السائق', 'en': 'Activate Driver Account'},
-      'activate_account_to_start': {'ar': 'قم بتفعيل الحساب لبدء العمل', 'en': 'Activate account to start working'},
-      'refresh_requests': {'ar': 'تحديث الطلبات', 'en': 'Refresh Requests'},
-      'profile': {'ar': 'بياناتي', 'en': 'Profile'},
-      'logout': {'ar': 'تسجيل الخروج', 'en': 'Logout'},
-      'manual': {'ar': 'يدوي', 'en': 'Manual'},
-      'select_vehicle': {'ar': 'اختر المركبة', 'en': 'Select Vehicle'},
-      'choose_vehicle_for_ride': {'ar': 'اختر المركبة للرحلة', 'en': 'Choose vehicle for ride'},
-      'no_vehicles_available': {'ar': 'لا توجد مركبات متاحة', 'en': 'No vehicles available'},
-      'other_vehicle': {'ar': 'مركبة أخرى', 'en': 'Other Vehicle'},
-      'enter_vehicle_info': {'ar': 'أدخل معلومات المركبة', 'en': 'Enter Vehicle Info'},
-      'vehicle_model': {'ar': 'موديل المركبة', 'en': 'Vehicle Model'},
-      'plate_number': {'ar': 'رقم اللوحة', 'en': 'Plate Number'},
-      'vehicle_type': {'ar': 'نوع المركبة', 'en': 'Vehicle Type'},
-      'cancel': {'ar': 'إلغاء', 'en': 'Cancel'},
-      'enter_vehicle_info_required': {'ar': 'يرجى إدخال معلومات المركبة', 'en': 'Please enter vehicle information'},
-      'no_requests': {'ar': 'لا توجد طلبات', 'en': 'No Requests'},
-      'no_assigned_requests': {'ar': 'لا توجد طلبات مخصصة لك حالياً', 'en': 'No requests assigned to you currently'},
-      'my_requests': {'ar': 'طلباتي', 'en': 'My Requests'},
-      'total_requests': {'ar': 'إجمالي الطلبات', 'en': 'Total Requests'},
-      'close': {'ar': 'إغلاق', 'en': 'Close'},
-      'refresh': {'ar': 'تحديث', 'en': 'Refresh'},
-      'no_requests_currently': {'ar': 'لا توجد طلبات حالياً', 'en': 'No requests currently'},
-      'requests_will_appear_here_when_assigned': {'ar': 'ستظهر الطلبات هنا عندما يتم تعيينها لك', 'en': 'Requests will appear here when assigned to you'},
-      'name': {'ar': 'الاسم', 'en': 'Name'},
-      'email': {'ar': 'البريد الإلكتروني', 'en': 'Email'},
-      'driver_id': {'ar': 'رقم السائق', 'en': 'Driver ID'},
-      'status': {'ar': 'الحالة', 'en': 'Status'},
-      'driver_linked_to_hr': {'ar': 'الموارد البشرية', 'en': 'Driver linked to HR'},
-      'completed_rides': {'ar': 'الرحلات المكتملة', 'en': 'Completed Rides'},
-      'total_completed_rides': {'ar': 'إجمالي المكتملة', 'en': 'Total Completed'},
-      'total_assigned_rides': {'ar': 'إجمالي المعينة', 'en': 'Total Assigned'},
-      'today_rides': {'ar': 'طلبات اليوم', 'en': 'Today\'s Rides'},
-      'not_specified': {'ar': 'غير محدد', 'en': 'Not specified'},
-      'ok': {'ar': 'موافق', 'en': 'OK'},
-    };
-
-    return translations[key]?[language] ?? key;
-  }
+  final TextEditingController _manualTypeController = TextEditingController(text: 'Car');
 
   @override
   void initState() {
@@ -125,12 +60,14 @@ class _DriverDashboardState extends State<DriverDashboard> {
     _checkDriverProfile();
     _loadDriverRequests();
     _startRequestsListener();
+    _startTrafficNewsListener();
   }
 
   @override
   void dispose() {
     _requestsSubscription?.cancel();
     _positionStreamSubscription?.cancel();
+    _trafficNewsSubscription?.cancel();
     _activeTimers.forEach((key, timer) => timer.cancel());
     _activeTimers.clear();
     _manualModelController.dispose();
@@ -140,7 +77,117 @@ class _DriverDashboardState extends State<DriverDashboard> {
   }
 
   // ===================================================================
-  // 🔥 دوال تتبع الموقع
+  // 🔥 DYNAMIC Traffic news functions - FROM FIRESTORE
+  // ===================================================================
+
+  void _startTrafficNewsListener() {
+    _trafficNewsSubscription = _firestore
+        .collection('trafficNews')
+        .orderBy('timestamp', descending: true)
+        .limit(5)
+        .snapshots()
+        .listen((snapshot) {
+      if (mounted) {
+        setState(() {
+          _trafficNews = snapshot.docs.map((doc) {
+            final data = doc.data() as Map<String, dynamic>? ?? {};
+            return {
+              'id': doc.id,
+              'title': data['title'] ?? 'Traffic Update',
+              'description': data['description'] ?? 'No details available',
+              'timestamp': data['timestamp'],
+              'priority': data['priority'] ?? 'normal',
+              'region': data['region'] ?? 'General',
+            };
+          }).toList();
+          _loadingNews = false;
+        });
+      }
+    }, onError: (error) {
+      debugPrint('❌ Error listening to traffic news: $error');
+      _loadMockTrafficNews();
+    });
+  }
+
+  void _loadMockTrafficNews() {
+    setState(() {
+      _trafficNews = [
+        {
+          'id': '1',
+          'title': 'Heavy Traffic Alert',
+          'description': 'Heavy congestion on King Fahd Road heading North. Expect delays.',
+          'timestamp': Timestamp.now(),
+          'priority': 'high',
+          'region': 'Riyadh'
+        },
+        {
+          'id': '2',
+          'title': 'Weather Warning',
+          'description': 'Heavy rain expected in central regions. Drive carefully.',
+          'timestamp': Timestamp.now(),
+          'priority': 'medium',
+          'region': 'Central'
+        },
+        {
+          'id': '3',
+          'title': 'Road Closure',
+          'description': 'Temporary closure on Exit 12 for maintenance until 6 PM.',
+          'timestamp': Timestamp.now(),
+          'priority': 'high',
+          'region': 'Riyadh'
+        },
+        {
+          'id': '4',
+          'title': 'Accident Reported',
+          'description': 'Minor accident on Northern Ring Road. Use alternative routes.',
+          'timestamp': Timestamp.now(),
+          'priority': 'medium',
+          'region': 'Riyadh'
+        },
+      ];
+      _loadingNews = false;
+    });
+  }
+
+  String _getTimeAgo(Timestamp timestamp) {
+    final now = DateTime.now();
+    final time = timestamp.toDate();
+    final difference = now.difference(time);
+
+    if (difference.inMinutes < 1) return 'Just now';
+    if (difference.inMinutes < 60) return '${difference.inMinutes} min ago';
+    if (difference.inHours < 24) return '${difference.inHours} hours ago';
+    return '${difference.inDays} days ago';
+  }
+
+  Color _getPriorityColor(String priority) {
+    switch (priority) {
+      case 'high':
+        return Colors.red;
+      case 'medium':
+        return Colors.orange;
+      case 'low':
+        return Colors.blue;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  IconData _getPriorityIcon(String priority) {
+    switch (priority) {
+      case 'high':
+        return Icons.warning;
+      case 'medium':
+        return Icons.info;
+      case 'low':
+        return Icons.traffic;
+      default:
+        return Icons.traffic;
+    }
+  }
+
+  // ===================================================================
+  // 🔥 Location tracking functions
   // ===================================================================
 
   Future<void> _checkLocationPermissionsAndStart() async {
@@ -211,7 +258,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
   }
 
   // ===================================================================
-  // 🔥 دوال الإحصائيات الإجمالية الجديدة
+  // 🔥 Overall statistics functions
   // ===================================================================
 
   Future<void> _loadTotalStatistics() async {
@@ -222,7 +269,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
         _loadingStatistics = true;
       });
 
-      // 🔥 تحميل إجمالي الطلبات المكتملة
       final completedSnapshot = await _firestore
           .collection('companies')
           .doc(_companyId)
@@ -231,7 +277,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
           .where('status', isEqualTo: 'COMPLETED')
           .get();
 
-      // 🔥 تحميل إجمالي الطلبات المعينة
       final assignedSnapshot = await _firestore
           .collection('companies')
           .doc(_companyId)
@@ -256,7 +301,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
   }
 
   // ===================================================================
-  // 🔥 بقية الدوال
+  // 🔥 Other functions
   // ===================================================================
 
   Future<void> _loadAvailableVehicles() async {
@@ -278,9 +323,9 @@ class _DriverDashboardState extends State<DriverDashboard> {
           final data = doc.data() as Map<String, dynamic>? ?? {};
           return {
             'id': doc.id,
-            'model': data['model'] ?? 'غير محدد',
-            'plateNumber': data['plateNumber'] ?? 'غير محدد',
-            'type': data['type'] ?? 'سيارة',
+            'model': data['model'] ?? 'Not specified',
+            'plateNumber': data['plateNumber'] ?? 'Not specified',
+            'type': data['type'] ?? 'Car',
           };
         }).toList();
         _loadingVehicles = false;
@@ -316,28 +361,17 @@ class _DriverDashboardState extends State<DriverDashboard> {
     _rideStartTimes.remove(requestId);
   }
 
-  String _formatDuration(Duration duration, BuildContext context) {
-    final currentLanguage = Provider.of<LanguageProvider>(context, listen: false).currentLanguage;
+  String _formatDuration(Duration duration) {
     final hours = duration.inHours;
     final minutes = duration.inMinutes.remainder(60);
     final seconds = duration.inSeconds.remainder(60);
 
-    if (currentLanguage == 'ar') {
-      if (hours > 0) {
-        return '$hours ساعة $minutes دقيقة $seconds ثانية';
-      } else if (minutes > 0) {
-        return '$minutes دقيقة $seconds ثانية';
-      } else {
-        return '$seconds ثانية';
-      }
+    if (hours > 0) {
+      return '${hours}h ${minutes}m ${seconds}s';
+    } else if (minutes > 0) {
+      return '${minutes}m ${seconds}s';
     } else {
-      if (hours > 0) {
-        return '${hours}h ${minutes}m ${seconds}s';
-      } else if (minutes > 0) {
-        return '${minutes}m ${seconds}s';
-      } else {
-        return '${seconds}s';
-      }
+      return '${seconds}s';
     }
   }
 
@@ -368,7 +402,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
     if (changeType == DocumentChangeType.added && status == 'ASSIGNED') {
       SimpleNotificationService.notifyNewRequest(context, requestId);
       _loadDriverRequests();
-      _loadTotalStatistics(); // 🔥 تحديث الإحصائيات
+      _loadTotalStatistics();
     } else if (changeType == DocumentChangeType.modified) {
       if (status == 'IN_PROGRESS') {
         final rideStartTime = request['rideStartTime'] != null
@@ -381,7 +415,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
         _stopRideTimer(requestId);
         SimpleNotificationService.notifyRideCompleted(context, requestId);
         _loadDriverRequests();
-        _loadTotalStatistics(); // 🔥 تحديث الإحصائيات
+        _loadTotalStatistics();
       }
     }
   }
@@ -407,7 +441,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
           _driverProfileExists = true;
 
           _loadAvailableVehicles();
-          _loadTotalStatistics(); // 🔥 تحميل الإحصائيات الإجمالية
+          _loadTotalStatistics();
 
           _checkLocationPermissionsAndStart();
 
@@ -456,9 +490,9 @@ class _DriverDashboardState extends State<DriverDashboard> {
         });
 
         _loadAvailableVehicles();
-        _loadTotalStatistics(); // 🔥 تحميل الإحصائيات بعد الإنشاء
+        _loadTotalStatistics();
 
-        SimpleNotificationService.notifySuccess(context, 'تم تفعيل حساب السائق بنجاح');
+        SimpleNotificationService.notifySuccess(context, 'Driver account activated successfully');
 
         debugPrint('✅ Driver record created: $driverId');
         _loadDriverRequests();
@@ -468,11 +502,11 @@ class _DriverDashboardState extends State<DriverDashboard> {
       }
     } catch (e) {
       debugPrint('❌ Error creating driver record: $e');
-      SimpleNotificationService.notifyError(context, 'خطأ في تفعيل الحساب: $e');
+      SimpleNotificationService.notifyError(context, 'Error activating account: $e');
     }
   }
 
-  Future<void> _showVehicleSelectionDialog(String requestId, BuildContext context) async {
+  Future<void> _showVehicleSelectionDialog(String requestId) async {
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -480,15 +514,15 @@ class _DriverDashboardState extends State<DriverDashboard> {
           children: [
             const Icon(Icons.directions_car, color: Colors.blue),
             const SizedBox(width: 8),
-            Text(_translate('select_vehicle', context)),
+            const Text('Select Vehicle'),
           ],
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              _translate('choose_vehicle_for_ride', context),
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            const Text(
+              'Choose vehicle for the ride',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
             if (_loadingVehicles)
@@ -498,8 +532,8 @@ class _DriverDashboardState extends State<DriverDashboard> {
                 children: [
                   const Icon(Icons.car_repair, size: 50, color: Colors.grey),
                   const SizedBox(height: 8),
-                  Text(
-                    _translate('no_vehicles_available', context),
+                  const Text(
+                    'No available vehicles',
                     textAlign: TextAlign.center,
                   ),
                 ],
@@ -525,10 +559,10 @@ class _DriverDashboardState extends State<DriverDashboard> {
             const SizedBox(height: 8),
             ListTile(
               leading: const Icon(Icons.add, color: Colors.orange),
-              title: Text(_translate('other_vehicle', context)),
+              title: const Text('Other vehicle'),
               onTap: () {
                 Navigator.pop(context);
-                _showManualVehicleDialog(requestId, context);
+                _showManualVehicleDialog(requestId);
               },
             ),
           ],
@@ -536,14 +570,14 @@ class _DriverDashboardState extends State<DriverDashboard> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text(_translate('cancel', context)),
+            child: const Text('Cancel'),
           ),
         ],
       ),
     );
   }
 
-  Future<void> _showManualVehicleDialog(String requestId, BuildContext context) async {
+  Future<void> _showManualVehicleDialog(String requestId) async {
     await showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -553,7 +587,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
               children: [
                 const Icon(Icons.directions_car, color: Colors.orange),
                 const SizedBox(width: 8),
-                Text(_translate('enter_vehicle_info', context)),
+                const Text('Enter Vehicle Information'),
               ],
             ),
             content: SingleChildScrollView(
@@ -562,28 +596,28 @@ class _DriverDashboardState extends State<DriverDashboard> {
                 children: [
                   TextFormField(
                     controller: _manualModelController,
-                    decoration: InputDecoration(
-                      labelText: _translate('vehicle_model', context),
-                      border: const OutlineInputBorder(),
-                      prefixIcon: const Icon(Icons.directions_car),
+                    decoration: const InputDecoration(
+                      labelText: 'Vehicle Model',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.directions_car),
                     ),
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: _manualPlateController,
-                    decoration: InputDecoration(
-                      labelText: _translate('plate_number', context),
-                      border: const OutlineInputBorder(),
-                      prefixIcon: const Icon(Icons.confirmation_number),
+                    decoration: const InputDecoration(
+                      labelText: 'Plate Number',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.confirmation_number),
                     ),
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: _manualTypeController,
-                    decoration: InputDecoration(
-                      labelText: _translate('vehicle_type', context),
-                      border: const OutlineInputBorder(),
-                      prefixIcon: const Icon(Icons.category),
+                    decoration: const InputDecoration(
+                      labelText: 'Vehicle Type',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.category),
                     ),
                   ),
                 ],
@@ -595,16 +629,16 @@ class _DriverDashboardState extends State<DriverDashboard> {
                   Navigator.pop(context);
                   _manualModelController.clear();
                   _manualPlateController.clear();
-                  _manualTypeController.text = 'سيارة';
+                  _manualTypeController.text = 'Car';
                 },
-                child: Text(_translate('cancel', context)),
+                child: const Text('Cancel'),
               ),
               ElevatedButton(
                 onPressed: () {
                   if (_manualModelController.text.isEmpty || _manualPlateController.text.isEmpty) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(_translate('enter_vehicle_info_required', context)),
+                      const SnackBar(
+                        content: Text('Please enter vehicle information'),
                         backgroundColor: Colors.red,
                       ),
                     );
@@ -614,7 +648,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
                   Navigator.pop(context);
                   _startRideWithManualVehicle(requestId);
                 },
-                child: Text(_translate('start_ride', context)),
+                child: const Text('Start Ride'),
               ),
             ],
           );
@@ -629,9 +663,9 @@ class _DriverDashboardState extends State<DriverDashboard> {
       final startTime = DateTime.now();
 
       final vehicleId = vehicle['id'] ?? 'N/A';
-      final model = vehicle['model'] ?? 'غير محدد';
-      final plateNumber = vehicle['plateNumber'] ?? 'غير محدد';
-      final type = vehicle['type'] ?? 'سيارة';
+      final model = vehicle['model'] ?? 'Not specified';
+      final plateNumber = vehicle['plateNumber'] ?? 'Not specified';
+      final type = vehicle['type'] ?? 'Car';
 
       await _firestore
           .collection('companies')
@@ -671,7 +705,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
       _loadAvailableVehicles();
     } catch (e) {
       debugPrint('❌ Error starting ride: $e');
-      SimpleNotificationService.notifyError(context, 'خطأ في بدء الرحلة: $e');
+      SimpleNotificationService.notifyError(context, 'Error starting ride: $e');
     }
   }
 
@@ -703,18 +737,18 @@ class _DriverDashboardState extends State<DriverDashboard> {
 
       _manualModelController.clear();
       _manualPlateController.clear();
-      _manualTypeController.text = 'سيارة';
+      _manualTypeController.text = 'Car';
 
       debugPrint('🚗 Ride started: $requestId with manual vehicle');
       _loadDriverRequests();
     } catch (e) {
       debugPrint('❌ Error starting ride with manual vehicle: $e');
-      SimpleNotificationService.notifyError(context, 'خطأ في بدء الرحلة: $e');
+      SimpleNotificationService.notifyError(context, 'Error starting ride: $e');
     }
   }
 
   Future<void> _startRide(String requestId) async {
-    await _showVehicleSelectionDialog(requestId, context);
+    await _showVehicleSelectionDialog(requestId);
   }
 
   Future<void> _loadDriverRequests() async {
@@ -798,7 +832,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('خطأ في تحميل الطلبات: $e'),
+            content: Text('Error loading requests: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -867,10 +901,10 @@ class _DriverDashboardState extends State<DriverDashboard> {
       debugPrint('✅ Ride completed: $requestId - Duration: ${totalDuration.inMinutes} minutes');
       _loadDriverRequests();
       _loadAvailableVehicles();
-      _loadTotalStatistics(); // 🔥 تحديث الإحصائيات بعد الإنتهاء
+      _loadTotalStatistics();
     } catch (e) {
       debugPrint('❌ Error completing ride: $e');
-      SimpleNotificationService.notifyError(context, 'خطأ في إنهاء الرحلة: $e');
+      SimpleNotificationService.notifyError(context, 'Error completing ride: $e');
     }
   }
 
@@ -890,16 +924,16 @@ class _DriverDashboardState extends State<DriverDashboard> {
 
       await _auth.signOut();
 
-      SimpleNotificationService.notifySuccess(context, 'تم تسجيل الخروج بنجاح');
+      SimpleNotificationService.notifySuccess(context, 'Logged out successfully');
 
       Navigator.pushReplacementNamed(context, '/login');
     } catch (e) {
       debugPrint('❌ Error logging out: $e');
-      SimpleNotificationService.notifyError(context, 'خطأ في تسجيل الخروج: $e');
+      SimpleNotificationService.notifyError(context, 'Error logging out: $e');
     }
   }
 
-  void _showProfile(BuildContext context) {
+  void _showProfile() {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -907,20 +941,20 @@ class _DriverDashboardState extends State<DriverDashboard> {
           children: [
             const Icon(Icons.person, color: Colors.orange),
             const SizedBox(width: 8),
-            Text(_translate('profile', context)),
+            const Text('My Profile'),
           ],
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildProfileRow('${_translate('name', context)}:', widget.userName),
-            _buildProfileRow('${_translate('email', context)}:', _auth.currentUser?.email ?? ''),
-            _buildProfileRow('${_translate('driver_id', context)}:', _driverId ?? _translate('not_specified', context)),
-            _buildProfileRow('${_translate('status', context)}:', _translate('driver_linked_to_hr', context)),
+            _buildProfileRow('Name:', widget.userName),
+            _buildProfileRow('Email:', _auth.currentUser?.email ?? ''),
+            _buildProfileRow('Driver ID:', _driverId ?? 'Not specified'),
+            _buildProfileRow('Status:', 'Human Resources'),
             if (_driverProfileExists) ...[
               _buildProfileRow(
-                '${_translate('completed_rides', context)}:',
+                'Today\'s Completed:',
                 _requests
                     .where((r) {
                   final data = r.data() as Map<String, dynamic>? ?? {};
@@ -930,7 +964,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
                     .toString(),
               ),
               _buildProfileRow(
-                '${_translate('total_completed_rides', context)}:',
+                'Total Completed:',
                 _totalCompletedRides.toString(),
               ),
             ],
@@ -939,7 +973,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text(_translate('ok', context)),
+            child: const Text('OK'),
           ),
         ],
       ),
@@ -958,15 +992,15 @@ class _DriverDashboardState extends State<DriverDashboard> {
     );
   }
 
-  void _showMyRequests(BuildContext context) {
+  void _showMyRequests() {
     if (_requests.isEmpty) {
-      _showNoRequestsDialog(context);
+      _showNoRequestsDialog();
     } else {
-      _showRequestsBottomSheet(context);
+      _showRequestsBottomSheet();
     }
   }
 
-  void _showNoRequestsDialog(BuildContext context) {
+  void _showNoRequestsDialog() {
     showDialog(
       context: context,
       builder: (context) {
@@ -975,13 +1009,13 @@ class _DriverDashboardState extends State<DriverDashboard> {
             children: [
               const Icon(Icons.inventory_2, color: Colors.orange),
               const SizedBox(width: 8),
-              Text(_translate('no_requests', context)),
+              const Text('No Requests'),
             ],
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(_translate('no_assigned_requests', context)),
+              const Text('No requests assigned to you currently'),
               const SizedBox(height: 16),
               if (!_driverProfileExists)
                 ElevatedButton(
@@ -993,14 +1027,14 @@ class _DriverDashboardState extends State<DriverDashboard> {
                     backgroundColor: Colors.blue,
                     foregroundColor: Colors.white,
                   ),
-                  child: Text(_translate('activate_driver_account', context)),
+                  child: const Text('Activate Driver Account'),
                 ),
             ],
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text(_translate('close', context)),
+              child: const Text('Close'),
             ),
           ],
         );
@@ -1008,7 +1042,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
     );
   }
 
-  void _showRequestsBottomSheet(BuildContext context) {
+  void _showRequestsBottomSheet() {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1029,31 +1063,31 @@ class _DriverDashboardState extends State<DriverDashboard> {
             constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.9),
             child: Scaffold(
               appBar: AppBar(
-                title: Text(_translate('my_requests', context)),
+                title: const Text('My Requests'),
                 automaticallyImplyLeading: false,
                 actions: [
                   IconButton(
                     icon: const Icon(Icons.refresh),
                     onPressed: _loadDriverRequests,
-                    tooltip: _translate('refresh', context),
+                    tooltip: 'Refresh',
                   ),
                   IconButton(
                     icon: const Icon(Icons.close),
                     onPressed: () => Navigator.pop(context),
-                    tooltip: _translate('close', context),
+                    tooltip: 'Close',
                   ),
                 ],
                 bottom: TabBar(
                   tabs: [
-                    Tab(text: 'الطلبات النشطة (${activeRequests.length})'),
-                    Tab(text: 'الطلبات المكتملة (${completedRequests.length})'),
+                    Tab(text: 'Active Requests (${activeRequests.length})'),
+                    Tab(text: 'Completed Requests (${completedRequests.length})'),
                   ],
                 ),
               ),
               body: TabBarView(
                 children: [
-                  _buildRequestsList(activeRequests, context),
-                  _buildRequestsList(completedRequests, context),
+                  _buildRequestsList(activeRequests),
+                  _buildRequestsList(completedRequests),
                 ],
               ),
             ),
@@ -1063,7 +1097,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
     );
   }
 
-  Widget _buildRequestsList(List<QueryDocumentSnapshot> requests, BuildContext context) {
+  Widget _buildRequestsList(List<QueryDocumentSnapshot> requests) {
     if (requests.isEmpty) {
       return Center(
         child: Padding(
@@ -1073,15 +1107,15 @@ class _DriverDashboardState extends State<DriverDashboard> {
             children: [
               const Icon(Icons.assignment_turned_in_outlined, size: 60, color: Colors.grey),
               const SizedBox(height: 16),
-              Text(
-                _translate('no_requests_currently', context),
-                style: const TextStyle(fontSize: 18, color: Colors.grey),
+              const Text(
+                'No requests currently',
+                style: TextStyle(fontSize: 18, color: Colors.grey),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
-              Text(
-                _translate('requests_will_appear_here_when_assigned', context),
-                style: const TextStyle(fontSize: 14, color: Colors.grey),
+              const Text(
+                'Requests will appear here when assigned to you',
+                style: TextStyle(fontSize: 14, color: Colors.grey),
                 textAlign: TextAlign.center,
               ),
             ],
@@ -1095,12 +1129,12 @@ class _DriverDashboardState extends State<DriverDashboard> {
       itemBuilder: (context, index) {
         final doc = requests[index];
         final data = doc.data() as Map<String, dynamic>? ?? {};
-        return _buildRequestCard(doc.id, data, context);
+        return _buildRequestCard(doc.id, data);
       },
     );
   }
 
-  Widget _buildRequestCard(String requestId, Map<String, dynamic> requestData, BuildContext context) {
+  Widget _buildRequestCard(String requestId, Map<String, dynamic> requestData) {
     final status = requestData['status'] as String? ?? 'UNKNOWN';
     final from = requestData['fromLocation'] as String? ?? 'N/A';
     final to = requestData['toLocation'] as String? ?? 'N/A';
@@ -1120,17 +1154,17 @@ class _DriverDashboardState extends State<DriverDashboard> {
       case 'ASSIGNED':
         statusColor = Colors.blue.shade600;
         statusIcon = Icons.assignment_turned_in;
-        statusText = _translate('assigned', context);
+        statusText = 'Assigned';
         break;
       case 'IN_PROGRESS':
         statusColor = Colors.orange.shade700;
         statusIcon = Icons.schedule;
-        statusText = _translate('in_progress', context);
+        statusText = 'In Progress';
         break;
       case 'COMPLETED':
         statusColor = Colors.green.shade700;
         statusIcon = Icons.check_circle;
-        statusText = _translate('completed', context);
+        statusText = 'Completed';
         break;
     }
 
@@ -1155,7 +1189,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
                 ),
                 if (isUrgent)
                   Chip(
-                    label: Text(_translate('urgent', context)),
+                    label: const Text('Urgent'),
                     backgroundColor: Colors.red.shade600,
                     labelStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                   ),
@@ -1167,11 +1201,11 @@ class _DriverDashboardState extends State<DriverDashboard> {
               style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
             ),
             const Divider(),
-            _buildTripDetailRow(Icons.location_on, _translate('from', context), from, context, color: Colors.green),
-            _buildTripDetailRow(Icons.flag, _translate('to', context), to, context, color: Colors.red),
-            _buildTripDetailRow(Icons.business, _translate('department', context), department, context),
+            _buildTripDetailRow(Icons.location_on, 'From', from, color: Colors.green),
+            _buildTripDetailRow(Icons.flag, 'To', to, color: Colors.red),
+            _buildTripDetailRow(Icons.business, 'Department', department),
             if (notes.isNotEmpty)
-              _buildTripDetailRow(Icons.notes, _translate('notes', context), notes, context),
+              _buildTripDetailRow(Icons.notes, 'Notes', notes),
 
             if (isInProgress)
               Padding(
@@ -1180,12 +1214,12 @@ class _DriverDashboardState extends State<DriverDashboard> {
                   children: [
                     const Icon(Icons.timer, color: Colors.purple, size: 20),
                     const SizedBox(width: 8),
-                    Text(
-                      '${_translate('ride_duration', context)}: ',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    const Text(
+                      'Ride Duration: ',
+                      style: TextStyle(fontWeight: FontWeight.bold),
                     ),
                     Text(
-                      _formatDuration(_rideDurations[requestId] ?? Duration.zero, context),
+                      _formatDuration(_rideDurations[requestId] ?? Duration.zero),
                       style: const TextStyle(color: Colors.purple, fontWeight: FontWeight.bold),
                     ),
                   ],
@@ -1200,7 +1234,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
                   ElevatedButton.icon(
                     onPressed: _loading ? null : () => _startRide(requestId),
                     icon: const Icon(Icons.play_arrow),
-                    label: Text(_translate('start_ride', context)),
+                    label: const Text('Start Ride'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green,
                       foregroundColor: Colors.white,
@@ -1210,7 +1244,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
                   ElevatedButton.icon(
                     onPressed: _loading ? null : () => _completeRide(requestId),
                     icon: const Icon(Icons.stop),
-                    label: Text(_translate('complete_ride', context)),
+                    label: const Text('End Ride'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.red,
                       foregroundColor: Colors.white,
@@ -1220,7 +1254,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
                   TextButton.icon(
                     onPressed: null,
                     icon: const Icon(Icons.history, color: Colors.grey),
-                    label: Text(_translate('completed', context)),
+                    label: const Text('Completed'),
                   ),
               ],
             ),
@@ -1230,7 +1264,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
     );
   }
 
-  Widget _buildTripDetailRow(IconData icon, String label, String value, BuildContext context, {Color color = Colors.blueGrey}) {
+  Widget _buildTripDetailRow(IconData icon, String label, String value, {Color color = Colors.blueGrey}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
@@ -1258,48 +1292,166 @@ class _DriverDashboardState extends State<DriverDashboard> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(_translate('driver_dashboard', context)),
-        backgroundColor: Colors.blue.shade800,
-        foregroundColor: Colors.white,
+  Widget _buildNewsItem(Map<String, dynamic> news) {
+    final priority = news['priority'] ?? 'normal';
+    final color = _getPriorityColor(priority);
+    final icon = _getPriorityIcon(priority);
+    final timeAgo = news['timestamp'] != null
+        ? _getTimeAgo(news['timestamp'] as Timestamp)
+        : 'Recently';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.3)),
       ),
-      drawer: _buildDrawer(context),
-      body: Column(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (!_isLocationServiceEnabled && _driverProfileExists)
-            Container(
-              padding: const EdgeInsets.all(12),
-              color: Colors.yellow.shade800,
-              child: Row(
-                children: [
-                  const Icon(Icons.warning, color: Colors.white),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _translate('location_service_disabled', context),
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                      textAlign: TextAlign.start,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+          Icon(icon, color: color, size: 24),
+          const SizedBox(width: 12),
           Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _driverProfileExists
-                ? _buildDashboardContent(context)
-                : _buildActivationView(context),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  news['title'] ?? 'Traffic Update',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  news['description'] ?? 'No details available',
+                  style: const TextStyle(fontSize: 14),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Icon(Icons.location_on, size: 14, color: Colors.grey),
+                    const SizedBox(width: 4),
+                    Text(
+                      news['region'] ?? 'General',
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                    ),
+                    const Spacer(),
+                    Text(
+                      timeAgo,
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildDashboardContent(BuildContext context) {
+  void _showTrafficNewsDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.traffic, color: Colors.red),
+            const SizedBox(width: 8),
+            const Text('Live Traffic News'),
+            const Spacer(),
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: _loadMockTrafficNews,
+              tooltip: 'Refresh News',
+            ),
+          ],
+        ),
+        content: _buildTrafficNewsContent(),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTrafficNewsContent() {
+    if (_loadingNews) {
+      return SizedBox(
+        height: 200,
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              const Text('Loading live traffic news...'),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (_trafficNews.isEmpty) {
+      return SizedBox(
+        height: 200,
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.traffic, color: Colors.grey, size: 50),
+              const SizedBox(height: 16),
+              const Text(
+                'No traffic alerts currently',
+                style: TextStyle(fontSize: 16, color: Colors.grey),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: _loadMockTrafficNews,
+                child: const Text('Load Sample Alerts'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return SizedBox(
+      width: double.maxFinite,
+      height: 400,
+      child: Column(
+        children: [
+          Text(
+            'Latest Traffic Updates',
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey.shade600,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: ListView.builder(
+              itemCount: _trafficNews.length,
+              itemBuilder: (context, index) {
+                final news = _trafficNews[index];
+                return _buildNewsItem(news);
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDashboardContent() {
     final activeRequestsCount = _requests.where((r) {
       final data = r.data() as Map<String, dynamic>? ?? {};
       return data['status'] != 'COMPLETED';
@@ -1315,6 +1467,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          // 🔥 Welcome card
           Card(
             color: Colors.green.shade50,
             elevation: 0,
@@ -1324,20 +1477,20 @@ class _DriverDashboardState extends State<DriverDashboard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(_translate('welcome', context), style: TextStyle(fontSize: 14, color: Colors.green.shade800)),
+                  const Text('Welcome', style: TextStyle(fontSize: 14, color: Colors.green)),
                   const SizedBox(height: 4),
                   Text(
                     widget.userName,
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.green.shade900),
+                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.green),
                   ),
                   const SizedBox(height: 8),
                   Row(
                     children: [
                       const Icon(Icons.check_circle, color: Colors.green, size: 20),
                       const SizedBox(width: 8),
-                      Text(
-                        _translate('account_active_ready', context),
-                        style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+                      const Text(
+                        'Online',
+                        style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
                       ),
                     ],
                   ),
@@ -1347,15 +1500,16 @@ class _DriverDashboardState extends State<DriverDashboard> {
           ),
           const SizedBox(height: 20),
 
-          Text(
-            _translate('my_requests', context),
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueGrey),
+          // 🔥 My Requests
+          const Text(
+            'My Requests',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueGrey),
           ),
           const SizedBox(height: 10),
 
           ListTile(
             leading: const Icon(Icons.assignment, color: Colors.blue),
-            title: Text(_translate('show_my_requests', context)),
+            title: const Text('View My Requests'),
             trailing: Chip(
               label: Text(
                 activeRequestsCount.toString(),
@@ -1363,7 +1517,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
               ),
               backgroundColor: activeRequestsCount > 0 ? Colors.orange : Colors.grey,
             ),
-            onTap: () => _showMyRequests(context),
+            onTap: _showMyRequests,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
               side: BorderSide(color: Colors.blue.shade100),
@@ -1371,25 +1525,24 @@ class _DriverDashboardState extends State<DriverDashboard> {
           ),
           const SizedBox(height: 20),
 
-          // 🔥 قسم تقرير الأداء - تم التعديل
-          Text(
-            _translate('performance_report', context),
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueGrey),
+          // 🔥 Performance Report
+          const Text(
+            'Performance Report',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueGrey),
           ),
           const SizedBox(height: 10),
 
-          // 🔥 أداء اليوم
-          Text(
-            _translate('today_performance', context),
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.orange),
+          // 🔥 Today's Performance
+          const Text(
+            'Today\'s Performance',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.orange),
           ),
           const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
                 child: _buildMetricCard(
-                  context,
-                  _translate('today_rides', context),
+                  'Today\'s Requests',
                   _requests.length.toString(),
                   Icons.today,
                   Colors.blue.shade700,
@@ -1398,8 +1551,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
               const SizedBox(width: 10),
               Expanded(
                 child: _buildMetricCard(
-                  context,
-                  _translate('completed_rides', context),
+                  'Today\'s Completed',
                   todayCompletedCount.toString(),
                   Icons.check_circle,
                   Colors.green.shade700,
@@ -1409,18 +1561,17 @@ class _DriverDashboardState extends State<DriverDashboard> {
           ),
           const SizedBox(height: 16),
 
-          // 🔥 الإحصائيات الإجمالية - جديد
-          Text(
-            _translate('total_performance', context),
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.purple),
+          // 🔥 Overall Statistics
+          const Text(
+            'Overall Statistics',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.purple),
           ),
           const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
                 child: _buildMetricCard(
-                  context,
-                  _translate('total_assigned_rides', context),
+                  'Total Assigned',
                   _loadingStatistics ? '...' : _totalAssignedRides.toString(),
                   Icons.assignment,
                   Colors.purple.shade700,
@@ -1429,8 +1580,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
               const SizedBox(width: 10),
               Expanded(
                 child: _buildMetricCard(
-                  context,
-                  _translate('total_completed_rides', context),
+                  'Total Completed',
                   _loadingStatistics ? '...' : _totalCompletedRides.toString(),
                   Icons.verified,
                   Colors.teal.shade700,
@@ -1443,7 +1593,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
     );
   }
 
-  Widget _buildActivationView(BuildContext context) {
+  Widget _buildActivationView() {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32.0),
@@ -1452,22 +1602,22 @@ class _DriverDashboardState extends State<DriverDashboard> {
           children: [
             Icon(Icons.person_off, size: 80, color: Colors.red.shade400),
             const SizedBox(height: 20),
-            Text(
-              _translate('activate_driver_account', context),
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.red.shade700),
+            const Text(
+              'Driver Account Activation',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.red),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 10),
-            Text(
-              _translate('activate_account_to_start', context),
-              style: const TextStyle(fontSize: 16, color: Colors.grey),
+            const Text(
+              'Activate your account to start working',
+              style: TextStyle(fontSize: 16, color: Colors.grey),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 30),
             ElevatedButton.icon(
               onPressed: _loading ? null : _createDriverProfile,
               icon: const Icon(Icons.power_settings_new),
-              label: Text(_translate('activate_driver_account', context)),
+              label: const Text('Activate Driver Account'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green.shade600,
                 foregroundColor: Colors.white,
@@ -1482,7 +1632,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
     );
   }
 
-  Widget _buildMetricCard(BuildContext context, String title, String value, IconData icon, Color color) {
+  Widget _buildMetricCard(String title, String value, IconData icon, Color color) {
     return Card(
       color: color.withOpacity(0.1),
       elevation: 0,
@@ -1515,7 +1665,51 @@ class _DriverDashboardState extends State<DriverDashboard> {
     );
   }
 
-  Drawer _buildDrawer(BuildContext context) {
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.ltr,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Driver Dashboard'),
+          backgroundColor: Colors.blue.shade800,
+          foregroundColor: Colors.white,
+        ),
+        drawer: _buildDrawer(),
+        body: Column(
+          children: [
+            if (!_isLocationServiceEnabled && _driverProfileExists)
+              Container(
+                padding: const EdgeInsets.all(12),
+                color: Colors.yellow.shade800,
+                child: const Row(
+                  children: [
+                    Icon(Icons.warning, color: Colors.white),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '⚠️ Location service is disabled. Manager cannot track you.',
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.start,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            Expanded(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _driverProfileExists
+                  ? _buildDashboardContent()
+                  : _buildActivationView(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Drawer _buildDrawer() {
     return Drawer(
       child: ListView(
         padding: EdgeInsets.zero,
@@ -1523,9 +1717,9 @@ class _DriverDashboardState extends State<DriverDashboard> {
           UserAccountsDrawerHeader(
             accountName: Text(widget.userName, style: const TextStyle(fontWeight: FontWeight.bold)),
             accountEmail: Text(_auth.currentUser?.email ?? 'N/A'),
-            currentAccountPicture: CircleAvatar(
+            currentAccountPicture: const CircleAvatar(
               backgroundColor: Colors.white,
-              child: Icon(Icons.person, color: Colors.blue.shade800, size: 50),
+              child: Icon(Icons.person, color: Colors.blue, size: 40),
             ),
             decoration: BoxDecoration(
               color: Colors.blue.shade800,
@@ -1533,31 +1727,39 @@ class _DriverDashboardState extends State<DriverDashboard> {
           ),
           ListTile(
             leading: const Icon(Icons.dashboard),
-            title: Text(_translate('driver_dashboard', context)),
+            title: const Text('Driver Dashboard'),
             onTap: () {
               Navigator.pop(context);
             },
           ),
           ListTile(
             leading: const Icon(Icons.person_outline),
-            title: Text(_translate('profile', context)),
+            title: const Text('My Profile'),
             onTap: () {
               Navigator.pop(context);
-              _showProfile(context);
+              _showProfile();
             },
           ),
           ListTile(
             leading: const Icon(Icons.assignment),
-            title: Text(_translate('my_requests', context)),
+            title: const Text('My Requests'),
             onTap: () {
               Navigator.pop(context);
-              _showMyRequests(context);
+              _showMyRequests();
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.traffic),
+            title: const Text('Traffic News'),
+            onTap: () {
+              Navigator.pop(context);
+              _showTrafficNewsDialog();
             },
           ),
           const Divider(),
           ListTile(
             leading: const Icon(Icons.logout, color: Colors.red),
-            title: Text(_translate('logout', context), style: const TextStyle(color: Colors.red)),
+            title: const Text('Logout', style: TextStyle(color: Colors.red)),
             onTap: _logout,
           ),
         ],
