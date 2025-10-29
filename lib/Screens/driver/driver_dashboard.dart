@@ -7,7 +7,7 @@ import '../../providers/language_provider.dart';
 import 'dart:async';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'package:geolocator/geolocator.dart'; // 🔥 مضافة
+import 'package:geolocator/geolocator.dart';
 
 class DriverDashboard extends StatefulWidget {
   final String userName;
@@ -29,21 +29,25 @@ class _DriverDashboardState extends State<DriverDashboard> {
   bool _driverProfileExists = false;
   StreamSubscription? _requestsSubscription;
 
-  // 🔥 متغيرات تتبع الموقع الجديدة
+  // 🔥 متغيرات تتبع الموقع
   StreamSubscription<Position>? _positionStreamSubscription;
-  bool _isLocationServiceEnabled = true; // نفترض أنها تعمل حتى نتحقق
+  bool _isLocationServiceEnabled = true;
 
   // 🔥 نظام السيارات
   List<Map<String, dynamic>> _availableVehicles = [];
-
   bool _loadingVehicles = false;
 
-  // 🔥 مؤقتات للطلبات قيد التنفيذ
+  // 🔥 مؤقتات للطلبات
   final Map<String, Timer> _activeTimers = {};
   final Map<String, Duration> _rideDurations = {};
   final Map<String, DateTime> _rideStartTimes = {};
 
-  // 🔥 تحكمات لإدخال السيارة يدوياً
+  // 🔥 إحصائيات إجمالية جديدة
+  int _totalCompletedRides = 0;
+  int _totalAssignedRides = 0;
+  bool _loadingStatistics = false;
+
+  // 🔥 تحكمات لإدخال السيارة
   final TextEditingController _manualModelController = TextEditingController();
   final TextEditingController _manualPlateController = TextEditingController();
   final TextEditingController _manualTypeController = TextEditingController(text: 'سيارة');
@@ -63,6 +67,8 @@ class _DriverDashboardState extends State<DriverDashboard> {
       'to': {'ar': 'إلى', 'en': 'To'},
       'urgent': {'ar': 'عاجل', 'en': 'Urgent'},
       'performance_report': {'ar': 'تقرير الأداء', 'en': 'Performance Report'},
+      'today_performance': {'ar': 'أداء اليوم', 'en': 'Today\'s Performance'},
+      'total_performance': {'ar': 'الإحصائيات الإجمالية', 'en': 'Total Performance'},
       'show_my_requests': {'ar': 'عرض طلباتي', 'en': 'Show My Requests'},
       'request': {'ar': 'طلب', 'en': 'Request'},
       'assigned': {'ar': 'مُعيّن', 'en': 'Assigned'},
@@ -103,48 +109,14 @@ class _DriverDashboardState extends State<DriverDashboard> {
       'status': {'ar': 'الحالة', 'en': 'Status'},
       'driver_linked_to_hr': {'ar': 'الموارد البشرية', 'en': 'Driver linked to HR'},
       'completed_rides': {'ar': 'الرحلات المكتملة', 'en': 'Completed Rides'},
+      'total_completed_rides': {'ar': 'إجمالي المكتملة', 'en': 'Total Completed'},
+      'total_assigned_rides': {'ar': 'إجمالي المعينة', 'en': 'Total Assigned'},
+      'today_rides': {'ar': 'طلبات اليوم', 'en': 'Today\'s Rides'},
       'not_specified': {'ar': 'غير محدد', 'en': 'Not specified'},
       'ok': {'ar': 'موافق', 'en': 'OK'},
     };
 
     return translations[key]?[language] ?? key;
-  }
-
-  // 🔥 دالة الترجمة التلقائية الحقيقية
-  Future<String> _translateDynamicContent(String text, BuildContext context) async {
-    if (text.isEmpty) return text;
-
-    final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
-    final String targetLanguage = languageProvider.currentLanguage;
-
-    if (targetLanguage == 'ar' || text.trim().isEmpty) {
-      return text;
-    }
-
-    try {
-      // 🔥 استخدام LibreTranslate API المجاني
-      final url = Uri.parse('https://libretranslate.de/translate');
-
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({'q': text, 'source': 'en', 'target': 'ar', 'format': 'text'}),
-      );
-
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
-        // تم تأمين الوصول إلى `data` باستخدام `?[]` و `??`
-        final translatedText = data['translatedText'] ?? text;
-        debugPrint('✅ Translated: "$text" -> "$translatedText"');
-        return translatedText;
-      } else {
-        debugPrint('❌ Translation error: ${response.statusCode}');
-        return text;
-      }
-    } catch (e) {
-      debugPrint('❌ Translation failed: $e');
-      return text;
-    }
   }
 
   @override
@@ -158,7 +130,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
   @override
   void dispose() {
     _requestsSubscription?.cancel();
-    _positionStreamSubscription?.cancel(); // 🔥 إيقاف تتبع الموقع
+    _positionStreamSubscription?.cancel();
     _activeTimers.forEach((key, timer) => timer.cancel());
     _activeTimers.clear();
     _manualModelController.dispose();
@@ -171,12 +143,10 @@ class _DriverDashboardState extends State<DriverDashboard> {
   // 🔥 دوال تتبع الموقع
   // ===================================================================
 
-  // 🔥 التحقق من أذونات الموقع وتفعيل التتبع
   Future<void> _checkLocationPermissionsAndStart() async {
     bool serviceEnabled;
     LocationPermission permission;
 
-    // 1. التحقق من تفعيل خدمة الموقع في الجهاز
     serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       setState(() => _isLocationServiceEnabled = false);
@@ -184,32 +154,27 @@ class _DriverDashboardState extends State<DriverDashboard> {
     }
     setState(() => _isLocationServiceEnabled = true);
 
-    // 2. التحقق من الأذونات
     permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
-        // فشل في الحصول على الإذن
         return;
       }
     }
 
-    // 3. بدء التحديث إذا كانت الأذونات جيدة
     if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
       _startLocationUpdates();
     }
   }
 
-  // 🔥 بدء الاستماع وتحديث الموقع في Firestore
   void _startLocationUpdates() {
     if (_driverId == null || _companyId == null) return;
 
-    // ❌ إيقاف أي اشتراك سابق لتجنب التكرار
     _positionStreamSubscription?.cancel();
 
     const locationSettings = LocationSettings(
       accuracy: LocationAccuracy.high,
-      distanceFilter: 10, // تحديث الموقع كل 10 أمتار تحرك
+      distanceFilter: 10,
     );
 
     _positionStreamSubscription = Geolocator.getPositionStream(locationSettings: locationSettings).listen(
@@ -223,7 +188,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
     );
   }
 
-  // 🔥 دالة تحديث الموقع في Firestore
   Future<void> _updateDriverLocationInFirestore(Position position) async {
     if (_driverId == null || _companyId == null) return;
 
@@ -234,7 +198,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
           .collection('drivers')
           .doc(_driverId)
           .update({
-        // 🔥 هذا هو الحقل الذي تبحث عنه صفحة الإدارة
         'location': {
           'latitude': position.latitude,
           'longitude': position.longitude,
@@ -248,10 +211,54 @@ class _DriverDashboardState extends State<DriverDashboard> {
   }
 
   // ===================================================================
+  // 🔥 دوال الإحصائيات الإجمالية الجديدة
+  // ===================================================================
+
+  Future<void> _loadTotalStatistics() async {
+    if (_companyId == null || _driverId == null) return;
+
+    try {
+      setState(() {
+        _loadingStatistics = true;
+      });
+
+      // 🔥 تحميل إجمالي الطلبات المكتملة
+      final completedSnapshot = await _firestore
+          .collection('companies')
+          .doc(_companyId)
+          .collection('requests')
+          .where('assignedDriverId', isEqualTo: _driverId)
+          .where('status', isEqualTo: 'COMPLETED')
+          .get();
+
+      // 🔥 تحميل إجمالي الطلبات المعينة
+      final assignedSnapshot = await _firestore
+          .collection('companies')
+          .doc(_companyId)
+          .collection('requests')
+          .where('assignedDriverId', isEqualTo: _driverId)
+          .where('status', whereIn: ['ASSIGNED', 'IN_PROGRESS', 'COMPLETED'])
+          .get();
+
+      setState(() {
+        _totalCompletedRides = completedSnapshot.docs.length;
+        _totalAssignedRides = assignedSnapshot.docs.length;
+        _loadingStatistics = false;
+      });
+
+      debugPrint('✅ Total Statistics - Completed: $_totalCompletedRides, Assigned: $_totalAssignedRides');
+    } catch (e) {
+      setState(() {
+        _loadingStatistics = false;
+      });
+      debugPrint('❌ Error loading total statistics: $e');
+    }
+  }
+
+  // ===================================================================
   // 🔥 بقية الدوال
   // ===================================================================
 
-  // 🔥 تحميل السيارات المتاحة
   Future<void> _loadAvailableVehicles() async {
     if (_companyId == null) return;
     try {
@@ -268,7 +275,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
 
       setState(() {
         _availableVehicles = vehiclesSnapshot.docs.map((doc) {
-          // تأمين تحويل البيانات
           final data = doc.data() as Map<String, dynamic>? ?? {};
           return {
             'id': doc.id,
@@ -289,7 +295,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
     }
   }
 
-  // 🔥 بدء مؤقت للرحلة
   void _startRideTimer(String requestId, DateTime startTime) {
     _activeTimers[requestId]?.cancel();
     _rideStartTimes[requestId] = startTime;
@@ -304,7 +309,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
     });
   }
 
-  // 🔥 إيقاف مؤقت الرحلة
   void _stopRideTimer(String requestId) {
     _activeTimers[requestId]?.cancel();
     _activeTimers.remove(requestId);
@@ -312,7 +316,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
     _rideStartTimes.remove(requestId);
   }
 
-  // 🔥 تنسيق مدة الرحلة لعرضها
   String _formatDuration(Duration duration, BuildContext context) {
     final currentLanguage = Provider.of<LanguageProvider>(context, listen: false).currentLanguage;
     final hours = duration.inHours;
@@ -348,10 +351,8 @@ class _DriverDashboardState extends State<DriverDashboard> {
         .listen((snapshot) {
       for (var change in snapshot.docChanges) {
         if (change.type == DocumentChangeType.added || change.type == DocumentChangeType.modified) {
-          // تأمين تحويل البيانات
           final request = change.doc.data() as Map<String, dynamic>? ?? {};
           final requestId = change.doc.id;
-          // استخدام `?[]` و `??` للوصول الآمن
           final assignedDriverId = request['assignedDriverId'] as String?;
           final status = request['status'] as String?;
 
@@ -367,6 +368,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
     if (changeType == DocumentChangeType.added && status == 'ASSIGNED') {
       SimpleNotificationService.notifyNewRequest(context, requestId);
       _loadDriverRequests();
+      _loadTotalStatistics(); // 🔥 تحديث الإحصائيات
     } else if (changeType == DocumentChangeType.modified) {
       if (status == 'IN_PROGRESS') {
         final rideStartTime = request['rideStartTime'] != null
@@ -379,6 +381,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
         _stopRideTimer(requestId);
         SimpleNotificationService.notifyRideCompleted(context, requestId);
         _loadDriverRequests();
+        _loadTotalStatistics(); // 🔥 تحديث الإحصائيات
       }
     }
   }
@@ -404,8 +407,8 @@ class _DriverDashboardState extends State<DriverDashboard> {
           _driverProfileExists = true;
 
           _loadAvailableVehicles();
+          _loadTotalStatistics(); // 🔥 تحميل الإحصائيات الإجمالية
 
-          // 🔥 بدأ تتبع الموقع هنا
           _checkLocationPermissionsAndStart();
 
           debugPrint('✅ Driver found: $_driverId');
@@ -453,6 +456,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
         });
 
         _loadAvailableVehicles();
+        _loadTotalStatistics(); // 🔥 تحميل الإحصائيات بعد الإنشاء
 
         SimpleNotificationService.notifySuccess(context, 'تم تفعيل حساب السائق بنجاح');
 
@@ -460,7 +464,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
         _loadDriverRequests();
         _startRequestsListener();
 
-        // 🔥 بدأ تتبع الموقع بعد الإنشاء
         _checkLocationPermissionsAndStart();
       }
     } catch (e) {
@@ -469,7 +472,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
     }
   }
 
-  // 🔥 عرض اختيار السيارة
   Future<void> _showVehicleSelectionDialog(String requestId, BuildContext context) async {
     await showDialog(
       context: context,
@@ -508,7 +510,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
                   ..._availableVehicles
                       .map((vehicle) => ListTile(
                     leading: const Icon(Icons.directions_car, color: Colors.green),
-                    // استخدام الوصول الآمن للبيانات
                     title: Text(vehicle['model'] ?? 'N/A'),
                     subtitle: Text('${vehicle['plateNumber'] ?? 'N/A'} - ${vehicle['type'] ?? 'N/A'}'),
                     onTap: () {
@@ -542,7 +543,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
     );
   }
 
-  // 🔥 عرض نافذة إدخال السيارة يدوياً
   Future<void> _showManualVehicleDialog(String requestId, BuildContext context) async {
     await showDialog(
       context: context,
@@ -623,13 +623,11 @@ class _DriverDashboardState extends State<DriverDashboard> {
     );
   }
 
-  // 🔥 بدء الرحلة مع سيارة محددة
   Future<void> _startRideWithVehicle(String requestId, Map<String, dynamic> vehicle) async {
     if (_companyId == null) return;
     try {
       final startTime = DateTime.now();
 
-      // تأمين الوصول باستخدام `?? 'N/A'`
       final vehicleId = vehicle['id'] ?? 'N/A';
       final model = vehicle['model'] ?? 'غير محدد';
       final plateNumber = vehicle['plateNumber'] ?? 'غير محدد';
@@ -653,7 +651,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
         'lastUpdated': FieldValue.serverTimestamp(),
       });
 
-      // التحقق من صلاحية vehicleId قبل التحديث
       if (vehicleId != 'N/A' && !vehicleId.startsWith('manual_')) {
         await _firestore
             .collection('companies')
@@ -665,7 +662,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
           'currentRequestId': requestId,
         });
       }
-
 
       _startRideTimer(requestId, startTime);
       SimpleNotificationService.notifyRideStarted(context, requestId);
@@ -679,7 +675,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
     }
   }
 
-  // 🔥 بدء الرحلة مع سيارة يدوية
   Future<void> _startRideWithManualVehicle(String requestId) async {
     if (_companyId == null) return;
     try {
@@ -718,7 +713,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
     }
   }
 
-  // 🔥 بدء الرحلة (الدالة الرئيسية)
   Future<void> _startRide(String requestId) async {
     await _showVehicleSelectionDialog(requestId, context);
   }
@@ -754,12 +748,10 @@ class _DriverDashboardState extends State<DriverDashboard> {
         _companyId = companyId;
 
         if (_companyId == null) {
-          // إذا لم يتم تحديد الشركة، توقف عن التحميل.
           setState(() { _loading = false; });
           return;
         }
 
-        // 🔥 الحصول على تاريخ اليوم فقط
         final now = DateTime.now();
         final todayStart = DateTime(now.year, now.month, now.day);
         final todayEnd = DateTime(now.year, now.month, now.day, 23, 59, 59);
@@ -776,7 +768,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
             .get();
 
         for (var doc in requestsSnapshot.docs) {
-          // تأمين تحويل البيانات
           final data = doc.data() as Map<String, dynamic>? ?? {};
           if (data['status'] == 'IN_PROGRESS' && data['rideStartTime'] != null) {
             final startTime = (data['rideStartTime'] as Timestamp).toDate();
@@ -831,11 +822,8 @@ class _DriverDashboardState extends State<DriverDashboard> {
           .doc(requestId)
           .get();
 
-      // تأمين تحويل البيانات
       final requestData = requestDoc.data() as Map<String, dynamic>? ?? {};
-      // استخدام `?[]` و `?? {}` للوصول الآمن للـ Map
       final vehicleInfo = requestData['vehicleInfo'] as Map<String, dynamic>? ?? {};
-      // استخدام `?[]` و `??` للوصول الآمن للحقول
       final vehicleId = vehicleInfo['vehicleId'] as String?;
       final source = vehicleInfo['source'] as String?;
 
@@ -851,7 +839,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
         'lastUpdated': FieldValue.serverTimestamp(),
       });
 
-      // التحقق من vehicleId و source قبل التحديث
       if (source == 'fleet' && vehicleId != null && !vehicleId.startsWith('manual_')) {
         await _firestore
             .collection('companies')
@@ -880,6 +867,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
       debugPrint('✅ Ride completed: $requestId - Duration: ${totalDuration.inMinutes} minutes');
       _loadDriverRequests();
       _loadAvailableVehicles();
+      _loadTotalStatistics(); // 🔥 تحديث الإحصائيات بعد الإنتهاء
     } catch (e) {
       debugPrint('❌ Error completing ride: $e');
       SimpleNotificationService.notifyError(context, 'خطأ في إنهاء الرحلة: $e');
@@ -888,7 +876,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
 
   Future<void> _logout() async {
     try {
-      // التحقق من القيمة الفارغة قبل استخدامها
       if (_driverId != null && _companyId != null) {
         await _firestore
             .collection('companies')
@@ -905,7 +892,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
 
       SimpleNotificationService.notifySuccess(context, 'تم تسجيل الخروج بنجاح');
 
-      // يجب استخدام Navigator.pushReplacementNamed لضمان العودة لصفحة تسجيل الدخول
       Navigator.pushReplacementNamed(context, '/login');
     } catch (e) {
       debugPrint('❌ Error logging out: $e');
@@ -932,17 +918,22 @@ class _DriverDashboardState extends State<DriverDashboard> {
             _buildProfileRow('${_translate('email', context)}:', _auth.currentUser?.email ?? ''),
             _buildProfileRow('${_translate('driver_id', context)}:', _driverId ?? _translate('not_specified', context)),
             _buildProfileRow('${_translate('status', context)}:', _translate('driver_linked_to_hr', context)),
-            if (_driverProfileExists)
+            if (_driverProfileExists) ...[
               _buildProfileRow(
-                  '${_translate('completed_rides', context)}:',
-                  // استخدام `r.data()` بأمان ثم الوصول إلى `['status']`
-                  _requests
-                      .where((r) {
-                    final data = r.data() as Map<String, dynamic>? ?? {};
-                    return data['status'] == 'COMPLETED';
-                  })
-                      .length
-                      .toString()),
+                '${_translate('completed_rides', context)}:',
+                _requests
+                    .where((r) {
+                  final data = r.data() as Map<String, dynamic>? ?? {};
+                  return data['status'] == 'COMPLETED';
+                })
+                    .length
+                    .toString(),
+              ),
+              _buildProfileRow(
+                '${_translate('total_completed_rides', context)}:',
+                _totalCompletedRides.toString(),
+              ),
+            ],
           ],
         ),
         actions: [
@@ -1022,7 +1013,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
       context: context,
       isScrollControlled: true,
       builder: (context) {
-        // فلترة الطلبات التي لم تكتمل بعد
         final activeRequests = _requests.where((r) {
           final data = r.data() as Map<String, dynamic>? ?? {};
           return data['status'] != 'COMPLETED';
@@ -1112,22 +1102,11 @@ class _DriverDashboardState extends State<DriverDashboard> {
 
   Widget _buildRequestCard(String requestId, Map<String, dynamic> requestData, BuildContext context) {
     final status = requestData['status'] as String? ?? 'UNKNOWN';
-
-    // 🔥 تم التعديل: استخدام fromLocation بدلاً من fromLocationName
     final from = requestData['fromLocation'] as String? ?? 'N/A';
-
-    // 🔥 تم التعديل: استخدام toLocation بدلاً من toLocationName
     final to = requestData['toLocation'] as String? ?? 'N/A';
-
-    // 🔥 تم التعديل: استخدام department بدلاً من requesterDepartment
     final department = requestData['department'] as String? ?? 'N/A';
-
-    // حقل isUrgent غير موجود في بياناتك، لكن priority موجود.
-    // سنعتمد على priority:
     final priority = requestData['priority'] as String? ?? 'Normal';
     final isUrgent = priority == 'Urgent';
-
-    // حقل notes غير موجود، لكن details موجود:
     final notes = requestData['details'] as String? ?? requestData['additionalDetails'] as String? ?? '';
 
     final isCompleted = status == 'COMPLETED';
@@ -1205,7 +1184,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
                       '${_translate('ride_duration', context)}: ',
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
-                    // 🔥 عرض مدة الرحلة المُحدّثة
                     Text(
                       _formatDuration(_rideDurations[requestId] ?? Duration.zero, context),
                       style: const TextStyle(color: Colors.purple, fontWeight: FontWeight.bold),
@@ -1214,9 +1192,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
                 ),
               ),
 
-            // ------------------------------------------------------------------
-            // أزرار الإجراءات
-            // ------------------------------------------------------------------
             const SizedBox(height: 10),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
@@ -1249,7 +1224,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
                   ),
               ],
             ),
-            // ------------------------------------------------------------------
           ],
         ),
       ),
@@ -1272,17 +1246,9 @@ class _DriverDashboardState extends State<DriverDashboard> {
                   '$label: ',
                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                 ),
-                FutureBuilder<String>(
-                  future: _translateDynamicContent(value, context),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return Text(value); // عرض النص الأصلي أثناء التحميل
-                    }
-                    return Text(
-                      snapshot.data ?? value,
-                      style: const TextStyle(fontSize: 14),
-                    );
-                  },
+                Text(
+                  value,
+                  style: const TextStyle(fontSize: 14),
                 ),
               ],
             ),
@@ -1303,7 +1269,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
       drawer: _buildDrawer(context),
       body: Column(
         children: [
-          // 🔥 شريط حالة الموقع
           if (!_isLocationServiceEnabled && _driverProfileExists)
             Container(
               padding: const EdgeInsets.all(12),
@@ -1322,8 +1287,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
                 ],
               ),
             ),
-          // ------------------------------------
-
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
@@ -1340,6 +1303,11 @@ class _DriverDashboardState extends State<DriverDashboard> {
     final activeRequestsCount = _requests.where((r) {
       final data = r.data() as Map<String, dynamic>? ?? {};
       return data['status'] != 'COMPLETED';
+    }).length;
+
+    final todayCompletedCount = _requests.where((r) {
+      final data = r.data() as Map<String, dynamic>? ?? {};
+      return data['status'] == 'COMPLETED';
     }).length;
 
     return RefreshIndicator(
@@ -1385,7 +1353,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
           ),
           const SizedBox(height: 10),
 
-          // عرض زر طلباتي
           ListTile(
             leading: const Icon(Icons.assignment, color: Colors.blue),
             title: Text(_translate('show_my_requests', context)),
@@ -1404,21 +1371,27 @@ class _DriverDashboardState extends State<DriverDashboard> {
           ),
           const SizedBox(height: 20),
 
+          // 🔥 قسم تقرير الأداء - تم التعديل
           Text(
             _translate('performance_report', context),
             style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueGrey),
           ),
           const SizedBox(height: 10),
 
-          // كروت الأداء
+          // 🔥 أداء اليوم
+          Text(
+            _translate('today_performance', context),
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.orange),
+          ),
+          const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
                 child: _buildMetricCard(
                   context,
-                  _translate('total_requests', context),
+                  _translate('today_rides', context),
                   _requests.length.toString(),
-                  Icons.all_inbox,
+                  Icons.today,
                   Colors.blue.shade700,
                 ),
               ),
@@ -1427,12 +1400,40 @@ class _DriverDashboardState extends State<DriverDashboard> {
                 child: _buildMetricCard(
                   context,
                   _translate('completed_rides', context),
-                  _requests.where((r) {
-                    final data = r.data() as Map<String, dynamic>? ?? {};
-                    return data['status'] == 'COMPLETED';
-                  }).length.toString(),
+                  todayCompletedCount.toString(),
                   Icons.check_circle,
                   Colors.green.shade700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // 🔥 الإحصائيات الإجمالية - جديد
+          Text(
+            _translate('total_performance', context),
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.purple),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _buildMetricCard(
+                  context,
+                  _translate('total_assigned_rides', context),
+                  _loadingStatistics ? '...' : _totalAssignedRides.toString(),
+                  Icons.assignment,
+                  Colors.purple.shade700,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _buildMetricCard(
+                  context,
+                  _translate('total_completed_rides', context),
+                  _loadingStatistics ? '...' : _totalCompletedRides.toString(),
+                  Icons.verified,
+                  Colors.teal.shade700,
                 ),
               ),
             ],
