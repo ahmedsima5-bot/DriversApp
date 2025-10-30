@@ -54,6 +54,9 @@ class _DriverDashboardState extends State<DriverDashboard> {
   final TextEditingController _manualPlateController = TextEditingController();
   final TextEditingController _manualTypeController = TextEditingController(text: 'Car');
 
+  // 🔥 NEW: Transfer request variables
+  bool _transferringRequest = false;
+
   @override
   void initState() {
     super.initState();
@@ -908,6 +911,367 @@ class _DriverDashboardState extends State<DriverDashboard> {
     }
   }
 
+  // ===================================================================
+  // 🔥 NEW: Transfer request functions - MODIFIED
+  // ===================================================================
+
+  Future<void> _transferRequestToAnotherDriver(String requestId, Map<String, dynamic> requestData) async {
+    if (_companyId == null || _driverId == null) return;
+
+    try {
+      setState(() {
+        _transferringRequest = true;
+      });
+
+      // 🔥 MODIFIED: جلب جميع السائقين النشطين (بغض النظر عن حالتهم)
+      final availableDrivers = await _getAllActiveDriversForTransfer();
+
+      if (availableDrivers.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('لا يوجد سائقين آخرين في النظام'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        setState(() {
+          _transferringRequest = false;
+        });
+        return;
+      }
+
+      // عرض قائمة السائقين للتحويل
+      await _showDriverTransferDialog(requestId, requestData, availableDrivers);
+
+    } catch (e) {
+      debugPrint('❌ Error in transfer request: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطأ في تحويل الطلب: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      setState(() {
+        _transferringRequest = false;
+      });
+    }
+  }
+
+  // 🔥 NEW: دالة محسنة لجلب جميع السائقين النشطين (بما فيهم المشغولين)
+  Future<List<Map<String, dynamic>>> _getAllActiveDriversForTransfer() async {
+    try {
+      final driversSnapshot = await _firestore
+          .collection('companies')
+          .doc(_companyId)
+          .collection('drivers')
+          .where('isActive', isEqualTo: true)
+          .where('driverId', isNotEqualTo: _driverId) // استبعاد السائق الحالي
+          .get();
+
+      return driversSnapshot.docs.map((doc) {
+        final data = doc.data() as Map<String, dynamic>? ?? {};
+        return {
+          'id': doc.id,
+          'name': data['name'] ?? 'غير معروف',
+          'email': data['email'] ?? '',
+          'phone': data['phone'] ?? '',
+          'isAvailable': data['isAvailable'] ?? false,
+          'isOnline': data['isOnline'] ?? false,
+          'completedRides': data['completedRides'] ?? 0,
+          'rating': (data['rating'] as num?)?.toDouble() ?? 5.0,
+          'currentRequestId': data['currentRequestId'],
+        };
+      }).toList();
+    } catch (e) {
+      debugPrint('❌ Error loading all active drivers: $e');
+
+      // 🔥 بديل إذا فشل الاستعلام المعقد
+      return await _getSimpleDriversList();
+    }
+  }
+
+  // 🔥 NEW: دالة بديلة بسيطة لجلب السائقين
+  Future<List<Map<String, dynamic>>> _getSimpleDriversList() async {
+    try {
+      final driversSnapshot = await _firestore
+          .collection('companies')
+          .doc(_companyId)
+          .collection('drivers')
+          .where('driverId', isNotEqualTo: _driverId)
+          .get();
+
+      return driversSnapshot.docs.map((doc) {
+        final data = doc.data() as Map<String, dynamic>? ?? {};
+        return {
+          'id': doc.id,
+          'name': data['name'] ?? 'غير معروف',
+          'email': data['email'] ?? '',
+          'phone': data['phone'] ?? '',
+          'isAvailable': data['isAvailable'] ?? false,
+          'isOnline': data['isOnline'] ?? false,
+          'completedRides': data['completedRides'] ?? 0,
+        };
+      }).toList();
+    } catch (e) {
+      debugPrint('❌ Error loading simple drivers list: $e');
+      return [];
+    }
+  }
+
+  Future<void> _showDriverTransferDialog(
+      String requestId,
+      Map<String, dynamic> requestData,
+      List<Map<String, dynamic>> availableDrivers,
+      ) async {
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.swap_horiz, color: Colors.orange),
+            const SizedBox(width: 8),
+            const Text('تحويل الطلب لسائق آخر'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'اختر السائق الذي تريد تحويل الطلب إليه:',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            if (availableDrivers.isEmpty)
+              const Text('لا يوجد سائقين متاحين حالياً')
+            else
+              ...availableDrivers.map((driver) => ListTile(
+                leading: _getDriverStatusIcon(driver),
+                title: Text(driver['name']),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('${driver['completedRides']} مشاوير مكتملة'),
+                    Text(
+                      driver['isAvailable'] == true ? '🟢 متاح' : '🔴 مشغول',
+                      style: TextStyle(
+                        color: driver['isAvailable'] == true ? Colors.green : Colors.red,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                trailing: const Icon(Icons.arrow_forward, color: Colors.blue),
+                onTap: () {
+                  Navigator.pop(context);
+                  _confirmTransfer(requestId, requestData, driver);
+                },
+              )).toList(),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('إلغاء'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 🔥 NEW: دالة للحصول على أيقونة حالة السائق
+  Widget _getDriverStatusIcon(Map<String, dynamic> driver) {
+    if (driver['isAvailable'] == true) {
+      return const Icon(Icons.person, color: Colors.green);
+    } else {
+      return const Icon(Icons.person, color: Colors.orange);
+    }
+  }
+
+  Future<void> _confirmTransfer(
+      String requestId,
+      Map<String, dynamic> requestData,
+      Map<String, dynamic> newDriver,
+      ) async {
+    final bool? confirmed = await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('تأكيد التحويل'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('هل أنت متأكد من تحويل الطلب إلى السائق:'),
+            const SizedBox(height: 8),
+            Text(
+              newDriver['name'],
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            const SizedBox(height: 8),
+            Text('رقم الطلب: ${requestId.substring(0, 8)}'),
+            const SizedBox(height: 8),
+            if (newDriver['isAvailable'] != true)
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade100,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  '⚠️ ملاحظة: هذا السائق مشغول حالياً',
+                  style: TextStyle(color: Colors.orange),
+                ),
+              ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('إلغاء'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+            child: const Text('تأكيد التحويل'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _executeTransfer(requestId, requestData, newDriver);
+    }
+  }
+
+  Future<void> _executeTransfer(
+      String requestId,
+      Map<String, dynamic> requestData,
+      Map<String, dynamic> newDriver,
+      ) async {
+    try {
+      // 🔥 IMPORTANT: منع تحويل الطلبات التي بدأ تنفيذها
+      if (requestData['status'] == 'IN_PROGRESS') {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('❌ لا يمكن تحويل الطلب بعد بدء التنفيذ'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // تحديث حالة الطلب في Firebase
+      await _firestore
+          .collection('companies')
+          .doc(_companyId)
+          .collection('requests')
+          .doc(requestId)
+          .update({
+        'previousDriverId': _driverId,
+        'previousDriverName': widget.userName,
+        'assignedDriverId': newDriver['id'],
+        'assignedDriverName': newDriver['name'],
+        'status': 'ASSIGNED',
+        'transferReason': 'تم التحويل من قبل السائق',
+        'transferredAt': FieldValue.serverTimestamp(),
+        'transferredBy': _driverId,
+        'lastUpdated': FieldValue.serverTimestamp(),
+      });
+
+      // تحرير السائق الحالي
+      await _firestore
+          .collection('companies')
+          .doc(_companyId)
+          .collection('drivers')
+          .doc(_driverId)
+          .update({
+        'isAvailable': true,
+        'currentRequestId': null,
+        'lastStatusUpdate': FieldValue.serverTimestamp(),
+      });
+
+      // تعيين السائق الجديد
+      await _firestore
+          .collection('companies')
+          .doc(_companyId)
+          .collection('drivers')
+          .doc(newDriver['id'])
+          .update({
+        'isAvailable': false,
+        'currentRequestId': requestId,
+        'lastStatusUpdate': FieldValue.serverTimestamp(),
+      });
+
+      // إشعار السائق الجديد
+      await _notifyNewDriverAboutTransfer(requestId, newDriver, requestData);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ تم تحويل الطلب بنجاح إلى ${newDriver['name']}'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+
+      debugPrint('✅ Request transferred: $requestId from $_driverId to ${newDriver['id']}');
+
+      // إعادة تحميل البيانات
+      _loadDriverRequests();
+      _loadTotalStatistics();
+
+    } catch (e) {
+      debugPrint('❌ Error executing transfer: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطأ في تحويل الطلب: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _notifyNewDriverAboutTransfer(
+      String requestId,
+      Map<String, dynamic> newDriver,
+      Map<String, dynamic> requestData,
+      ) async {
+    try {
+      final notificationData = {
+        'type': 'request_transfer',
+        'requestId': requestId,
+        'fromDriver': widget.userName,
+        'fromLocation': requestData['fromLocation'] ?? 'غير محدد',
+        'toLocation': requestData['toLocation'] ?? 'غير محدد',
+        'priority': requestData['priority'] ?? 'Normal',
+        'timestamp': FieldValue.serverTimestamp(),
+      };
+
+      await _firestore
+          .collection('companies')
+          .doc(_companyId)
+          .collection('drivers')
+          .doc(newDriver['id'])
+          .collection('notifications')
+          .add(notificationData);
+
+      debugPrint('📧 Transfer notification sent to ${newDriver['name']}');
+    } catch (e) {
+      debugPrint('❌ Error sending transfer notification: $e');
+    }
+  }
+
+  // ===================================================================
+  // 🔥 UI Functions
+  // ===================================================================
+
   Future<void> _logout() async {
     try {
       if (_driverId != null && _companyId != null) {
@@ -1145,6 +1509,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
 
     final isCompleted = status == 'COMPLETED';
     final isInProgress = status == 'IN_PROGRESS';
+    final isAssigned = status == 'ASSIGNED';
 
     Color statusColor = Colors.grey;
     IconData statusIcon = Icons.help_outline;
@@ -1231,14 +1596,26 @@ class _DriverDashboardState extends State<DriverDashboard> {
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 if (status == 'ASSIGNED')
-                  ElevatedButton.icon(
-                    onPressed: _loading ? null : () => _startRide(requestId),
-                    icon: const Icon(Icons.play_arrow),
-                    label: const Text('Start Ride'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
-                    ),
+                  Row(
+                    children: [
+                      // 🔥 NEW: Transfer button (only for ASSIGNED requests)
+                      if (!_transferringRequest)
+                        IconButton(
+                          onPressed: () => _transferRequestToAnotherDriver(requestId, requestData),
+                          icon: const Icon(Icons.swap_horiz, color: Colors.orange),
+                          tooltip: 'Transfer to another driver',
+                        ),
+
+                      ElevatedButton.icon(
+                        onPressed: _loading ? null : () => _startRide(requestId),
+                        icon: const Icon(Icons.play_arrow),
+                        label: const Text('Start Ride'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                    ],
                   ),
                 if (isInProgress)
                   ElevatedButton.icon(
@@ -1258,6 +1635,16 @@ class _DriverDashboardState extends State<DriverDashboard> {
                   ),
               ],
             ),
+
+            // 🔥 NEW: Transfer status indicator
+            if (_transferringRequest)
+              const Padding(
+                padding: EdgeInsets.only(top: 8.0),
+                child: LinearProgressIndicator(
+                  backgroundColor: Colors.orangeAccent,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.orange),
+                ),
+              ),
           ],
         ),
       ),
@@ -1665,6 +2052,54 @@ class _DriverDashboardState extends State<DriverDashboard> {
     );
   }
 
+  // 🔥 NEW: Quick transfer dialog for multiple requests
+  Future<void> _showQuickTransferDialog(List<QueryDocumentSnapshot> transferableRequests) async {
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.swap_horiz, color: Colors.orange),
+            SizedBox(width: 8),
+            Text('تحويل الطلبات'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'اختر الطلب الذي تريد تحويله:',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            ...transferableRequests.map((request) {
+              final data = request.data() as Map<String, dynamic>? ?? {};
+              return ListTile(
+                leading: const Icon(Icons.assignment, color: Colors.blue),
+                title: Text('طلب #${request.id.substring(0, 8)}'),
+                subtitle: Text('${data['fromLocation']} → ${data['toLocation']}'),
+                trailing: Chip(
+                  label: Text(data['status'] == 'ASSIGNED' ? 'معين' : 'قيد التنفيذ'),
+                  backgroundColor: data['status'] == 'ASSIGNED' ? Colors.blue : Colors.orange,
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _transferRequestToAnotherDriver(request.id, data);
+                },
+              );
+            }).toList(),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('إلغاء'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Directionality(
@@ -1674,6 +2109,27 @@ class _DriverDashboardState extends State<DriverDashboard> {
           title: const Text('Driver Dashboard'),
           backgroundColor: Colors.blue.shade800,
           foregroundColor: Colors.white,
+          actions: [
+            // 🔥 NEW: Quick transfer action in app bar (only for ASSIGNED requests)
+            if (_requests.any((r) {
+              final data = r.data() as Map<String, dynamic>? ?? {};
+              return data['status'] == 'ASSIGNED'; // 🔥 فقط الطلبات المعينة
+            }))
+              IconButton(
+                icon: const Icon(Icons.swap_horiz),
+                onPressed: () {
+                  final transferableRequests = _requests.where((r) {
+                    final data = r.data() as Map<String, dynamic>? ?? {};
+                    return data['status'] == 'ASSIGNED'; // 🔥 فقط الطلبات المعينة
+                  }).toList();
+
+                  if (transferableRequests.isNotEmpty) {
+                    _showQuickTransferDialog(transferableRequests);
+                  }
+                },
+                tooltip: 'Quick Transfer',
+              ),
+          ],
         ),
         drawer: _buildDrawer(),
         body: Column(
@@ -1748,6 +2204,26 @@ class _DriverDashboardState extends State<DriverDashboard> {
               _showMyRequests();
             },
           ),
+          // 🔥 NEW: Transfer requests in drawer (only for ASSIGNED requests)
+          if (_requests.any((r) {
+            final data = r.data() as Map<String, dynamic>? ?? {};
+            return data['status'] == 'ASSIGNED'; // 🔥 فقط الطلبات المعينة
+          }))
+            ListTile(
+              leading: const Icon(Icons.swap_horiz, color: Colors.orange),
+              title: const Text('Transfer Requests'),
+              onTap: () {
+                Navigator.pop(context);
+                final transferableRequests = _requests.where((r) {
+                  final data = r.data() as Map<String, dynamic>? ?? {};
+                  return data['status'] == 'ASSIGNED'; // 🔥 فقط الطلبات المعينة
+                }).toList();
+
+                if (transferableRequests.isNotEmpty) {
+                  _showQuickTransferDialog(transferableRequests);
+                }
+              },
+            ),
           ListTile(
             leading: const Icon(Icons.traffic),
             title: const Text('Traffic News'),
