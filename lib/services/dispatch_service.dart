@@ -38,7 +38,7 @@ class DispatchService {
           .collection('companies')
           .doc(companyId)
           .collection('requests')
-          .where('status', whereIn: ['PENDING', 'WAITING_FOR_DRIVER'])
+          .where('status', whereIn: ['PENDING', 'WAITING_FOR_DRIVER', 'HR_APPROVED'])
           .get();
 
       if (pendingRequests.docs.isNotEmpty) {
@@ -50,11 +50,42 @@ class DispatchService {
             ...requestData,
             'requestId': doc.id,
           });
-          await _tryAutoAssign(request);
+
+          // 🔥 تحقق إذا كان الطلب مضافاً مسبقاً لقائمة الانتظار
+          if (request.status == 'WAITING_FOR_DRIVER') {
+            if (await _isRequestInAnyQueue(request.requestId, request.companyId)) {
+              print('⏳ الطلب ${request.requestId} في حالة انتظار ومضاف مسبقاً، تخطي...');
+              continue;
+            }
+          }
+
+          // معالجة خاصة للطلبات الموافق عليها من الموارد البشرية
+          if (request.status == 'HR_APPROVED') {
+            await _processHRApprovedRequest(request);
+          } else {
+            await _tryAutoAssign(request);
+          }
         }
       }
     } catch (e) {
       print('❌ خطأ في المعالجة الدورية: $e');
+    }
+  }
+
+  // ✨ معالجة الطلبات الموافق عليها من الموارد البشرية
+  Future<void> _processHRApprovedRequest(Request request) async {
+    try {
+      print('🎯 معالجة طلب موافق عليه من الموارد البشرية: ${request.requestId}');
+
+      // إذا لم يكن هناك سائق معين، نقوم بالتوزيع التلقائي
+      if (request.assignedDriverId == null || request.assignedDriverId!.isEmpty) {
+        print('🔄 لم يتم تعيين سائق، جاري التوزيع التلقائي...');
+        await _tryAutoAssign(request);
+      } else {
+        print('✅ الطلب معين مسبقاً للسائق: ${request.assignedDriverName}');
+      }
+    } catch (e) {
+      print('❌ خطأ في معالجة الطلب الموافق عليه: $e');
     }
   }
 
@@ -64,7 +95,7 @@ class DispatchService {
         .collection('companies')
         .doc(companyId)
         .collection('requests')
-        .where('status', isEqualTo: 'PENDING')
+        .where('status', whereIn: ['PENDING', 'HR_APPROVED'])
         .snapshots()
         .listen((snapshot) {
       for (var doc in snapshot.docChanges) {
@@ -96,7 +127,7 @@ class DispatchService {
         return;
       }
 
-      if (request.priority == 'Urgent') {
+      if (request.priority == 'Urgent' && request.status != 'HR_APPROVED') {
         await _sendToHRApproval(request);
       } else {
         await _tryAutoAssign(request);
@@ -108,10 +139,16 @@ class DispatchService {
     }
   }
 
-  // ✨ محاولة التعيين التلقائي
+  // ✨ محاولة التعيين التلقائي - النسخة المحسنة
   Future<void> _tryAutoAssign(Request request) async {
     try {
       print('🎯 محاولة التعيين التلقائي للطلب: ${request.requestId}');
+
+      // 🔥 تحقق إذا كان الطلب مضافاً مسبقاً لقائمة الانتظار
+      if (await _isRequestInAnyQueue(request.requestId, request.companyId)) {
+        print('⚠️ الطلب ${request.requestId} مضاف مسبقاً لقائمة الانتظار، تخطي...');
+        return;
+      }
 
       // جلب جميع السائقين النشطين
       final allDriversSnap = await _firestore
@@ -132,76 +169,60 @@ class DispatchService {
         return;
       }
 
-      List<Driver> availableDrivers = [];
-      List<Driver> busyDrivers = [];
+      List<Driver> allDriversList = [];
 
       for (var doc in allDriversSnap.docs) {
         try {
           final driverData = doc.data();
-
           final driver = Driver.fromMap({
             ...driverData,
             'driverId': doc.id,
           });
-
-          // تصنيف السائقين
-          if (driver.isAvailable == true) {
-            availableDrivers.add(driver);
-            print('✅ سائق متاح: ${driver.name} (مشاوير: ${driver.completedRides})');
-          } else {
-            busyDrivers.add(driver);
-            print('⏳ سائق مشغول: ${driver.name} (مشاوير: ${driver.completedRides})');
-          }
+          allDriversList.add(driver);
         } catch (e) {
           print('❌ خطأ في تحميل سائق ${doc.id}: $e');
         }
       }
 
       print('📊 إحصائيات السائقين:');
-      print('   - إجمالي السائقين: ${allDriversSnap.docs.length}');
-      print('   - السائقون المتاحون: ${availableDrivers.length}');
-      print('   - السائقون المشغولون: ${busyDrivers.length}');
+      print('   - إجمالي السائقين: ${allDriversList.length}');
 
-      Driver? selectedDriver;
+      // 🔥 الجديد: نعطي الطلب لأي سائق نشط بغض النظر إذا كان مشغول أو لا
+      if (allDriversList.isNotEmpty) {
+        // 🔥 ترتيب السائقين حسب الأولوية
+        final sortedDrivers = await _sortDriversByPriority(allDriversList, request.companyId);
 
-      // الأولوية للسائقين المتاحين حالياً
-      if (availableDrivers.isNotEmpty) {
-        print('🎯 اختيار من السائقين المتاحين حالياً...');
+        final selectedDriver = sortedDrivers.first;
+        final queueCount = await _getDriverQueueCount(selectedDriver.driverId, request.companyId);
 
-        // ترتيب حسب عدد المشاوير (الأقل مشاوير أولاً)
-        availableDrivers.sort((a, b) {
-          return a.completedRides.compareTo(b.completedRides);
-        });
+        print('🎯 أفضل سائق مختار: ${selectedDriver.name}');
+        print('   - متاح: ${selectedDriver.isAvailable}');
+        print('   - طلبات في الانتظار: $queueCount');
+        print('   - مشاوير مكتملة: ${selectedDriver.completedRides}');
 
-        selectedDriver = availableDrivers.first;
-        print('🚗 تم اختيار سائق متاح: ${selectedDriver.name}');
+        if (selectedDriver.isAvailable) {
+          // إذا السائق متاح، نعطيه الطلب مباشرة
+          print('🚗 تم اختيار سائق متاح: ${selectedDriver.name}');
+          await _assignToDriver(request, selectedDriver);
+        } else {
+          // إذا السائق مشغول، نضيف الطلب لقائمته
+          print('📝 تم اختيار سائق مشغول: ${selectedDriver.name} (طلبات في الانتظار: $queueCount)');
 
-      } else if (busyDrivers.isNotEmpty) {
-        // إذا لم يوجد سائقون متاحون، نختار من المشغولين بناءً على عدد المشاوير
-        print('🎯 اختيار من السائقين المشغولين (نظام الانتظار الذكي)...');
+          // تحديث حالة الطلب إلى الانتظار
+          await _updateRequestStatus(
+            request.companyId,
+            request.requestId,
+            'WAITING_FOR_DRIVER',
+            'مضاف لقائمة انتظار السائق ${selectedDriver.name}',
+          );
 
-        busyDrivers.sort((a, b) {
-          return a.completedRides.compareTo(b.completedRides);
-        });
+          // إضافة الطلب إلى قائمة انتظار السائق
+          await _addToDriverQueue(request, selectedDriver);
 
-        selectedDriver = busyDrivers.first;
-        print('⏰ تم اختيار سائق مشغول (في قائمة الانتظار): ${selectedDriver.name}');
+          // 🔥 إشعار السائق بوجود طلب جديد في الانتظار
+          await _notifyDriverNewQueueItem(selectedDriver, request, queueCount + 1);
+        }
 
-        // تحديث حالة الطلب إلى الانتظار
-        await _updateRequestStatus(
-          request.companyId,
-          request.requestId,
-          'WAITING_FOR_DRIVER',
-          'بانتظار انتهاء مهمة السائق ${selectedDriver.name}',
-        );
-
-        // إضافة الطلب إلى قائمة انتظار السائق
-        await _addToDriverQueue(request, selectedDriver);
-        return;
-      }
-
-      if (selectedDriver != null) {
-        await _assignToDriver(request, selectedDriver);
       } else {
         print('❌ لا يوجد سائقون مناسبون للتعيين');
         await _updateRequestStatus(
@@ -214,6 +235,116 @@ class DispatchService {
 
     } catch (e) {
       print('❌ خطأ في التعيين التلقائي: $e');
+    }
+  }
+
+  // ✨ ترتيب السائقين حسب الأولوية
+  Future<List<Driver>> _sortDriversByPriority(List<Driver> drivers, String companyId) async {
+    // إنشاء قائمة ببيانات السائقين مع معلومات إضافية
+    List<Map<String, dynamic>> driversWithInfo = [];
+
+    for (var driver in drivers) {
+      final queueCount = await _getDriverQueueCount(driver.driverId, companyId);
+      driversWithInfo.add({
+        'driver': driver,
+        'queueCount': queueCount,
+        'isAvailable': driver.isAvailable,
+        'completedRides': driver.completedRides,
+      });
+    }
+
+    // ترتيب السائقين حسب:
+    // 1. المتاحين أولاً
+    // 2. ثم الأقل في عدد الطلبات المنتظرة
+    // 3. ثم الأقل في عدد المشاوير (للتوزيع العادل)
+    driversWithInfo.sort((a, b) {
+      // المتاحين أولاً
+      if (a['isAvailable'] == true && b['isAvailable'] != true) return -1;
+      if (a['isAvailable'] != true && b['isAvailable'] == true) return 1;
+
+      // ثم عدد الطلبات في الانتظار (الأقل أولاً)
+      final aQueue = a['queueCount'] as int;
+      final bQueue = b['queueCount'] as int;
+      if (aQueue != bQueue) {
+        return aQueue.compareTo(bQueue);
+      }
+
+      // ثم عدد المشاوير المكتملة (الأقل أولاً للتوزيع العادل)
+      final aRides = a['completedRides'] as int;
+      final bRides = b['completedRides'] as int;
+      return aRides.compareTo(bRides);
+    });
+
+    // إرجاع قائمة السائقين فقط
+    return driversWithInfo.map((item) => item['driver'] as Driver).toList();
+  }
+
+  // ✨ دالة جديدة للتحقق إذا كان الطلب مضافاً لقائمة الانتظار
+  Future<bool> _isRequestInAnyQueue(String requestId, String companyId) async {
+    try {
+      final allDrivers = await _firestore
+          .collection('companies')
+          .doc(companyId)
+          .collection('drivers')
+          .get();
+
+      for (var driverDoc in allDrivers.docs) {
+        final queueDoc = await _firestore
+            .collection('companies')
+            .doc(companyId)
+            .collection('drivers')
+            .doc(driverDoc.id)
+            .collection('pendingRequests')
+            .doc(requestId)
+            .get();
+
+        if (queueDoc.exists) {
+          return true;
+        }
+      }
+      return false;
+    } catch (e) {
+      print('❌ خطأ في التحقق من قوائم الانتظار: $e');
+      return false;
+    }
+  }
+
+  // ✨ دالة مساعدة لجلب عدد الطلبات في انتظار سائق
+  Future<int> _getDriverQueueCount(String driverId, String companyId) async {
+    try {
+      final queueSnapshot = await _firestore
+          .collection('companies')
+          .doc(companyId)
+          .collection('drivers')
+          .doc(driverId)
+          .collection('pendingRequests')
+          .get();
+
+      return queueSnapshot.docs.length;
+    } catch (e) {
+      print('❌ خطأ في جلب عدد طلبات الانتظار: $e');
+      return 0;
+    }
+  }
+
+  // ✨ دالة جديدة لإشعار السائق بطلب جديد في الانتظار
+  Future<void> _notifyDriverNewQueueItem(Driver driver, Request request, int newQueueCount) async {
+    try {
+      await _firestore
+          .collection('companies')
+          .doc(request.companyId)
+          .collection('drivers')
+          .doc(driver.driverId)
+          .update({
+        'hasPendingNotifications': true,
+        'lastNotificationTime': FieldValue.serverTimestamp(),
+        'pendingRequestsCount': newQueueCount,
+      });
+
+      print('🔔 تم إشعار السائق ${driver.name} بطلب جديد في الانتظار');
+
+    } catch (e) {
+      print('❌ خطأ في إشعار السائق: $e');
     }
   }
 
@@ -262,20 +393,50 @@ class DispatchService {
 
       print('📥 تم إضافة الطلب ${request.requestId} إلى قائمة انتظار السائق ${driver.name}');
 
+      // 🔥 تحديث عداد الطلبات المنتظرة للسائق
+      await _updateDriverQueueCount(driver.driverId, request.companyId);
+
     } catch (e) {
       print('❌ خطأ في إضافة الطلب إلى قائمة الانتظار: $e');
     }
   }
 
+  // ✨ دالة جديدة لتحديث عداد الطلبات المنتظرة
+  Future<void> _updateDriverQueueCount(String driverId, String companyId) async {
+    try {
+      final queueSnapshot = await _firestore
+          .collection('companies')
+          .doc(companyId)
+          .collection('drivers')
+          .doc(driverId)
+          .collection('pendingRequests')
+          .get();
+
+      final queueCount = queueSnapshot.docs.length;
+
+      await _firestore
+          .collection('companies')
+          .doc(companyId)
+          .collection('drivers')
+          .doc(driverId)
+          .update({
+        'pendingRequestsCount': queueCount,
+        'lastStatusUpdate': FieldValue.serverTimestamp(),
+      });
+
+      print('📊 تم تحديث عداد طلبات الانتظار للسائق $driverId إلى: $queueCount');
+    } catch (e) {
+      print('❌ خطأ في تحديث عداد الطلبات: $e');
+    }
+  }
+
   // ✨ دالة مساعدة للحصول على عنوان الطلب
   String _getRequestTitle(Request request) {
-    // محاولة الحصول على العنوان من الحقول المختلفة
     final titleFromData = _getTitleFromRequestData(request);
     if (titleFromData.isNotEmpty) {
       return titleFromData;
     }
 
-    // إذا لم يكن هناك عنوان، ننشئ واحداً وصفياً
     final from = request.fromLocation ?? 'موقع غير محدد';
     final to = request.toLocation ?? 'موقع غير محدد';
     return 'نقل من $from إلى $to';
@@ -283,12 +444,9 @@ class DispatchService {
 
   // ✨ دالة مساعدة لاستخراج العنوان من بيانات الطلب
   String _getTitleFromRequestData(Request request) {
-    // محاولة الحصول على العنوان من الحقول المختلفة
     if (request.details.isNotEmpty) {
       return request.details;
     }
-
-    // يمكن إضافة المزيد من الحقول هنا إذا كانت موجودة في الـ Model
     return '';
   }
 
@@ -421,14 +579,15 @@ class DispatchService {
             .collection('requests')
             .doc(requestId)
             .update({
-          'status': 'PENDING', // نعيده لـ PENDING ليتم معالجته تلقائياً
+          'status': 'HR_APPROVED',
           'hrApproverId': hrManagerId,
           'hrApproverName': hrManagerName,
           'hrApprovalTime': FieldValue.serverTimestamp(),
           'lastUpdated': FieldValue.serverTimestamp(),
         });
 
-        // معالجة الطلب فوراً بعد الموافقة
+        print('✅ تمت الموافقة على الطلب وسيتم التوزيع تلقائياً');
+
         final requestDoc = await _firestore
             .collection('companies')
             .doc(companyId)
@@ -452,61 +611,165 @@ class DispatchService {
     }
   }
 
+  // ✨ رفض الطلب من قبل الموارد البشرية
+  Future<void> rejectRequest(
+      String companyId,
+      String requestId,
+      String hrManagerId,
+      String hrManagerName,
+      String rejectionReason) async {
+    try {
+      await _firestore
+          .collection('companies')
+          .doc(companyId)
+          .collection('requests')
+          .doc(requestId)
+          .update({
+        'status': 'HR_REJECTED',
+        'hrApproverId': hrManagerId,
+        'hrApproverName': hrManagerName,
+        'hrRejectionTime': FieldValue.serverTimestamp(),
+        'rejectionReason': rejectionReason,
+        'lastUpdated': FieldValue.serverTimestamp(),
+      });
+
+      print('❌ تم رفض الطلب من قبل الموارد البشرية: $rejectionReason');
+    } catch (e) {
+      print('❌ خطأ في رفض الطلب: $e');
+      rethrow;
+    }
+  }
+
+  // ✨ تحويل الطلب من سائق إلى آخر
+  Future<void> reassignDriver(
+      String companyId,
+      String requestId,
+      String newDriverId,
+      String newDriverName,
+      String hrManagerId,
+      String hrManagerName,
+      String reassignmentReason) async {
+    try {
+      final requestDoc = await _firestore
+          .collection('companies')
+          .doc(companyId)
+          .collection('requests')
+          .doc(requestId)
+          .get();
+
+      if (!requestDoc.exists) {
+        throw Exception('الطلب غير موجود');
+      }
+
+      final requestData = requestDoc.data()!;
+      final String? oldDriverId = requestData['assignedDriverId'] as String?;
+
+      if (oldDriverId != null && oldDriverId.isNotEmpty) {
+        await _firestore
+            .collection('companies')
+            .doc(companyId)
+            .collection('drivers')
+            .doc(oldDriverId)
+            .update({
+          'isAvailable': true,
+          'currentRequestId': null,
+          'lastStatusUpdate': FieldValue.serverTimestamp(),
+        });
+        print('✅ تم تحرير السائق القديم: $oldDriverId');
+      }
+
+      await _firestore
+          .collection('companies')
+          .doc(companyId)
+          .collection('requests')
+          .doc(requestId)
+          .update({
+        'assignedDriverId': newDriverId,
+        'assignedDriverName': newDriverName,
+        'previousDriverId': oldDriverId,
+        'previousDriverName': requestData['assignedDriverName'],
+        'reassignmentReason': reassignmentReason,
+        'reassignedBy': hrManagerId,
+        'reassignedByName': hrManagerName,
+        'reassignmentTime': FieldValue.serverTimestamp(),
+        'lastUpdated': FieldValue.serverTimestamp(),
+      });
+
+      await _firestore
+          .collection('companies')
+          .doc(companyId)
+          .collection('drivers')
+          .doc(newDriverId)
+          .update({
+        'isAvailable': false,
+        'currentRequestId': requestId,
+        'lastStatusUpdate': FieldValue.serverTimestamp(),
+      });
+
+      print('✅ تم تحويل الطلب بنجاح من $oldDriverId إلى $newDriverName');
+    } catch (e) {
+      print('❌ خطأ في تحويل السائق: $e');
+      rethrow;
+    }
+  }
+
   // ✨ معالجة قوائم الانتظار عندما يصبح السائق متاحاً
   Future<void> processDriverQueue(String companyId, String driverId) async {
     try {
-      final queueSnapshot = await _firestore
+      final driverDoc = await _firestore
           .collection('companies')
           .doc(companyId)
           .collection('drivers')
           .doc(driverId)
-          .collection('pendingRequests')
-          .orderBy('addedToQueueAt')
-          .limit(1)
           .get();
 
-      if (queueSnapshot.docs.isNotEmpty) {
-        final queuedRequest = queueSnapshot.docs.first;
-        final requestId = queuedRequest.id;
+      if (!driverDoc.exists) return;
 
-        // حذف الطلب من قائمة الانتظار
-        await queuedRequest.reference.delete();
+      final driverData = driverDoc.data()!;
+      final driver = Driver.fromMap({
+        ...driverData,
+        'driverId': driverId,
+      });
 
-        // جلب بيانات الطلب الكاملة
-        final requestDoc = await _firestore
+      if (driver.isAvailable == true) {
+        final queueSnapshot = await _firestore
             .collection('companies')
             .doc(companyId)
-            .collection('requests')
-            .doc(requestId)
+            .collection('drivers')
+            .doc(driverId)
+            .collection('pendingRequests')
+            .orderBy('addedToQueueAt')
+            .limit(1)
             .get();
 
-        if (requestDoc.exists) {
-          final requestData = requestDoc.data()!;
-          final request = Request.fromMap({
-            ...requestData,
-            'requestId': requestDoc.id,
-          });
+        if (queueSnapshot.docs.isNotEmpty) {
+          final queuedRequest = queueSnapshot.docs.first;
+          final requestId = queuedRequest.id;
 
-          // جلب بيانات السائق
-          final driverDoc = await _firestore
+          await queuedRequest.reference.delete();
+
+          final requestDoc = await _firestore
               .collection('companies')
               .doc(companyId)
-              .collection('drivers')
-              .doc(driverId)
+              .collection('requests')
+              .doc(requestId)
               .get();
 
-          if (driverDoc.exists) {
-            final driverData = driverDoc.data()!;
-            final driver = Driver.fromMap({
-              ...driverData,
-              'driverId': driverId,
+          if (requestDoc.exists) {
+            final requestData = requestDoc.data()!;
+            final request = Request.fromMap({
+              ...requestData,
+              'requestId': requestDoc.id,
             });
 
-            // تعيين الطلب للسائق
             await _assignToDriver(request, driver);
             print('✅ تم تعيين طلب من قائمة الانتظار: $requestId');
+
+            await _updateDriverQueueCount(driverId, companyId);
           }
         }
+      } else {
+        print('⏳ السائق $driverId لا يزال مشغولاً، انتظار حتى يصبح متاحاً');
       }
     } catch (e) {
       print('❌ خطأ في معالجة قائمة الانتظار: $e');
@@ -528,12 +791,39 @@ class DispatchService {
         'completedRides': FieldValue.increment(1),
       });
 
-      // معالجة قائمة الانتظار فوراً
+      print('✅ تم تحرير السائق $driverId');
+
       await processDriverQueue(companyId, driverId);
 
-      print('✅ تم تحرير السائق $driverId ومعالجة قائمة الانتظار');
+      final queueCount = await _getDriverQueueCount(driverId, companyId);
+      if (queueCount > 0) {
+        print('🔔 السائق $driverId لديه $queueCount طلب في الانتظار');
+        await _notifyDriverAboutPendingRequests(driverId, companyId, queueCount);
+      }
+
     } catch (e) {
       print('❌ خطأ في تحرير السائق: $e');
+    }
+  }
+
+  // ✨ دالة جديدة لإشعار السائق بالطلبات المنتظرة
+  Future<void> _notifyDriverAboutPendingRequests(String driverId, String companyId, int queueCount) async {
+    try {
+      await _firestore
+          .collection('companies')
+          .doc(companyId)
+          .collection('drivers')
+          .doc(driverId)
+          .update({
+        'hasPendingRequests': queueCount > 0,
+        'pendingRequestsCount': queueCount,
+        'lastNotificationTime': FieldValue.serverTimestamp(),
+      });
+
+      print('🔔 تم إشعار السائق $driverId بوجود $queueCount طلب في الانتظار');
+
+    } catch (e) {
+      print('❌ خطأ في إشعار السائق بالطلبات المنتظرة: $e');
     }
   }
 
@@ -542,7 +832,6 @@ class DispatchService {
     try {
       print('🔍 فحص نظام التوزيع...');
 
-      // فحص السائقين المتاحين
       final availableDrivers = await _firestore
           .collection('companies')
           .doc(companyId)
@@ -553,15 +842,15 @@ class DispatchService {
 
       print('👥 عدد السائقين المتاحين: ${availableDrivers.docs.length}');
       for (var driver in availableDrivers.docs) {
-        print('   - ${driver['name']} (${driver.id}) - مشاوير: ${driver['completedRides'] ?? 0}');
+        final queueCount = await _getDriverQueueCount(driver.id, companyId);
+        print('   - ${driver['name']} (${driver.id}) - مشاوير: ${driver['completedRides'] ?? 0} - طلبات انتظار: $queueCount');
       }
 
-      // فحص الطلبات المنتظرة
       final pendingRequests = await _firestore
           .collection('companies')
           .doc(companyId)
           .collection('requests')
-          .where('status', whereIn: ['PENDING', 'WAITING_FOR_DRIVER'])
+          .where('status', whereIn: ['PENDING', 'WAITING_FOR_DRIVER', 'HR_APPROVED'])
           .get();
 
       print('📋 عدد الطلبات المنتظرة: ${pendingRequests.docs.length}');
@@ -569,7 +858,6 @@ class DispatchService {
         print('   - ${request.id} (${request['status']}) - ${request['requesterName']}');
       }
 
-      // فحص قوائم الانتظار
       final allDrivers = await _firestore
           .collection('companies')
           .doc(companyId)
