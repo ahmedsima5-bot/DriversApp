@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import '../../services/dispatch_service.dart';
-
+import 'dart:async';
 class HRRequestsScreen extends StatefulWidget {
   final String companyId;
 
@@ -20,14 +20,69 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
   List<Map<String, dynamic>> _requests = [];
   bool _loading = true;
   final DispatchService _dispatchService = DispatchService();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   @override
   void initState() {
     super.initState();
     _loadRequests();
+    _startPeriodicRefresh();
   }
 
-  // 🔥 دالة لتنسيق المدة المستغرقة
+  // 🔄 تحديث تلقائي كل 30 ثانية
+  void _startPeriodicRefresh() {
+    Timer.periodic(const Duration(seconds: 30), (timer) {
+      if (mounted) {
+        _loadRequests();
+      }
+    });
+  }
+
+  // 🆕 دالة جديدة: إصلاح حالة السائقين المعطلة
+  Future<void> _fixDriversAvailability() async {
+    try {
+      print('🛠️ جاري إصلاح حالات السائقين...');
+
+      final driversSnapshot = await _firestore
+          .collection('companies')
+          .doc(widget.companyId)
+          .collection('drivers')
+          .get();
+
+      int fixedCount = 0;
+
+      for (var driverDoc in driversSnapshot.docs) {
+        final driverData = driverDoc.data();
+        final isAvailable = driverData['isAvailable'] ?? true;
+        final currentRequestId = driverData['currentRequestId'] as String?;
+
+        // إذا السائق مشغول لكن مافيه طلب حالية
+        if (isAvailable == false && (currentRequestId == null || currentRequestId.isEmpty)) {
+          await driverDoc.reference.update({
+            'isAvailable': true,
+            'lastStatusUpdate': FieldValue.serverTimestamp(),
+          });
+          fixedCount++;
+          print('✅ تم إصلاح حالة السائق: ${driverData['name']}');
+        }
+      }
+
+      if (fixedCount > 0) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('تم إصلاح حالة $fixedCount سائق'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+        _loadRequests(); // إعادة تحميل الطلبات بعد الإصلاح
+      }
+    } catch (e) {
+      print('❌ خطأ في إصلاح حالات السائقين: $e');
+    }
+  }
+
   String _formatDuration(int seconds) {
     if (seconds == 0) return 'لم تُحسب بعد';
 
@@ -48,10 +103,9 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     return result.trim();
   }
 
-  // 🔥 دالة لجلب بيانات المركبة
   Future<Map<String, dynamic>?> _getDriverVehicleDetails(String driverId) async {
     try {
-      final driverDoc = await FirebaseFirestore.instance
+      final driverDoc = await _firestore
           .collection('companies')
           .doc(widget.companyId)
           .collection('drivers')
@@ -77,57 +131,60 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
 
   Future<void> _loadRequests() async {
     try {
-      print('🔄 جلب الطلبات من الشركة: ${widget.companyId}');
-      setState(() { _loading = true; });
+      if (mounted) {
+        setState(() { _loading = true; });
+      }
 
-      final requestsSnapshot = await FirebaseFirestore.instance
+      final requestsSnapshot = await _firestore
           .collection('companies')
           .doc(widget.companyId)
           .collection('requests')
           .orderBy('createdAt', descending: true)
           .get();
 
-      print('✅ عدد المستندات المستلمة: ${requestsSnapshot.docs.length}');
+      if (mounted) {
+        setState(() {
+          _requests = requestsSnapshot.docs.map((doc) {
+            final data = doc.data();
 
-      setState(() {
-        _requests = requestsSnapshot.docs.map((doc) {
-          final data = doc.data();
+            DateTime createdAt;
+            final dynamic createdAtData = data['createdAt'];
 
-          DateTime createdAt;
-          final dynamic createdAtData = data['createdAt'];
-
-          if (createdAtData is Timestamp) {
-            createdAt = createdAtData.toDate();
-          } else if (createdAtData is String) {
-            try {
-              createdAt = DateTime.parse(createdAtData);
-            } catch (_) {
+            if (createdAtData is Timestamp) {
+              createdAt = createdAtData.toDate();
+            } else if (createdAtData is String) {
+              try {
+                createdAt = DateTime.parse(createdAtData);
+              } catch (_) {
+                createdAt = DateTime.now();
+              }
+            } else {
               createdAt = DateTime.now();
             }
-          } else {
-            createdAt = DateTime.now();
-          }
 
-          return {
-            'id': doc.id,
-            'department': data['department'] ?? 'غير محدد',
-            'fromLocation': data['fromLocation'] ?? 'غير محدد',
-            'destination': data['toLocation'] ?? 'غير محدد',
-            'status': data['status'] ?? 'PENDING',
-            'priority': data['priority'] ?? 'Normal',
-            'assignedDriverId': data['assignedDriverId'] as String?,
-            'assignedDriverName': data['assignedDriverName'] as String?,
-            'requesterName': data['requesterName'] ?? 'غير معروف',
-            'createdAt': createdAt,
-            'firebaseData': data,
-          };
-        }).toList();
-        _loading = false;
-      });
+            return {
+              'id': doc.id,
+              'department': data['department'] ?? 'غير محدد',
+              'fromLocation': data['fromLocation'] ?? 'غير محدد',
+              'destination': data['toLocation'] ?? 'غير محدد',
+              'status': data['status'] ?? 'PENDING',
+              'priority': data['priority'] ?? 'Normal',
+              'assignedDriverId': data['assignedDriverId'] as String?,
+              'assignedDriverName': data['assignedDriverName'] as String?,
+              'requesterName': data['requesterName'] ?? 'غير معروف',
+              'createdAt': createdAt,
+              'firebaseData': data,
+            };
+          }).toList();
+          _loading = false;
+        });
+      }
 
     } catch (e) {
       print('❌ خطأ في جلب الطلبات: $e');
-      setState(() { _loading = false; });
+      if (mounted) {
+        setState(() { _loading = false; });
+      }
     }
   }
 
@@ -146,30 +203,51 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     }
   }
 
-  // 🔥 دالة محسنة لجلب السائقين
+  // 🆕 دالة محسنة لجلب السائقين مع إصلاح الحالات
   Future<List<Map<String, dynamic>>> _getAvailableDrivers() async {
     try {
-      final driversSnapshot = await FirebaseFirestore.instance
+      final driversSnapshot = await _firestore
           .collection('companies')
           .doc(widget.companyId)
           .collection('drivers')
           .where('isActive', isEqualTo: true)
           .get();
 
-      final drivers = driversSnapshot.docs.map((doc) {
+      List<Map<String, dynamic>> drivers = [];
+
+      for (var doc in driversSnapshot.docs) {
         final data = doc.data();
-        return {
+        final currentRequestId = data['currentRequestId'] as String?;
+
+        // 🆕 التحقق من صحة حالة السائق
+        bool isActuallyAvailable = data['isAvailable'] ?? true;
+
+        // إذا السائق مشغول لكن مافيه طلب حالية، نصحح الحالة
+        if (isActuallyAvailable == false && (currentRequestId == null || currentRequestId.isEmpty)) {
+          isActuallyAvailable = true;
+          // نحدث الحالة في الخلفية بدون انتظار
+          doc.reference.update({
+            'isAvailable': true,
+            'lastStatusUpdate': FieldValue.serverTimestamp(),
+          });
+        }
+
+        drivers.add({
           'id': doc.id,
           'name': data['name'] ?? 'غير معروف',
           'email': data['email'] ?? '',
           'phone': data['phone'] ?? '',
-          'isAvailable': data['isAvailable'] ?? true,
+          'isAvailable': isActuallyAvailable, // 🆕 نستخدم الحالة المصححة
           'isOnline': data['isOnline'] ?? false,
           'completedRides': data['completedRides'] ?? 0,
           'rating': (data['rating'] as num?)?.toDouble() ?? 5.0,
           'vehicleType': data['vehicleInfo']?['type'] ?? 'سيارة',
-        };
-      }).toList();
+          'currentRequestId': currentRequestId,
+        });
+      }
+
+      print('👥 عدد السائقين بعد التصحيح: ${drivers.length}');
+      print('✅ السائقون المتاحون: ${drivers.where((d) => d['isAvailable'] == true).length}');
 
       return drivers;
     } catch (e) {
@@ -178,63 +256,73 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     }
   }
 
-  // 🔥 دالة جديدة للتعيين اليدوي
+  // 🆕 دالة محسنة للتعيين اليدوي
   Future<void> _manualAssignDriver(Map<String, dynamic> request) async {
-    final availableDrivers = await _getAvailableDrivers();
+    try {
+      final availableDrivers = await _getAvailableDrivers();
 
-    if (availableDrivers.isEmpty) {
+      // 🆕 فلترة السائقين المتاحين فقط
+      final actuallyAvailableDrivers = availableDrivers.where((driver) => driver['isAvailable'] == true).toList();
+
+      if (actuallyAvailableDrivers.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('لا يوجد سائقين متاحين حالياً'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('تعيين سائق يدوياً'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: actuallyAvailableDrivers.length,
+              itemBuilder: (context, index) {
+                final driver = actuallyAvailableDrivers[index];
+                return ListTile(
+                  leading: const Icon(Icons.person),
+                  title: Text(driver['name']),
+                  subtitle: Text(
+                      '${driver['vehicleType']} - ${driver['completedRides']} مشاوير'
+                  ),
+                  trailing: const Icon(Icons.check, color: Colors.green),
+                  onTap: () {
+                    _assignDriverToRequest(request, driver['id'], driver['name']);
+                    Navigator.pop(context);
+                  },
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('إلغاء'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('لا يوجد سائقين متاحين حالياً'),
-            backgroundColor: Colors.orange,
+          SnackBar(
+            content: Text('خطأ في جلب السائقين: $e'),
+            backgroundColor: Colors.red,
           ),
         );
       }
-      return;
     }
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('تعيين سائق يدوياً'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView.builder(
-            shrinkWrap: true,
-            itemCount: availableDrivers.length,
-            itemBuilder: (context, index) {
-              final driver = availableDrivers[index];
-              return ListTile(
-                leading: const Icon(Icons.person),
-                title: Text(driver['name']),
-                subtitle: Text(
-                    driver['isAvailable'] == true ?
-                    'متاح - ${driver['completedRides']} مشاوير' :
-                    'مشغول - ${driver['completedRides']} مشاوير'
-                ),
-                trailing: driver['isAvailable'] == true ?
-                const Icon(Icons.check, color: Colors.green) :
-                const Icon(Icons.schedule, color: Colors.orange),
-                onTap: () {
-                  _assignDriverToRequest(request, driver['id'], driver['name']);
-                  Navigator.pop(context);
-                },
-              );
-            },
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('إلغاء'),
-          ),
-        ],
-      ),
-    );
   }
 
-  // 🔥 دالة جديدة للتوزيع التلقائي من واجهة الموارد البشرية
+  // 🆕 دالة محسنة للتوزيع التلقائي من واجهة الموارد البشرية
   Future<void> _autoAssignFromHR(Map<String, dynamic> request) async {
     try {
       if (mounted) {
@@ -246,19 +334,19 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
         );
       }
 
-      // تحديث حالة الطلب أولاً
-      await FirebaseFirestore.instance
-          .collection('companies')
-          .doc(widget.companyId)
-          .collection('requests')
-          .doc(request['id'])
-          .update({
-        'status': 'PENDING',
-        'lastUpdated': FieldValue.serverTimestamp(),
-      });
+      // 🆕 أولاً: نصلح حالات السائقين قبل التوزيع
+      await _fixDriversAvailability();
 
-      // إعادة تحميل الطلبات بعد ثانية لتطبيق التوزيع
-      await Future.delayed(const Duration(seconds: 2));
+      // ثم نترك الخدمة التلقائية تعمل
+      await _dispatchService.approveUrgentRequest(
+        widget.companyId,
+        request['id'],
+        'hr_user_id',
+        'مسؤول الموارد البشرية',
+      );
+
+      // انتظار ثم إعادة تحميل
+      await Future.delayed(const Duration(seconds: 3));
       _loadRequests();
 
     } catch (e) {
@@ -273,7 +361,6 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     }
   }
 
-  // 🔥 دالة جديدة لإلغاء الطلب
   Future<void> _cancelRequest(Map<String, dynamic> request) async {
     showDialog(
       context: context,
@@ -288,7 +375,7 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
           ElevatedButton(
             onPressed: () async {
               try {
-                await FirebaseFirestore.instance
+                await _firestore
                     .collection('companies')
                     .doc(widget.companyId)
                     .collection('requests')
@@ -330,7 +417,6 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     );
   }
 
-  // 🔥 دالة جديدة لتحويل المشوار لسائق آخر
   Future<void> _reassignDriver(Map<String, dynamic> request) async {
     if (request['assignedDriverId'] == null) {
       if (mounted) {
@@ -345,11 +431,10 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     }
 
     final availableDrivers = await _getAvailableDrivers();
+    final actuallyAvailableDrivers = availableDrivers.where((driver) => driver['isAvailable'] == true).toList();
 
-    // استبعاد السائق الحالي من القائمة
-    final filteredDrivers = availableDrivers.where(
-            (driver) => driver['id'] != request['assignedDriverId']
-    ).toList();
+    // استبعاد السائق الحالي
+    final filteredDrivers = actuallyAvailableDrivers.where((driver) => driver['id'] != request['assignedDriverId']).toList();
 
     if (filteredDrivers.isEmpty) {
       if (mounted) {
@@ -385,7 +470,6 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     );
   }
 
-  // 🔥 دالة لعرض اختيار السائق الجديد
   void _showReassignDriverDialog(Map<String, dynamic> request, List<Map<String, dynamic>> drivers) {
     showDialog(
       context: context,
@@ -401,11 +485,7 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
               return ListTile(
                 leading: const Icon(Icons.person),
                 title: Text(driver['name']),
-                subtitle: Text(
-                    driver['isAvailable'] == true ?
-                    'متاح - ${driver['completedRides']} مشاوير' :
-                    'مشغول - ${driver['completedRides']} مشاوير'
-                ),
+                subtitle: Text('${driver['vehicleType']} - ${driver['completedRides']} مشاوير'),
                 onTap: () {
                   _performReassignment(request, driver);
                   Navigator.pop(context);
@@ -424,7 +504,6 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     );
   }
 
-  // 🔥 دالة لتنفيذ عملية التحويل
   Future<void> _performReassignment(Map<String, dynamic> request, Map<String, dynamic> newDriver) async {
     try {
       await _dispatchService.reassignDriver(
@@ -432,7 +511,7 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
           request['id'],
           newDriver['id'],
           newDriver['name'],
-          'hr_user_id', // يمكن استبدالها بـ ID المستخدم الحالي
+          'hr_user_id',
           'مسؤول الموارد البشرية',
           'تحويل من قبل الموارد البشرية'
       );
@@ -459,7 +538,6 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     }
   }
 
-  // 🔥 دالة لتعيين السائق
   Future<void> _assignDriverToRequest(Map<String, dynamic> request, String driverId, String driverName) async {
     try {
       await _dispatchService.assignToSpecificDriver(
@@ -467,7 +545,7 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
         request['id'],
         driverId,
         driverName,
-        'hr_user_id', // يمكن استبدالها بـ ID المستخدم الحالي
+        'hr_user_id',
         'مسؤول الموارد البشرية',
       );
 
@@ -522,7 +600,6 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     }).toList();
   }
 
-  // إحصائيات سريعة
   Map<String, int> get _stats {
     final now = DateTime.now();
     final todayStart = DateTime(now.year, now.month, now.day);
@@ -552,6 +629,12 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
         backgroundColor: Colors.blue.shade800,
         foregroundColor: Colors.white,
         actions: [
+          // 🆕 زر إصلاح حالات السائقين
+          IconButton(
+            icon: const Icon(Icons.build),
+            onPressed: _fixDriversAvailability,
+            tooltip: 'إصلاح حالات السائقين',
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadRequests,
@@ -978,7 +1061,7 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
 
                     const SizedBox(height: 20),
 
-                    // 🔥 الأزرار الجديدة لإدارة الطلب
+                    // أزرار إدارة الطلب
                     _buildActionButtons(request, status),
 
                     const SizedBox(height: 10),
@@ -992,7 +1075,6 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     );
   }
 
-  // 🔥 دالة جديدة لبناء أزرار الإجراءات
   Widget _buildActionButtons(Map<String, dynamic> request, String status) {
     return Column(
       children: [
