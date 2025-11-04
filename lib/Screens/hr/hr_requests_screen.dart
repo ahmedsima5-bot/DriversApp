@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import '../../services/dispatch_service.dart';
 import 'dart:async';
+
 class HRRequestsScreen extends StatefulWidget {
   final String companyId;
 
@@ -14,13 +15,14 @@ class HRRequestsScreen extends StatefulWidget {
   @override
   State<HRRequestsScreen> createState() => _HRRequestsScreenState();
 }
-//
+
 class _HRRequestsScreenState extends State<HRRequestsScreen> {
   String _filter = 'اليوم';
   List<Map<String, dynamic>> _requests = [];
   bool _loading = true;
   final DispatchService _dispatchService = DispatchService();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  Timer? _refreshTimer;
 
   @override
   void initState() {
@@ -29,16 +31,22 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     _startPeriodicRefresh();
   }
 
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
   // 🔄 تحديث تلقائي كل 30 ثانية
   void _startPeriodicRefresh() {
-    Timer.periodic(const Duration(seconds: 30), (timer) {
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
       if (mounted) {
         _loadRequests();
       }
     });
   }
 
-  // 🆕 دالة جديدة: إصلاح حالة السائقين المعطلة
+  // 🛠️ إصلاح حالة السائقين المعطلة
   Future<void> _fixDriversAvailability() async {
     try {
       print('🛠️ جاري إصلاح حالات السائقين...');
@@ -76,10 +84,27 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
             ),
           );
         }
-        _loadRequests(); // إعادة تحميل الطلبات بعد الإصلاح
+        _loadRequests();
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('جميع السائقين في الحالة الصحيحة'),
+              backgroundColor: Colors.blue,
+            ),
+          );
+        }
       }
     } catch (e) {
       print('❌ خطأ في إصلاح حالات السائقين: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطأ في الإصلاح: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -203,7 +228,7 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     }
   }
 
-  // 🆕 دالة محسنة لجلب السائقين مع إصلاح الحالات
+  // 🚗 دالة محسنة لجلب السائقين مع إصلاح الحالات
   Future<List<Map<String, dynamic>>> _getAvailableDrivers() async {
     try {
       final driversSnapshot = await _firestore
@@ -219,7 +244,7 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
         final data = doc.data();
         final currentRequestId = data['currentRequestId'] as String?;
 
-        // 🆕 التحقق من صحة حالة السائق
+        // التحقق من صحة حالة السائق
         bool isActuallyAvailable = data['isAvailable'] ?? true;
 
         // إذا السائق مشغول لكن مافيه طلب حالية، نصحح الحالة
@@ -237,10 +262,9 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
           'name': data['name'] ?? 'غير معروف',
           'email': data['email'] ?? '',
           'phone': data['phone'] ?? '',
-          'isAvailable': isActuallyAvailable, // 🆕 نستخدم الحالة المصححة
+          'isAvailable': isActuallyAvailable,
           'isOnline': data['isOnline'] ?? false,
-          'completedRides': data['completedRides'] ?? 0,
-          'rating': (data['rating'] as num?)?.toDouble() ?? 5.0,
+          'completedRides': (data['completedRides'] as num?)?.toInt() ?? 0,
           'vehicleType': data['vehicleInfo']?['type'] ?? 'سيارة',
           'currentRequestId': currentRequestId,
         });
@@ -256,12 +280,49 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     }
   }
 
-  // 🆕 دالة محسنة للتعيين اليدوي
+  // 🆕 دالة جديدة خاصة بجلب السائقين للتحويل
+  Future<List<Map<String, dynamic>>> _getAllActiveDriversForReassign() async {
+    try {
+      final driversSnapshot = await _firestore
+          .collection('companies')
+          .doc(widget.companyId)
+          .collection('drivers')
+          .where('isActive', isEqualTo: true)
+          .get();
+
+      List<Map<String, dynamic>> drivers = [];
+
+      for (var doc in driversSnapshot.docs) {
+        final data = doc.data();
+
+        drivers.add({
+          'id': doc.id,
+          'name': data['name'] ?? 'غير معروف',
+          'email': data['email'] ?? '',
+          'phone': data['phone'] ?? '',
+          'isAvailable': data['isAvailable'] ?? true,
+          'isOnline': data['isOnline'] ?? false,
+          'completedRides': (data['completedRides'] as num?)?.toInt() ?? 0,
+          'vehicleType': data['vehicleInfo']?['type'] ?? 'سيارة',
+          'currentRequestId': data['currentRequestId'] as String?,
+        });
+      }
+
+      print('👥 عدد السائقين النشطين للتحويل: ${drivers.length}');
+
+      return drivers;
+    } catch (e) {
+      print('❌ خطأ في جلب السائقين للتحويل: $e');
+      return [];
+    }
+  }
+
+  // 👤 تعيين سائق يدوياً
   Future<void> _manualAssignDriver(Map<String, dynamic> request) async {
     try {
       final availableDrivers = await _getAvailableDrivers();
 
-      // 🆕 فلترة السائقين المتاحين فقط
+      // فلترة السائقين المتاحين فقط
       final actuallyAvailableDrivers = availableDrivers.where((driver) => driver['isAvailable'] == true).toList();
 
       if (actuallyAvailableDrivers.isEmpty) {
@@ -322,7 +383,7 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     }
   }
 
-  // 🆕 دالة محسنة للتوزيع التلقائي من واجهة الموارد البشرية
+  // 🔄 توزيع تلقائي من واجهة الموارد البشرية
   Future<void> _autoAssignFromHR(Map<String, dynamic> request) async {
     try {
       if (mounted) {
@@ -334,7 +395,7 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
         );
       }
 
-      // 🆕 أولاً: نصلح حالات السائقين قبل التوزيع
+      // أولاً: نصلح حالات السائقين قبل التوزيع
       await _fixDriversAvailability();
 
       // ثم نترك الخدمة التلقائية تعمل
@@ -361,12 +422,23 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     }
   }
 
+  // ❌ إلغاء الطلب
   Future<void> _cancelRequest(Map<String, dynamic> request) async {
+    final status = request['status'] as String;
+    final assignedDriverId = request['assignedDriverId'] as String?;
+
+    String message = 'هل أنت متأكد من إلغاء هذا الطلب؟';
+
+    // إذا كان الطلب معيناً لسائق، نضيف تحذير إضافي
+    if (status == 'ASSIGNED' || status == 'IN_PROGRESS') {
+      message = 'هذا الطلب معين لسائق. هل أنت متأكد من إلغاء الطلب؟ سيتم تحرير السائق.';
+    }
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('إلغاء الطلب'),
-        content: const Text('هل أنت متأكد من إلغاء هذا الطلب؟'),
+        content: Text(message),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -375,6 +447,22 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
           ElevatedButton(
             onPressed: () async {
               try {
+                // إذا كان الطلب معيناً لسائق، نحتاج لتحرير السائق أولاً
+                if (assignedDriverId != null && assignedDriverId.isNotEmpty) {
+                  await _firestore
+                      .collection('companies')
+                      .doc(widget.companyId)
+                      .collection('drivers')
+                      .doc(assignedDriverId)
+                      .update({
+                    'isAvailable': true,
+                    'currentRequestId': null,
+                    'lastStatusUpdate': FieldValue.serverTimestamp(),
+                  });
+                  print('✅ تم تحرير السائق: $assignedDriverId');
+                }
+
+                // ثم نلغي الطلب
                 await _firestore
                     .collection('companies')
                     .doc(widget.companyId)
@@ -385,6 +473,9 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
                   'cancelledBy': 'HR',
                   'cancelledAt': FieldValue.serverTimestamp(),
                   'lastUpdated': FieldValue.serverTimestamp(),
+                  // حفظ معلومات السائق السابق للإرجاع إذا لزم
+                  'previousDriverId': assignedDriverId,
+                  'previousDriverName': request['assignedDriverName'],
                 });
 
                 if (mounted) {
@@ -417,6 +508,7 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     );
   }
 
+  // 🔄 تحويل الطلب لسائق آخر - النسخة المصححة
   Future<void> _reassignDriver(Map<String, dynamic> request) async {
     if (request['assignedDriverId'] == null) {
       if (mounted) {
@@ -430,46 +522,58 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
       return;
     }
 
-    final availableDrivers = await _getAvailableDrivers();
-    final actuallyAvailableDrivers = availableDrivers.where((driver) => driver['isAvailable'] == true).toList();
+    try {
+      // 🔥 استخدم الدالة الجديدة لجلب جميع السائقين النشطين
+      final allActiveDrivers = await _getAllActiveDriversForReassign();
 
-    // استبعاد السائق الحالي
-    final filteredDrivers = actuallyAvailableDrivers.where((driver) => driver['id'] != request['assignedDriverId']).toList();
+      // استبعاد السائق الحالي
+      final filteredDrivers = allActiveDrivers.where((driver) => driver['id'] != request['assignedDriverId']).toList();
 
-    if (filteredDrivers.isEmpty) {
+      if (filteredDrivers.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('لا يوجد سائقين آخرين في النظام'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('تحويل المشوار لسائق آخر'),
+          content: Text('تحويل المشوار من السائق: ${request['assignedDriverName']}'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('إلغاء'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _showReassignDriverDialog(request, filteredDrivers);
+              },
+              child: const Text('اختيار سائق جديد'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('لا يوجد سائقين آخرين متاحين'),
-            backgroundColor: Colors.orange,
+          SnackBar(
+            content: Text('خطأ في جلب السائقين: $e'),
+            backgroundColor: Colors.red,
           ),
         );
       }
-      return;
     }
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('تحويل المشوار لسائق آخر'),
-        content: Text('تحويل المشوار من السائق: ${request['assignedDriverName']}'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('إلغاء'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _showReassignDriverDialog(request, filteredDrivers);
-            },
-            child: const Text('اختيار سائق جديد'),
-          ),
-        ],
-      ),
-    );
   }
 
+  // 🎯 عرض اختيار السائقين للتحويل
   void _showReassignDriverDialog(Map<String, dynamic> request, List<Map<String, dynamic>> drivers) {
     showDialog(
       context: context,
@@ -482,10 +586,50 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
             itemCount: drivers.length,
             itemBuilder: (context, index) {
               final driver = drivers[index];
+
+              // 🔥 عرض حالة السائق بشكل واضح
+              final isAvailable = driver['isAvailable'] == true;
+              final statusText = isAvailable ? 'متاح' : 'مشغول';
+              final statusColor = isAvailable ? Colors.green : Colors.orange;
+              final statusIcon = isAvailable ? Icons.check_circle : Icons.schedule;
+
               return ListTile(
                 leading: const Icon(Icons.person),
                 title: Text(driver['name']),
-                subtitle: Text('${driver['vehicleType']} - ${driver['completedRides']} مشاوير'),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('${driver['vehicleType']} - ${driver['completedRides']} مشاوير'),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(statusIcon, size: 14, color: statusColor),
+                        const SizedBox(width: 4),
+                        Text(
+                          statusText,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: statusColor,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        if (!isAvailable) ...[
+                          const SizedBox(width: 8),
+                          Icon(Icons.info_outline, size: 12, color: Colors.grey),
+                          const SizedBox(width: 4),
+                          Text(
+                            'سيتم تحويل الطلب الحالي',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                 onTap: () {
                   _performReassignment(request, driver);
                   Navigator.pop(context);
@@ -504,8 +648,37 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     );
   }
 
+  // 🔄 تنفيذ عملية التحويل
   Future<void> _performReassignment(Map<String, dynamic> request, Map<String, dynamic> newDriver) async {
     try {
+      final isNewDriverAvailable = newDriver['isAvailable'] == true;
+
+      if (!isNewDriverAvailable) {
+        // 🔥 إذا السائق الجديد مشغول، اعرض تحذير للمستخدم
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('تنبيه'),
+            content: Text('السائق ${newDriver['name']} مشغول حالياً. هل تريد تحويل الطلب إليه؟'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('إلغاء'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+                child: const Text('نعم، متابعة'),
+              ),
+            ],
+          ),
+        );
+
+        if (confirmed != true) {
+          return; // المستخدم ألغى العملية
+        }
+      }
+
       await _dispatchService.reassignDriver(
           widget.companyId,
           request['id'],
@@ -538,6 +711,7 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     }
   }
 
+  // 👤 تعيين السائق للطلب
   Future<void> _assignDriverToRequest(Map<String, dynamic> request, String driverId, String driverName) async {
     try {
       await _dispatchService.assignToSpecificDriver(
@@ -571,6 +745,7 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     }
   }
 
+  // 📋 فلترة الطلبات
   List<Map<String, dynamic>> get _filteredRequests {
     final now = DateTime.now();
     final todayStart = DateTime(now.year, now.month, now.day);
@@ -600,6 +775,7 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     }).toList();
   }
 
+  // 📊 إحصائيات سريعة
   Map<String, int> get _stats {
     final now = DateTime.now();
     final todayStart = DateTime(now.year, now.month, now.day);
@@ -629,7 +805,7 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
         backgroundColor: Colors.blue.shade800,
         foregroundColor: Colors.white,
         actions: [
-          // 🆕 زر إصلاح حالات السائقين
+          // زر إصلاح حالات السائقين
           IconButton(
             icon: const Icon(Icons.build),
             onPressed: _fixDriversAvailability,
@@ -723,6 +899,7 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     );
   }
 
+  // 🎴 بطاقات الإحصائيات
   Widget _buildStatsCards(Map<String, int> stats) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -795,6 +972,7 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     );
   }
 
+  // 🎴 بطاقة الطلب
   Widget _buildRequestCard(Map<String, dynamic> request) {
     final status = request['status'] as String;
     final priority = request['priority'] as String;
@@ -954,6 +1132,7 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     }
   }
 
+  // 📋 عرض تفاصيل الطلب
   void _showRequestDetails(Map<String, dynamic> request) {
     final String? assignedDriverId = request['assignedDriverId'] as String?;
     final vehicleInfoFromRequest = request['firebaseData']['vehicleInfo'] as Map<String, dynamic>?;
@@ -1075,10 +1254,12 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     );
   }
 
+  // 🎛️ أزرار إدارة الطلب
   Widget _buildActionButtons(Map<String, dynamic> request, String status) {
     return Column(
       children: [
-        if (['PENDING', 'HR_PENDING', 'WAITING_FOR_DRIVER'].contains(status))
+        // أزرار التعيين (تظهر في جميع الحالات النشطة)
+        if (['PENDING', 'HR_PENDING', 'WAITING_FOR_DRIVER', 'ASSIGNED', 'IN_PROGRESS'].contains(status))
           Row(
             children: [
               Expanded(
@@ -1105,10 +1286,11 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
             ],
           ),
 
-        if (['PENDING', 'HR_PENDING', 'WAITING_FOR_DRIVER'].contains(status))
+        if (['PENDING', 'HR_PENDING', 'WAITING_FOR_DRIVER', 'ASSIGNED', 'IN_PROGRESS'].contains(status))
           const SizedBox(height: 8),
 
-        if (['PENDING', 'HR_PENDING', 'WAITING_FOR_DRIVER'].contains(status))
+        // زر الإلغاء (يظهر في جميع الحالات النشطة)
+        if (['PENDING', 'HR_PENDING', 'WAITING_FOR_DRIVER', 'ASSIGNED', 'IN_PROGRESS'].contains(status))
           ElevatedButton(
             onPressed: () => _cancelRequest(request),
             style: ElevatedButton.styleFrom(
@@ -1119,6 +1301,7 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
             child: const Text('إلغاء الطلب'),
           ),
 
+        // زر التحويل (يظهر فقط للطلاب المعينة والجارية)
         if (['ASSIGNED', 'IN_PROGRESS'].contains(status))
           ElevatedButton(
             onPressed: () => _reassignDriver(request),
@@ -1130,6 +1313,7 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
             child: const Text('تحويل لسائق آخر'),
           ),
 
+        // زر الموافقة على الطلبات العاجلة
         if (status == 'HR_PENDING' && request['priority'] == 'Urgent')
           ElevatedButton(
             onPressed: () {
@@ -1153,18 +1337,32 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     );
   }
 
+  // 📝 صف تفاصيل
   Widget _buildDetailRow(String label, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey),
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.grey,
+              ),
+            ),
           ),
           const SizedBox(width: 8),
-          Expanded(child: Text(value)),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontSize: 16,
+              ),
+            ),
+          ),
         ],
       ),
     );
