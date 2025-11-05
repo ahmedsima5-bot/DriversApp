@@ -615,7 +615,7 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
                         ),
                         if (!isAvailable) ...[
                           const SizedBox(width: 8),
-                          Icon(Icons.info_outline, size: 12, color: Colors.grey),
+                          const Icon(Icons.info_outline, size: 12, color: Colors.grey),
                           const SizedBox(width: 4),
                           Text(
                             'سيتم تحويل الطلب الحالي',

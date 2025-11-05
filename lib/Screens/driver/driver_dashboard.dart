@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:provider/provider.dart';
 import '../../services/simple_notification_service.dart';
 import 'dart:async';
 import 'package:geolocator/geolocator.dart';
+import 'package:flutter/services.dart'; // 🔥 إضافة لنسخ النص
 
 class DriverDashboard extends StatefulWidget {
   final String userName;
@@ -388,7 +388,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
         .listen((snapshot) {
       for (var change in snapshot.docChanges) {
         if (change.type == DocumentChangeType.added || change.type == DocumentChangeType.modified) {
-          final request = change.doc.data() as Map<String, dynamic>? ?? {};
+          final request = change.doc.data() ?? {};
           final requestId = change.doc.id;
           final assignedDriverId = request['assignedDriverId'] as String?;
           final status = request['status'] as String?;
@@ -513,11 +513,11 @@ class _DriverDashboardState extends State<DriverDashboard> {
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Row(
+        title: const Row(
           children: [
-            const Icon(Icons.directions_car, color: Colors.blue),
-            const SizedBox(width: 8),
-            const Text('Select Vehicle'),
+            Icon(Icons.directions_car, color: Colors.blue),
+            SizedBox(width: 8),
+            Text('Select Vehicle'),
           ],
         ),
         content: Column(
@@ -531,11 +531,11 @@ class _DriverDashboardState extends State<DriverDashboard> {
             if (_loadingVehicles)
               const CircularProgressIndicator()
             else if (_availableVehicles.isEmpty)
-              Column(
+              const Column(
                 children: [
-                  const Icon(Icons.car_repair, size: 50, color: Colors.grey),
-                  const SizedBox(height: 8),
-                  const Text(
+                  Icon(Icons.car_repair, size: 50, color: Colors.grey),
+                  SizedBox(height: 8),
+                  Text(
                     'No available vehicles',
                     textAlign: TextAlign.center,
                   ),
@@ -586,11 +586,11 @@ class _DriverDashboardState extends State<DriverDashboard> {
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
           return AlertDialog(
-            title: Row(
+            title: const Row(
               children: [
-                const Icon(Icons.directions_car, color: Colors.orange),
-                const SizedBox(width: 8),
-                const Text('Enter Vehicle Information'),
+                Icon(Icons.directions_car, color: Colors.orange),
+                SizedBox(width: 8),
+                Text('Enter Vehicle Information'),
               ],
             ),
             content: SingleChildScrollView(
@@ -703,7 +703,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
       _startRideTimer(requestId, startTime);
       SimpleNotificationService.notifyRideStarted(context, requestId);
 
-      debugPrint('🚗 Ride started: $requestId with vehicle: ${plateNumber}');
+      debugPrint('🚗 Ride started: $requestId with vehicle: $plateNumber');
       _loadDriverRequests();
       _loadAvailableVehicles();
     } catch (e) {
@@ -859,7 +859,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
           .doc(requestId)
           .get();
 
-      final requestData = requestDoc.data() as Map<String, dynamic>? ?? {};
+      final requestData = requestDoc.data() ?? {};
       final vehicleInfo = requestData['vehicleInfo'] as Map<String, dynamic>? ?? {};
       final vehicleId = vehicleInfo['vehicleId'] as String?;
       final source = vehicleInfo['source'] as String?;
@@ -1030,11 +1030,11 @@ class _DriverDashboardState extends State<DriverDashboard> {
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Row(
+        title: const Row(
           children: [
-            const Icon(Icons.swap_horiz, color: Colors.orange),
-            const SizedBox(width: 8),
-            const Text('تحويل الطلب لسائق آخر'),
+            Icon(Icons.swap_horiz, color: Colors.orange),
+            SizedBox(width: 8),
+            Text('تحويل الطلب لسائق آخر'),
           ],
         ),
         content: Column(
@@ -1301,11 +1301,11 @@ class _DriverDashboardState extends State<DriverDashboard> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Row(
+        title: const Row(
           children: [
-            const Icon(Icons.person, color: Colors.orange),
-            const SizedBox(width: 8),
-            const Text('My Profile'),
+            Icon(Icons.person, color: Colors.orange),
+            SizedBox(width: 8),
+            Text('My Profile'),
           ],
         ),
         content: Column(
@@ -1369,11 +1369,11 @@ class _DriverDashboardState extends State<DriverDashboard> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Row(
+          title: const Row(
             children: [
-              const Icon(Icons.inventory_2, color: Colors.orange),
-              const SizedBox(width: 8),
-              const Text('No Requests'),
+              Icon(Icons.inventory_2, color: Colors.orange),
+              SizedBox(width: 8),
+              Text('No Requests'),
             ],
           ),
           content: Column(
@@ -1463,21 +1463,21 @@ class _DriverDashboardState extends State<DriverDashboard> {
 
   Widget _buildRequestsList(List<QueryDocumentSnapshot> requests) {
     if (requests.isEmpty) {
-      return Center(
+      return const Center(
         child: Padding(
-          padding: const EdgeInsets.all(32.0),
+          padding: EdgeInsets.all(32.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.assignment_turned_in_outlined, size: 60, color: Colors.grey),
-              const SizedBox(height: 16),
-              const Text(
+              Icon(Icons.assignment_turned_in_outlined, size: 60, color: Colors.grey),
+              SizedBox(height: 16),
+              Text(
                 'No requests currently',
                 style: TextStyle(fontSize: 18, color: Colors.grey),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 8),
-              const Text(
+              SizedBox(height: 8),
+              Text(
                 'Requests will appear here when assigned to you',
                 style: TextStyle(fontSize: 14, color: Colors.grey),
                 textAlign: TextAlign.center,
@@ -1506,6 +1506,9 @@ class _DriverDashboardState extends State<DriverDashboard> {
     final priority = requestData['priority'] as String? ?? 'Normal';
     final isUrgent = priority == 'Urgent';
     final notes = requestData['details'] as String? ?? requestData['additionalDetails'] as String? ?? '';
+
+    // 🔥 NEW: إضافة اسم الموظف الطالب
+    final requesterName = requestData['requesterName'] as String? ?? 'غير معروف';
 
     final isCompleted = status == 'COMPLETED';
     final isInProgress = status == 'IN_PROGRESS';
@@ -1565,12 +1568,36 @@ class _DriverDashboardState extends State<DriverDashboard> {
               '#$requestId',
               style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
             ),
+
+            // 🔥 NEW: إضافة اسم الموظف الطالب
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.person, color: Colors.blue.shade700, size: 16),
+                  const SizedBox(width: 8),
+                  Text(
+                    'الموظف الطالب: $requesterName',
+                    style: TextStyle(
+                      color: Colors.blue.shade800,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
             const Divider(),
             _buildTripDetailRow(Icons.location_on, 'From', from, color: Colors.green),
-            _buildTripDetailRow(Icons.flag, 'To', to, color: Colors.red),
+            _buildTripDetailRow(Icons.flag, 'To', to, color: Colors.red, copyable: true), // 🔥 قابل للنسخ
             _buildTripDetailRow(Icons.business, 'Department', department),
             if (notes.isNotEmpty)
-              _buildTripDetailRow(Icons.notes, 'Notes', notes),
+              _buildTripDetailRow(Icons.notes, 'Notes', notes, copyable: true), // 🔥 قابل للنسخ
 
             if (isInProgress)
               Padding(
@@ -1651,7 +1678,8 @@ class _DriverDashboardState extends State<DriverDashboard> {
     );
   }
 
-  Widget _buildTripDetailRow(IconData icon, String label, String value, {Color color = Colors.blueGrey}) {
+  // 🔥 NEW: دالة محسنة لجعل الحقول قابلة للنسخ
+  Widget _buildTripDetailRow(IconData icon, String label, String value, {Color color = Colors.blueGrey, bool copyable = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
@@ -1667,9 +1695,31 @@ class _DriverDashboardState extends State<DriverDashboard> {
                   '$label: ',
                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                 ),
-                Text(
-                  value,
-                  style: const TextStyle(fontSize: 14),
+                GestureDetector(
+                  onLongPress: copyable ? () => _copyToClipboard(value, label) : null,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            value,
+                            style: const TextStyle(fontSize: 14),
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (copyable) ...[
+                          const SizedBox(width: 8),
+                          Icon(
+                            Icons.content_copy,
+                            size: 16,
+                            color: Colors.grey.shade500,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -1677,6 +1727,31 @@ class _DriverDashboardState extends State<DriverDashboard> {
         ],
       ),
     );
+  }
+
+  // 🔥 NEW: دالة نسخ النص إلى الحافظة
+  Future<void> _copyToClipboard(String text, String fieldName) async {
+    try {
+      await Clipboard.setData(ClipboardData(text: text));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('تم نسخ $fieldName إلى الحافظة'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطأ في النسخ: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildNewsItem(Map<String, dynamic> news) {
@@ -1720,7 +1795,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    Icon(Icons.location_on, size: 14, color: Colors.grey),
+                    const Icon(Icons.location_on, size: 14, color: Colors.grey),
                     const SizedBox(width: 4),
                     Text(
                       news['region'] ?? 'General',
@@ -1771,15 +1846,15 @@ class _DriverDashboardState extends State<DriverDashboard> {
 
   Widget _buildTrafficNewsContent() {
     if (_loadingNews) {
-      return SizedBox(
+      return const SizedBox(
         height: 200,
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const CircularProgressIndicator(),
-              const SizedBox(height: 16),
-              const Text('Loading live traffic news...'),
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Loading live traffic news...'),
             ],
           ),
         ),
@@ -1871,11 +1946,11 @@ class _DriverDashboardState extends State<DriverDashboard> {
                     style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.green),
                   ),
                   const SizedBox(height: 8),
-                  Row(
+                  const Row(
                     children: [
-                      const Icon(Icons.check_circle, color: Colors.green, size: 20),
-                      const SizedBox(width: 8),
-                      const Text(
+                      Icon(Icons.check_circle, color: Colors.green, size: 20),
+                      SizedBox(width: 8),
+                      Text(
                         'Online',
                         style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
                       ),

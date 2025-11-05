@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
-import 'package:intl/intl.dart';
 
 class HRReportsScreen extends StatefulWidget {
   final String companyId;
@@ -579,12 +578,12 @@ class _HRReportsScreenState extends State<HRReportsScreen> {
           SizedBox(
             height: 200,
             child: SfCartesianChart(
-              primaryXAxis: CategoryAxis(
+              primaryXAxis: const CategoryAxis(
                 labelRotation: -45,
-                majorGridLines: const MajorGridLines(width: 0),
+                majorGridLines: MajorGridLines(width: 0),
               ),
-              primaryYAxis: NumericAxis(
-                majorGridLines: const MajorGridLines(width: 0),
+              primaryYAxis: const NumericAxis(
+                majorGridLines: MajorGridLines(width: 0),
               ),
               series: <ColumnSeries<Map<String, dynamic>, String>>[
                 ColumnSeries<Map<String, dynamic>, String>(

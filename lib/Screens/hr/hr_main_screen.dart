@@ -215,7 +215,7 @@ class _HRMainScreenState extends State<HRMainScreen> {
               const SizedBox(height: 20),
               Text(
                 // 💡 ترحيب باسم المستخدم
-                'مرحباً بك يا ${_currentUserName}',
+                'مرحباً بك يا $_currentUserName',
                 style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                 textAlign: TextAlign.center,
               ),
