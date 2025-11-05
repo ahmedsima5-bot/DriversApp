@@ -1,0 +1,91 @@
+Flutter crash report.
+Please report a bug at https://github.com/flutter/flutter/issues.
+
+## command
+
+flutter --no-color pub get
+
+## exception
+
+FileSystemException: FileSystemException: Deletion failed, path = 'C:\projects\drivers\windows\flutter\ephemeral\.plugin_symlinks' (OS Error: The directory is not empty.
+, errno = 145)
+
+```
+#0      _Directory._deleteSync (dart:io/directory_impl.dart:220:7)
+#1      FileSystemEntity.deleteSync (dart:io/file_system_entity.dart:425:7)
+#2      ForwardingFileSystemEntity.deleteSync (package:file/src/forwarding/forwarding_file_system_entity.dart:70:16)
+#3      ErrorHandlingDirectory.deleteSync.<anonymous closure> (package:flutter_tools/src/base/error_handling_io.dart:451:22)
+#4      _runSync (package:flutter_tools/src/base/error_handling_io.dart:552:14)
+#5      ErrorHandlingDirectory.deleteSync (package:flutter_tools/src/base/error_handling_io.dart:450:12)
+#6      ErrorHandlingFileSystem.deleteIfExists (package:flutter_tools/src/base/error_handling_io.dart:90:14)
+#7      _createPlatformPluginSymlinks (package:flutter_tools/src/flutter_plugins.dart:1129:29)
+#8      createPluginSymlinks (package:flutter_tools/src/flutter_plugins.dart:1060:5)
+#9      refreshPluginsList (package:flutter_tools/src/flutter_plugins.dart:1192:5)
+<asynchronous suspension>
+#10     FlutterProject.ensureReadyForPlatformSpecificTooling (package:flutter_tools/src/project.dart:369:5)
+<asynchronous suspension>
+#11     PackagesGetCommand.runCommand (package:flutter_tools/src/commands/packages.dart:395:9)
+<asynchronous suspension>
+#12     FlutterCommand.run.<anonymous closure> (package:flutter_tools/src/runner/flutter_command.dart:1559:27)
+<asynchronous suspension>
+#13     AppContext.run.<anonymous closure> (package:flutter_tools/src/base/context.dart:154:19)
+<asynchronous suspension>
+#14     CommandRunner.runCommand (package:args/command_runner.dart:212:13)
+<asynchronous suspension>
+#15     FlutterCommandRunner.runCommand.<anonymous closure> (package:flutter_tools/src/runner/flutter_command_runner.dart:487:9)
+<asynchronous suspension>
+#16     AppContext.run.<anonymous closure> (package:flutter_tools/src/base/context.dart:154:19)
+<asynchronous suspension>
+#17     FlutterCommandRunner.runCommand (package:flutter_tools/src/runner/flutter_command_runner.dart:422:5)
+<asynchronous suspension>
+#18     run.<anonymous closure>.<anonymous closure> (package:flutter_tools/runner.dart:101:11)
+<asynchronous suspension>
+#19     AppContext.run.<anonymous closure> (package:flutter_tools/src/base/context.dart:154:19)
+<asynchronous suspension>
+#20     main (package:flutter_tools/executable.dart:103:3)
+<asynchronous suspension>
+```
+
+## flutter doctor
+
+```
+[✓] Flutter (Channel master, 3.38.0-1.0.pre-314, on Microsoft Windows [Version 10.0.19045.6456], locale ar-SA) [100.2s]
+    • Flutter version 3.38.0-1.0.pre-314 on channel master at C:\flutter
+    • Upstream repository https://github.com/flutter/flutter.git
+    • Framework revision fe0bacbacf (3 hours ago), 2025-10-30 04:32:27 -0400
+    • Engine revision fe0bacbacf
+    • Dart version 3.11.0 (build 3.11.0-78.0.dev)
+    • DevTools version 2.51.0
+    • Feature flags: enable-web, enable-linux-desktop, enable-macos-desktop, enable-windows-desktop, enable-android, enable-ios, cli-animations, enable-native-assets, omit-legacy-version-file, enable-lldb-debugging
+
+[✓] Windows Version (10 Pro 64-bit, 22H2, 2009) [21.7s]
+
+[✓] Android toolchain - develop for Android devices (Android SDK version 36.0.0) [30.8s]
+    • Android SDK at C:\Users\User\AppData\Local\Android\sdk
+    • Emulator version 35.5.10.0 (build_id 13402964) (CL:N/A)
+    • Platform android-36, build-tools 36.0.0
+    • Java binary at: C:\Program Files\Android\Android Studio\jbr\bin\java
+      This is the JDK bundled with the latest Android Studio installation on this machine.
+      To manually set the JDK path, use: `flutter config --jdk-dir="path/to/jdk"`.
+    • Java version OpenJDK Runtime Environment (build 21.0.7+-13880790-b1038.58)
+    • All Android licenses accepted.
+
+[✓] Chrome - develop for the web [6.7s]
+    • Chrome at C:\Program Files\Google\Chrome\Application\chrome.exe
+
+[✓] Visual Studio - develop Windows apps (Visual Studio Community 2022 17.14.3 Preview 1.0) [6.7s]
+    • Visual Studio at C:\Program Files\Microsoft Visual Studio\2022\Preview
+    • Visual Studio Community 2022 version 17.14.36127.28
+    • The current Visual Studio installation is a pre-release version. It may not be supported by Flutter yet.
+    • Windows 10 SDK version 10.0.26100.0
+
+[✓] Connected device (3 available) [1,318ms]
+    • Windows (desktop) • windows • windows-x64    • Microsoft Windows [Version 10.0.19045.6456]
+    • Chrome (web)      • chrome  • web-javascript • Google Chrome 141.0.7390.123
+    • Edge (web)        • edge    • web-javascript • Microsoft Edge 141.0.3537.99
+
+[✓] Network resources [11.8s]
+    • All expected network resources are available.
+
+• No issues found!
+```
