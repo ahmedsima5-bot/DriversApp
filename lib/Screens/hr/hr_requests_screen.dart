@@ -17,147 +17,50 @@ class HRRequestsScreen extends StatefulWidget {
 }
 
 class _HRRequestsScreenState extends State<HRRequestsScreen> {
-  String _filter = 'اليوم';
-  List<Map<String, dynamic>> _requests = [];
-  bool _loading = true;
+  String _currentFilter = 'اليوم';
+  List<Map<String, dynamic>> _allRequests = [];
+  bool _isLoading = true;
   final DispatchService _dispatchService = DispatchService();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  Timer? _refreshTimer;
+  Timer? _autoRefreshTimer;
+
+  // قائمة الفلاتر المتاحة
+  final List<String> _filters = [
+    'اليوم',
+    'العاجلة',
+    'الجارية',
+    'المكتملة',
+    'الملغية',
+    'الكل'
+  ];
 
   @override
   void initState() {
     super.initState();
-    _loadRequests();
-    _startPeriodicRefresh();
+    _loadRequestsData();
+    _startAutoRefresh();
   }
 
   @override
   void dispose() {
-    _refreshTimer?.cancel();
+    _autoRefreshTimer?.cancel();
     super.dispose();
   }
 
-  // 🔄 تحديث تلقائي كل 30 ثانية
-  void _startPeriodicRefresh() {
-    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+  // تشغيل التحديث التلقائي كل 30 ثانية
+  void _startAutoRefresh() {
+    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
       if (mounted) {
-        _loadRequests();
+        _loadRequestsData();
       }
     });
   }
 
-  // 🛠️ إصلاح حالة السائقين المعطلة
-  Future<void> _fixDriversAvailability() async {
-    try {
-      print('🛠️ جاري إصلاح حالات السائقين...');
-
-      final driversSnapshot = await _firestore
-          .collection('companies')
-          .doc(widget.companyId)
-          .collection('drivers')
-          .get();
-
-      int fixedCount = 0;
-
-      for (var driverDoc in driversSnapshot.docs) {
-        final driverData = driverDoc.data();
-        final isAvailable = driverData['isAvailable'] ?? true;
-        final currentRequestId = driverData['currentRequestId'] as String?;
-
-        // إذا السائق مشغول لكن مافيه طلب حالية
-        if (isAvailable == false && (currentRequestId == null || currentRequestId.isEmpty)) {
-          await driverDoc.reference.update({
-            'isAvailable': true,
-            'lastStatusUpdate': FieldValue.serverTimestamp(),
-          });
-          fixedCount++;
-          print('✅ تم إصلاح حالة السائق: ${driverData['name']}');
-        }
-      }
-
-      if (fixedCount > 0) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('تم إصلاح حالة $fixedCount سائق'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-        _loadRequests();
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('جميع السائقين في الحالة الصحيحة'),
-              backgroundColor: Colors.blue,
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      print('❌ خطأ في إصلاح حالات السائقين: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطأ في الإصلاح: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  String _formatDuration(int seconds) {
-    if (seconds == 0) return 'لم تُحسب بعد';
-
-    final duration = Duration(seconds: seconds);
-    final hours = duration.inHours;
-    final minutes = duration.inMinutes.remainder(60);
-    final remainingSeconds = duration.inSeconds.remainder(60);
-
-    String result = '';
-    if (hours > 0) {
-      result += '$hours ساعة ';
-    }
-    if (minutes > 0) {
-      result += '$minutes دقيقة ';
-    }
-    result += '$remainingSeconds ثانية';
-
-    return result.trim();
-  }
-
-  Future<Map<String, dynamic>?> _getDriverVehicleDetails(String driverId) async {
-    try {
-      final driverDoc = await _firestore
-          .collection('companies')
-          .doc(widget.companyId)
-          .collection('drivers')
-          .doc(driverId)
-          .get();
-
-      if (driverDoc.exists) {
-        final data = driverDoc.data();
-        final vehicleInfo = data?['vehicleInfo'] as Map<String, dynamic>?;
-
-        return {
-          'type': vehicleInfo?['type'] ?? 'غير محدد',
-          'plateNumber': vehicleInfo?['number'] ?? vehicleInfo?['plateNumber'] ?? 'غير محدد',
-          'model': vehicleInfo?['model'] ?? 'غير محدد',
-        };
-      }
-      return null;
-    } catch (e) {
-      print('❌ خطأ في جلب بيانات مركبة السائق: $e');
-      return null;
-    }
-  }
-
-  Future<void> _loadRequests() async {
+  // تحميل بيانات الطلبات
+  Future<void> _loadRequestsData() async {
     try {
       if (mounted) {
-        setState(() { _loading = true; });
+        setState(() { _isLoading = true; });
       }
 
       final requestsSnapshot = await _firestore
@@ -169,23 +72,11 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
 
       if (mounted) {
         setState(() {
-          _requests = requestsSnapshot.docs.map((doc) {
+          _allRequests = requestsSnapshot.docs.map((doc) {
             final data = doc.data();
 
-            DateTime createdAt;
-            final dynamic createdAtData = data['createdAt'];
-
-            if (createdAtData is Timestamp) {
-              createdAt = createdAtData.toDate();
-            } else if (createdAtData is String) {
-              try {
-                createdAt = DateTime.parse(createdAtData);
-              } catch (_) {
-                createdAt = DateTime.now();
-              }
-            } else {
-              createdAt = DateTime.now();
-            }
+            // معالجة تاريخ الإنشاء
+            DateTime createdAt = _parseDateTime(data['createdAt']);
 
             return {
               'id': doc.id,
@@ -198,570 +89,69 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
               'assignedDriverName': data['assignedDriverName'] as String?,
               'requesterName': data['requesterName'] ?? 'غير معروف',
               'createdAt': createdAt,
-              'firebaseData': data,
+              'originalData': data,
             };
           }).toList();
-          _loading = false;
+          _isLoading = false;
         });
       }
 
-    } catch (e) {
-      print('❌ خطأ في جلب الطلبات: $e');
+    } catch (error) {
+      print('❌ خطأ في تحميل الطلبات: $error');
       if (mounted) {
-        setState(() { _loading = false; });
+        setState(() { _isLoading = false; });
+        _showErrorSnackBar('فشل في تحميل البيانات: $error');
       }
     }
   }
 
-  String _translateStatus(String status) {
-    switch (status) {
-      case 'PENDING': return 'معلقة';
-      case 'HR_PENDING': return 'بانتظار الموارد البشرية';
-      case 'HR_APPROVED': return 'موافق عليه';
-      case 'ASSIGNED': return 'مُعين للسائق';
-      case 'IN_PROGRESS': return 'قيد التنفيذ';
-      case 'COMPLETED': return 'مكتمل';
-      case 'HR_REJECTED': return 'مرفوض';
-      case 'WAITING_FOR_DRIVER': return 'بانتظار السائق';
-      case 'CANCELLED': return 'ملغى';
-      default: return status;
+  // معالجة التاريخ من أنواع مختلفة
+  DateTime _parseDateTime(dynamic dateData) {
+    if (dateData is Timestamp) {
+      return dateData.toDate();
+    } else if (dateData is String) {
+      try {
+        return DateTime.parse(dateData);
+      } catch (_) {
+        return DateTime.now();
+      }
+    } else {
+      return DateTime.now();
     }
   }
 
-  // 🚗 دالة محسنة لجلب السائقين مع إصلاح الحالات
-  Future<List<Map<String, dynamic>>> _getAvailableDrivers() async {
-    try {
-      final driversSnapshot = await _firestore
-          .collection('companies')
-          .doc(widget.companyId)
-          .collection('drivers')
-          .where('isActive', isEqualTo: true)
-          .get();
-
-      List<Map<String, dynamic>> drivers = [];
-
-      for (var doc in driversSnapshot.docs) {
-        final data = doc.data();
-        final currentRequestId = data['currentRequestId'] as String?;
-
-        // التحقق من صحة حالة السائق
-        bool isActuallyAvailable = data['isAvailable'] ?? true;
-
-        // إذا السائق مشغول لكن مافيه طلب حالية، نصحح الحالة
-        if (isActuallyAvailable == false && (currentRequestId == null || currentRequestId.isEmpty)) {
-          isActuallyAvailable = true;
-          // نحدث الحالة في الخلفية بدون انتظار
-          doc.reference.update({
-            'isAvailable': true,
-            'lastStatusUpdate': FieldValue.serverTimestamp(),
-          });
-        }
-
-        drivers.add({
-          'id': doc.id,
-          'name': data['name'] ?? 'غير معروف',
-          'email': data['email'] ?? '',
-          'phone': data['phone'] ?? '',
-          'isAvailable': isActuallyAvailable,
-          'isOnline': data['isOnline'] ?? false,
-          'completedRides': (data['completedRides'] as num?)?.toInt() ?? 0,
-          'vehicleType': data['vehicleInfo']?['type'] ?? 'سيارة',
-          'currentRequestId': currentRequestId,
-        });
-      }
-
-      print('👥 عدد السائقين بعد التصحيح: ${drivers.length}');
-      print('✅ السائقون المتاحون: ${drivers.where((d) => d['isAvailable'] == true).length}');
-
-      return drivers;
-    } catch (e) {
-      print('❌ خطأ في جلب السائقين: $e');
-      return [];
-    }
+  // ترجمة حالة الطلب
+  String _getStatusText(String status) {
+    const statusMap = {
+      'PENDING': 'معلقة',
+      'HR_PENDING': 'بانتظار الموارد البشرية',
+      'HR_APPROVED': 'موافق عليه',
+      'ASSIGNED': 'مُعين للسائق',
+      'IN_PROGRESS': 'قيد التنفيذ',
+      'COMPLETED': 'مكتمل',
+      'HR_REJECTED': 'مرفوض',
+      'WAITING_FOR_DRIVER': 'بانتظار السائق',
+      'CANCELLED': 'ملغى',
+    };
+    return statusMap[status] ?? status;
   }
 
-  // 🆕 دالة جديدة خاصة بجلب السائقين للتحويل
-  Future<List<Map<String, dynamic>>> _getAllActiveDriversForReassign() async {
-    try {
-      final driversSnapshot = await _firestore
-          .collection('companies')
-          .doc(widget.companyId)
-          .collection('drivers')
-          .where('isActive', isEqualTo: true)
-          .get();
-
-      List<Map<String, dynamic>> drivers = [];
-
-      for (var doc in driversSnapshot.docs) {
-        final data = doc.data();
-
-        drivers.add({
-          'id': doc.id,
-          'name': data['name'] ?? 'غير معروف',
-          'email': data['email'] ?? '',
-          'phone': data['phone'] ?? '',
-          'isAvailable': data['isAvailable'] ?? true,
-          'isOnline': data['isOnline'] ?? false,
-          'completedRides': (data['completedRides'] as num?)?.toInt() ?? 0,
-          'vehicleType': data['vehicleInfo']?['type'] ?? 'سيارة',
-          'currentRequestId': data['currentRequestId'] as String?,
-        });
-      }
-
-      print('👥 عدد السائقين النشطين للتحويل: ${drivers.length}');
-
-      return drivers;
-    } catch (e) {
-      print('❌ خطأ في جلب السائقين للتحويل: $e');
-      return [];
-    }
-  }
-
-  // 👤 تعيين سائق يدوياً
-  Future<void> _manualAssignDriver(Map<String, dynamic> request) async {
-    try {
-      final availableDrivers = await _getAvailableDrivers();
-
-      // فلترة السائقين المتاحين فقط
-      final actuallyAvailableDrivers = availableDrivers.where((driver) => driver['isAvailable'] == true).toList();
-
-      if (actuallyAvailableDrivers.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('لا يوجد سائقين متاحين حالياً'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
-        return;
-      }
-
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('تعيين سائق يدوياً'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: actuallyAvailableDrivers.length,
-              itemBuilder: (context, index) {
-                final driver = actuallyAvailableDrivers[index];
-                return ListTile(
-                  leading: const Icon(Icons.person),
-                  title: Text(driver['name']),
-                  subtitle: Text(
-                      '${driver['vehicleType']} - ${driver['completedRides']} مشاوير'
-                  ),
-                  trailing: const Icon(Icons.check, color: Colors.green),
-                  onTap: () {
-                    _assignDriverToRequest(request, driver['id'], driver['name']);
-                    Navigator.pop(context);
-                  },
-                );
-              },
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('إلغاء'),
-            ),
-          ],
-        ),
-      );
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطأ في جلب السائقين: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  // 🔄 توزيع تلقائي من واجهة الموارد البشرية
-  Future<void> _autoAssignFromHR(Map<String, dynamic> request) async {
-    try {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('جاري التوزيع التلقائي...'),
-            backgroundColor: Colors.blue,
-          ),
-        );
-      }
-
-      // أولاً: نصلح حالات السائقين قبل التوزيع
-      await _fixDriversAvailability();
-
-      // ثم نترك الخدمة التلقائية تعمل
-      await _dispatchService.approveUrgentRequest(
-        widget.companyId,
-        request['id'],
-        'hr_user_id',
-        'مسؤول الموارد البشرية',
-      );
-
-      // انتظار ثم إعادة تحميل
-      await Future.delayed(const Duration(seconds: 3));
-      _loadRequests();
-
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطأ في التوزيع التلقائي: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  // ❌ إلغاء الطلب
-  Future<void> _cancelRequest(Map<String, dynamic> request) async {
-    final status = request['status'] as String;
-    final assignedDriverId = request['assignedDriverId'] as String?;
-
-    String message = 'هل أنت متأكد من إلغاء هذا الطلب؟';
-
-    // إذا كان الطلب معيناً لسائق، نضيف تحذير إضافي
-    if (status == 'ASSIGNED' || status == 'IN_PROGRESS') {
-      message = 'هذا الطلب معين لسائق. هل أنت متأكد من إلغاء الطلب؟ سيتم تحرير السائق.';
-    }
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('إلغاء الطلب'),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('تراجع'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              try {
-                // إذا كان الطلب معيناً لسائق، نحتاج لتحرير السائق أولاً
-                if (assignedDriverId != null && assignedDriverId.isNotEmpty) {
-                  await _firestore
-                      .collection('companies')
-                      .doc(widget.companyId)
-                      .collection('drivers')
-                      .doc(assignedDriverId)
-                      .update({
-                    'isAvailable': true,
-                    'currentRequestId': null,
-                    'lastStatusUpdate': FieldValue.serverTimestamp(),
-                  });
-                  print('✅ تم تحرير السائق: $assignedDriverId');
-                }
-
-                // ثم نلغي الطلب
-                await _firestore
-                    .collection('companies')
-                    .doc(widget.companyId)
-                    .collection('requests')
-                    .doc(request['id'])
-                    .update({
-                  'status': 'CANCELLED',
-                  'cancelledBy': 'HR',
-                  'cancelledAt': FieldValue.serverTimestamp(),
-                  'lastUpdated': FieldValue.serverTimestamp(),
-                  // حفظ معلومات السائق السابق للإرجاع إذا لزم
-                  'previousDriverId': assignedDriverId,
-                  'previousDriverName': request['assignedDriverName'],
-                });
-
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('تم إلغاء الطلب بنجاح'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                }
-
-                _loadRequests();
-                Navigator.pop(context);
-              } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('خطأ في الإلغاء: $e'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
-              }
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('نعم، إلغاء الطلب'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // 🔄 تحويل الطلب لسائق آخر - النسخة المصححة
-  Future<void> _reassignDriver(Map<String, dynamic> request) async {
-    if (request['assignedDriverId'] == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('هذا الطلب غير معين لأي سائق'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-      }
-      return;
-    }
-
-    try {
-      // 🔥 استخدم الدالة الجديدة لجلب جميع السائقين النشطين
-      final allActiveDrivers = await _getAllActiveDriversForReassign();
-
-      // استبعاد السائق الحالي
-      final filteredDrivers = allActiveDrivers.where((driver) => driver['id'] != request['assignedDriverId']).toList();
-
-      if (filteredDrivers.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('لا يوجد سائقين آخرين في النظام'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
-        return;
-      }
-
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('تحويل المشوار لسائق آخر'),
-          content: Text('تحويل المشوار من السائق: ${request['assignedDriverName']}'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('إلغاء'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                _showReassignDriverDialog(request, filteredDrivers);
-              },
-              child: const Text('اختيار سائق جديد'),
-            ),
-          ],
-        ),
-      );
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطأ في جلب السائقين: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  // 🎯 عرض اختيار السائقين للتحويل
-  void _showReassignDriverDialog(Map<String, dynamic> request, List<Map<String, dynamic>> drivers) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('اختر السائق الجديد'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView.builder(
-            shrinkWrap: true,
-            itemCount: drivers.length,
-            itemBuilder: (context, index) {
-              final driver = drivers[index];
-
-              // 🔥 عرض حالة السائق بشكل واضح
-              final isAvailable = driver['isAvailable'] == true;
-              final statusText = isAvailable ? 'متاح' : 'مشغول';
-              final statusColor = isAvailable ? Colors.green : Colors.orange;
-              final statusIcon = isAvailable ? Icons.check_circle : Icons.schedule;
-
-              return ListTile(
-                leading: const Icon(Icons.person),
-                title: Text(driver['name']),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('${driver['vehicleType']} - ${driver['completedRides']} مشاوير'),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Icon(statusIcon, size: 14, color: statusColor),
-                        const SizedBox(width: 4),
-                        Text(
-                          statusText,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: statusColor,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        if (!isAvailable) ...[
-                          const SizedBox(width: 8),
-                          const Icon(Icons.info_outline, size: 12, color: Colors.grey),
-                          const SizedBox(width: 4),
-                          Text(
-                            'سيتم تحويل الطلب الحالي',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: Colors.grey.shade600,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ],
-                ),
-                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                onTap: () {
-                  _performReassignment(request, driver);
-                  Navigator.pop(context);
-                },
-              );
-            },
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('إلغاء'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // 🔄 تنفيذ عملية التحويل
-  Future<void> _performReassignment(Map<String, dynamic> request, Map<String, dynamic> newDriver) async {
-    try {
-      final isNewDriverAvailable = newDriver['isAvailable'] == true;
-
-      if (!isNewDriverAvailable) {
-        // 🔥 إذا السائق الجديد مشغول، اعرض تحذير للمستخدم
-        final confirmed = await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('تنبيه'),
-            content: Text('السائق ${newDriver['name']} مشغول حالياً. هل تريد تحويل الطلب إليه؟'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('إلغاء'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context, true),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-                child: const Text('نعم، متابعة'),
-              ),
-            ],
-          ),
-        );
-
-        if (confirmed != true) {
-          return; // المستخدم ألغى العملية
-        }
-      }
-
-      await _dispatchService.reassignDriver(
-          widget.companyId,
-          request['id'],
-          newDriver['id'],
-          newDriver['name'],
-          'hr_user_id',
-          'مسؤول الموارد البشرية',
-          'تحويل من قبل الموارد البشرية'
-      );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('تم تحويل المشوار إلى السائق ${newDriver['name']}'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-
-      _loadRequests();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطأ في التحويل: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  // 👤 تعيين السائق للطلب
-  Future<void> _assignDriverToRequest(Map<String, dynamic> request, String driverId, String driverName) async {
-    try {
-      await _dispatchService.assignToSpecificDriver(
-        widget.companyId,
-        request['id'],
-        driverId,
-        driverName,
-        'hr_user_id',
-        'مسؤول الموارد البشرية',
-      );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('تم تعيين السائق $driverName للطلب'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-
-      _loadRequests();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطأ في التعيين: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  // 📋 فلترة الطلبات
+  // فلترة الطلبات حسب النوع المحدد
   List<Map<String, dynamic>> get _filteredRequests {
     final now = DateTime.now();
     final todayStart = DateTime(now.year, now.month, now.day);
     final todayEnd = DateTime(now.year, now.month, now.day, 23, 59, 59);
 
-    return _requests.where((request) {
+    return _allRequests.where((request) {
       final requestDate = request['createdAt'] as DateTime;
       final status = request['status'] as String;
       final priority = request['priority'] as String;
 
-      switch (_filter) {
+      switch (_currentFilter) {
         case 'اليوم':
           return requestDate.isAfter(todayStart) && requestDate.isBefore(todayEnd);
         case 'العاجلة':
-          return priority == 'Urgent' &&
-              ['PENDING', 'HR_PENDING', 'HR_APPROVED'].contains(status);
+          return priority == 'Urgent' && ['PENDING', 'HR_PENDING'].contains(status);
         case 'الجارية':
           return ['ASSIGNED', 'IN_PROGRESS', 'HR_APPROVED'].contains(status);
         case 'المكتملة':
@@ -775,29 +165,76 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     }).toList();
   }
 
-  // 📊 إحصائيات سريعة
-  Map<String, int> get _stats {
+  // إحصائيات سريعة
+  Map<String, int> get _quickStats {
     final now = DateTime.now();
     final todayStart = DateTime(now.year, now.month, now.day);
 
-    final todayRequests = _requests.where((r) => (r['createdAt'] as DateTime).isAfter(todayStart)).length;
-    final urgentRequests = _requests.where((r) => r['priority'] == 'Urgent').length;
-    final pendingRequests = _requests.where((r) =>
-        ['PENDING', 'HR_PENDING', 'WAITING_FOR_DRIVER'].contains(r['status'])).length;
-    final completedToday = _requests.where((r) =>
-    r['status'] == 'COMPLETED' && (r['createdAt'] as DateTime).isAfter(todayStart)).length;
-
     return {
-      'today': todayRequests,
-      'urgent': urgentRequests,
-      'pending': pendingRequests,
-      'completed': completedToday,
+      'today': _allRequests.where((r) => (r['createdAt'] as DateTime).isAfter(todayStart)).length,
+      'urgent': _allRequests.where((r) => r['priority'] == 'Urgent').length,
+      'pending': _allRequests.where((r) => ['PENDING', 'HR_PENDING', 'WAITING_FOR_DRIVER'].contains(r['status'])).length,
+      'completed': _allRequests.where((r) => r['status'] == 'COMPLETED' && (r['createdAt'] as DateTime).isAfter(todayStart)).length,
     };
+  }
+
+  // الحصول على لون الحالة
+  Color _getStatusColor(String status) {
+    const colorMap = {
+      'PENDING': Colors.orange,
+      'HR_PENDING': Colors.orange,
+      'HR_APPROVED': Colors.blue,
+      'ASSIGNED': Colors.purple,
+      'IN_PROGRESS': Colors.green,
+      'COMPLETED': Color(0xFF2E7D32),
+      'HR_REJECTED': Colors.red,
+      'CANCELLED': Colors.red,
+      'WAITING_FOR_DRIVER': Colors.amber,
+    };
+    return colorMap[status] ?? Colors.grey;
+  }
+
+  // الحصول على أيقونة الحالة
+  IconData _getStatusIcon(String status) {
+    const iconMap = {
+      'PENDING': Icons.pending,
+      'HR_PENDING': Icons.pending,
+      'HR_APPROVED': Icons.check_circle,
+      'ASSIGNED': Icons.assignment,
+      'IN_PROGRESS': Icons.directions_car,
+      'COMPLETED': Icons.done_all,
+      'HR_REJECTED': Icons.cancel,
+      'CANCELLED': Icons.cancel,
+      'WAITING_FOR_DRIVER': Icons.schedule,
+    };
+    return iconMap[status] ?? Icons.help;
+  }
+
+  // عرض رسالة خطأ
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  // عرض رسالة نجاح
+  void _showSuccessSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final stats = _stats;
+    final stats = _quickStats;
 
     return Scaffold(
       appBar: AppBar(
@@ -805,119 +242,54 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
         backgroundColor: Colors.blue.shade800,
         foregroundColor: Colors.white,
         actions: [
-          // زر إصلاح حالات السائقين
-          IconButton(
-            icon: const Icon(Icons.build),
-            onPressed: _fixDriversAvailability,
-            tooltip: 'إصلاح حالات السائقين',
-          ),
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: _loadRequests,
+            onPressed: _loadRequestsData,
+            tooltip: 'تحديث',
           ),
         ],
       ),
-      body: _loading
+      body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : Column(
         children: [
           // بطاقات الإحصائيات
-          _buildStatsCards(stats),
+          _buildStatisticsCards(stats),
 
-          // فلترة الطلبات
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _buildFilterChip('اليوم', _filter == 'اليوم'),
-                  const SizedBox(width: 8),
-                  _buildFilterChip('العاجلة', _filter == 'العاجلة'),
-                  const SizedBox(width: 8),
-                  _buildFilterChip('الجارية', _filter == 'الجارية'),
-                  const SizedBox(width: 8),
-                  _buildFilterChip('المكتملة', _filter == 'المكتملة'),
-                  const SizedBox(width: 8),
-                  _buildFilterChip('الملغية', _filter == 'الملغية'),
-                  const SizedBox(width: 8),
-                  _buildFilterChip('الكل', _filter == 'الكل'),
-                ],
-              ),
-            ),
-          ),
+          // شريط الفلترة
+          _buildFilterBar(),
 
-          // عنوان القسم
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'الطلبات (${_filteredRequests.length})',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text(
-                  _getFilterSubtitle(),
-                  style: TextStyle(
-                    color: Colors.grey.shade600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // جدول الطلبات
+          // قائمة الطلبات
           Expanded(
             child: _filteredRequests.isEmpty
-                ? const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.inbox, size: 64, color: Colors.grey),
-                  SizedBox(height: 16),
-                  Text(
-                    'لا توجد طلبات',
-                    style: TextStyle(fontSize: 18, color: Colors.grey),
-                  ),
-                ],
-              ),
-            )
-                : ListView.builder(
-              itemCount: _filteredRequests.length,
-              itemBuilder: (context, index) {
-                final request = _filteredRequests[index];
-                return _buildRequestCard(request);
-              },
-            ),
+                ? _buildEmptyState()
+                : _buildRequestsList(),
           ),
         ],
       ),
     );
   }
 
-  // 🎴 بطاقات الإحصائيات
-  Widget _buildStatsCards(Map<String, int> stats) {
+  // واجهة الإحصائيات
+  Widget _buildStatisticsCards(Map<String, int> stats) {
     return Container(
       padding: const EdgeInsets.all(16),
       color: Colors.grey.shade50,
       child: Row(
         children: [
-          _buildStatCard('طلبات اليوم', stats['today'] ?? 0, Colors.blue, Icons.today),
+          _buildStatCard('طلبات اليوم', stats['today']!, Colors.blue, Icons.today),
           const SizedBox(width: 12),
-          _buildStatCard('عاجلة', stats['urgent'] ?? 0, Colors.orange, Icons.warning),
+          _buildStatCard('عاجلة', stats['urgent']!, Colors.orange, Icons.warning),
           const SizedBox(width: 12),
-          _buildStatCard('قيد الانتظار', stats['pending'] ?? 0, Colors.red, Icons.pending),
+          _buildStatCard('قيد الانتظار', stats['pending']!, Colors.red, Icons.pending),
           const SizedBox(width: 12),
-          _buildStatCard('مكتملة اليوم', stats['completed'] ?? 0, Colors.green, Icons.check_circle),
+          _buildStatCard('مكتملة اليوم', stats['completed']!, Colors.green, Icons.check_circle),
         ],
       ),
     );
   }
 
+  // بطاقة إحصائية فردية
   Widget _buildStatCard(String title, int count, Color color, IconData icon) {
     return Expanded(
       child: Container(
@@ -959,29 +331,69 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     );
   }
 
-  Widget _buildFilterChip(String label, bool selected) {
-    return FilterChip(
-      label: Text(label),
-      selected: selected,
-      selectedColor: Colors.blue.shade100,
-      onSelected: (bool value) {
-        setState(() {
-          _filter = label;
-        });
+  // شريط الفلترة
+  Widget _buildFilterBar() {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: _filters.map((filter) {
+            return Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: FilterChip(
+                label: Text(filter),
+                selected: _currentFilter == filter,
+                selectedColor: Colors.blue.shade100,
+                onSelected: (selected) {
+                  setState(() {
+                    _currentFilter = filter;
+                  });
+                },
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  // واجهة فارغة
+  Widget _buildEmptyState() {
+    return const Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.inbox, size: 64, color: Colors.grey),
+          SizedBox(height: 16),
+          Text(
+            'لا توجد طلبات',
+            style: TextStyle(fontSize: 18, color: Colors.grey),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // قائمة الطلبات
+  Widget _buildRequestsList() {
+    return ListView.builder(
+      itemCount: _filteredRequests.length,
+      itemBuilder: (context, index) {
+        final request = _filteredRequests[index];
+        return _buildRequestItem(request);
       },
     );
   }
 
-  // 🎴 بطاقة الطلب
-  Widget _buildRequestCard(Map<String, dynamic> request) {
+  // عنصر طلب فردي
+  Widget _buildRequestItem(Map<String, dynamic> request) {
     final status = request['status'] as String;
     final priority = request['priority'] as String;
-    final translatedStatus = _translateStatus(status);
-
-    Color statusColor = _getStatusColor(status);
-    IconData statusIcon = _getStatusIcon(status);
-
-    final assignedDriverName = request['assignedDriverName'] as String?;
+    final statusText = _getStatusText(status);
+    final statusColor = _getStatusColor(status);
+    final statusIcon = _getStatusIcon(status);
+    final assignedDriver = request['assignedDriverName'];
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -1005,16 +417,16 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
             ),
             if (priority == 'Urgent')
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
                   color: Colors.orange.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(4),
                 ),
                 child: const Text(
                   'عاجل',
                   style: TextStyle(
                     color: Colors.orange,
-                    fontSize: 12,
+                    fontSize: 10,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -1037,7 +449,7 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
-                    translatedStatus,
+                    statusText,
                     style: TextStyle(
                       color: statusColor,
                       fontSize: 12,
@@ -1045,12 +457,12 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
                     ),
                   ),
                 ),
-                if (assignedDriverName != null) ...[
+                if (assignedDriver != null) ...[
                   const SizedBox(width: 8),
                   const Icon(Icons.person, size: 12, color: Colors.grey),
                   const SizedBox(width: 4),
                   Text(
-                    assignedDriverName,
+                    assignedDriver,
                     style: const TextStyle(fontSize: 12, color: Colors.grey),
                   ),
                 ],
@@ -1067,285 +479,125 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     );
   }
 
-  Color _getStatusColor(String status) {
-    switch (status) {
-      case 'PENDING':
-      case 'HR_PENDING':
-        return Colors.orange;
-      case 'HR_APPROVED':
-        return Colors.blue;
-      case 'ASSIGNED':
-        return Colors.purple;
-      case 'IN_PROGRESS':
-        return Colors.green;
-      case 'COMPLETED':
-        return Colors.green.shade700;
-      case 'HR_REJECTED':
-      case 'CANCELLED':
-        return Colors.red;
-      case 'WAITING_FOR_DRIVER':
-        return Colors.amber;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  IconData _getStatusIcon(String status) {
-    switch (status) {
-      case 'PENDING':
-      case 'HR_PENDING':
-        return Icons.pending;
-      case 'HR_APPROVED':
-        return Icons.check_circle;
-      case 'ASSIGNED':
-        return Icons.assignment;
-      case 'IN_PROGRESS':
-        return Icons.directions_car;
-      case 'COMPLETED':
-        return Icons.done_all;
-      case 'HR_REJECTED':
-      case 'CANCELLED':
-        return Icons.cancel;
-      case 'WAITING_FOR_DRIVER':
-        return Icons.schedule;
-      default:
-        return Icons.help;
-    }
-  }
-
-  String _getFilterSubtitle() {
-    switch (_filter) {
-      case 'اليوم':
-        return 'طلبات اليوم';
-      case 'العاجلة':
-        return 'طلبات عاجلة تحتاج موافقة';
-      case 'الجارية':
-        return 'طلبات قيد التنفيذ';
-      case 'المكتملة':
-        return 'طلبات منتهية';
-      case 'الملغية':
-        return 'طلبات ملغية';
-      case 'الكل':
-        return 'جميع الطلبات';
-      default:
-        return '';
-    }
-  }
-
-  // 📋 عرض تفاصيل الطلب
+  // عرض تفاصيل الطلب
   void _showRequestDetails(Map<String, dynamic> request) {
-    final String? assignedDriverId = request['assignedDriverId'] as String?;
-    final vehicleInfoFromRequest = request['firebaseData']['vehicleInfo'] as Map<String, dynamic>?;
-    final rideDurationInSeconds = request['firebaseData']['rideDuration'] as int? ?? 0;
-    final status = request['status'] as String;
-
-    String carType = 'غير محدد';
-    String carNumber = 'غير محدد';
-    String carModel = 'غير محدد';
-
-    if (vehicleInfoFromRequest != null) {
-      carType = vehicleInfoFromRequest['type'] ?? 'غير محدد';
-      carNumber = vehicleInfoFromRequest['plateNumber'] ?? 'غير محدد';
-      carModel = vehicleInfoFromRequest['model'] ?? 'غير محدد';
-    }
-
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       builder: (context) {
-        return StatefulBuilder(
-          builder: (BuildContext context, StateSetter setStateModal) {
-            if (vehicleInfoFromRequest == null && assignedDriverId != null && carType == 'غير محدد') {
-              _getDriverVehicleDetails(assignedDriverId).then((details) {
-                if (details != null && details['type'] != 'غير محدد') {
-                  setStateModal(() {
-                    carType = details['type'] ?? 'غير محدد';
-                    carNumber = details['plateNumber'] ?? 'غير محدد';
-                    carModel = details['model'] ?? 'غير محدد';
-                  });
-                }
-              });
-            }
-
-            return Container(
-              padding: const EdgeInsets.all(16),
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'تفاصيل الطلب #${request['id'].substring(0, 6)}',
-                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.close),
-                          onPressed: () => Navigator.pop(context),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-
-                    _buildDetailRow('القسم:', request['department']),
-                    _buildDetailRow('الموظف:', request['requesterName']),
-
-                    const Divider(height: 20),
-
-                    Text(
-                      'مسار الرحلة',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue.shade800,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    _buildDetailRow('نقطة الانطلاق (من):', request['fromLocation']),
-                    _buildDetailRow('الوجهة (إلى):', request['destination']),
-
-                    const Divider(height: 20),
-
-                    Text(
-                      'تفاصيل المركبة',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue.shade800,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-
-                    _buildDetailRow('موديل المركبة:', carModel),
-                    _buildDetailRow('نوع المركبة:', carType),
-                    _buildDetailRow('رقم اللوحة:', carNumber),
-
-                    const Divider(height: 20),
-
-                    if (status == 'COMPLETED')
-                      _buildDetailRow(
-                        'مدة الرحلة:',
-                        _formatDuration(rideDurationInSeconds),
-                      ),
-
-                    _buildDetailRow('الحالة:', _translateStatus(status)),
-                    _buildDetailRow('الأولوية:', request['priority'] == 'Urgent' ? 'عاجل' : 'عادي'),
-
-                    if (request['assignedDriverName'] != null)
-                      _buildDetailRow('السائق المخصص:', request['assignedDriverName']!),
-
-                    _buildDetailRow('وقت الطلب:', DateFormat('yyyy-MM-dd HH:mm').format(request['createdAt'] as DateTime)),
-
-                    const SizedBox(height: 20),
-
-                    // أزرار إدارة الطلب
-                    _buildActionButtons(request, status),
-
-                    const SizedBox(height: 10),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
+        return _buildRequestDetailsSheet(request);
       },
     );
   }
 
-  // 🎛️ أزرار إدارة الطلب
-  Widget _buildActionButtons(Map<String, dynamic> request, String status) {
-    return Column(
-      children: [
-        // أزرار التعيين (تظهر في جميع الحالات النشطة)
-        if (['PENDING', 'HR_PENDING', 'WAITING_FOR_DRIVER', 'ASSIGNED', 'IN_PROGRESS'].contains(status))
+  // ورقة تفاصيل الطلب
+  Widget _buildRequestDetailsSheet(Map<String, dynamic> request) {
+    final status = request['status'] as String;
+    final priority = request['priority'] as String;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // العنوان والإغلاق
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () => _manualAssignDriver(request),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    foregroundColor: Colors.white,
-                  ),
-                  child: const Text('تعيين سائق يدوياً'),
+              Text(
+                'تفاصيل الطلب',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
                 ),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () => _autoAssignFromHR(request),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
-                  ),
-                  child: const Text('توزيع تلقائي'),
-                ),
+              IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () => Navigator.pop(context),
               ),
             ],
           ),
 
-        if (['PENDING', 'HR_PENDING', 'WAITING_FOR_DRIVER', 'ASSIGNED', 'IN_PROGRESS'].contains(status))
-          const SizedBox(height: 8),
+          const SizedBox(height: 20),
 
-        // زر الإلغاء (يظهر في جميع الحالات النشطة)
-        if (['PENDING', 'HR_PENDING', 'WAITING_FOR_DRIVER', 'ASSIGNED', 'IN_PROGRESS'].contains(status))
-          ElevatedButton(
-            onPressed: () => _cancelRequest(request),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-              minimumSize: const Size(double.infinity, 50),
-            ),
-            child: const Text('إلغاء الطلب'),
+          // معلومات الأساسية
+          _buildDetailSection(
+            title: 'المعلومات الأساسية',
+            children: [
+              _buildDetailRow('القسم:', request['department']),
+              _buildDetailRow('الموظف:', request['requesterName']),
+              _buildDetailRow('الحالة:', _getStatusText(status)),
+              _buildDetailRow('الأولوية:', priority == 'Urgent' ? 'عاجل' : 'عادي'),
+            ],
           ),
 
-        // زر التحويل (يظهر فقط للطلاب المعينة والجارية)
-        if (['ASSIGNED', 'IN_PROGRESS'].contains(status))
-          ElevatedButton(
-            onPressed: () => _reassignDriver(request),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.orange,
-              foregroundColor: Colors.white,
-              minimumSize: const Size(double.infinity, 50),
-            ),
-            child: const Text('تحويل لسائق آخر'),
+          const SizedBox(height: 20),
+
+          // مسار الرحلة
+          _buildDetailSection(
+            title: 'مسار الرحلة',
+            children: [
+              _buildDetailRow('نقطة الانطلاق:', request['fromLocation']),
+              _buildDetailRow('الوجهة:', request['destination']),
+            ],
           ),
 
-        // زر الموافقة على الطلبات العاجلة
-        if (status == 'HR_PENDING' && request['priority'] == 'Urgent')
-          ElevatedButton(
-            onPressed: () {
-              _dispatchService.approveUrgentRequest(
-                widget.companyId,
-                request['id'],
-                'hr_user_id',
-                'مسؤول الموارد البشرية',
-              );
-              Navigator.pop(context);
-              _loadRequests();
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              foregroundColor: Colors.white,
-              minimumSize: const Size(double.infinity, 50),
+          const SizedBox(height: 20),
+
+          // معلومات السائق إذا موجود
+          if (request['assignedDriverName'] != null)
+            _buildDetailSection(
+              title: 'السائق',
+              children: [
+                _buildDetailRow('السائق:', request['assignedDriverName']!),
+              ],
             ),
-            child: const Text('موافقة على الطلب العاجل'),
+
+          const SizedBox(height: 20),
+
+          // وقت الإنشاء
+          _buildDetailRow(
+            'وقت الطلب:',
+            DateFormat('yyyy-MM-dd HH:mm').format(request['createdAt'] as DateTime),
           ),
+
+          const SizedBox(height: 30),
+
+          // أزرار التحكم
+          _buildActionButtons(request, status),
+        ],
+      ),
+    );
+  }
+
+  // قسم تفاصيل
+  Widget _buildDetailSection({required String title, required List<Widget> children}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Colors.blue,
+          ),
+        ),
+        const SizedBox(height: 8),
+        ...children,
       ],
     );
   }
 
-  // 📝 صف تفاصيل
+  // صف تفاصيل
   Widget _buildDetailRow(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 120,
+            width: 100,
             child: Text(
               label,
               style: const TextStyle(
@@ -1354,16 +606,442 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
               ),
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 12),
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(
-                fontSize: 16,
-              ),
+              style: const TextStyle(fontSize: 16),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // أزرار التحكم في الطلب
+  Widget _buildActionButtons(Map<String, dynamic> request, String status) {
+    return Column(
+      children: [
+        // أزرار التعيين للطلبات النشطة
+        if (['PENDING', 'HR_PENDING', 'WAITING_FOR_DRIVER'].contains(status))
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.person),
+                  label: const Text('تعيين سائق'),
+                  onPressed: () => _assignDriverManually(request),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.auto_awesome),
+                  label: const Text('توزيع تلقائي'),
+                  onPressed: () => _autoAssignRequest(request),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+        if (['PENDING', 'HR_PENDING', 'WAITING_FOR_DRIVER'].contains(status))
+          const SizedBox(height: 12),
+
+        // زر التحويل للطلاب المعينة
+        if (['ASSIGNED', 'IN_PROGRESS'].contains(status))
+          ElevatedButton.icon(
+            icon: const Icon(Icons.swap_horiz),
+            label: const Text('تحويل لسائق آخر'),
+            onPressed: () => _reassignToAnotherDriver(request),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(double.infinity, 50),
+            ),
+          ),
+
+        if (['ASSIGNED', 'IN_PROGRESS'].contains(status))
+          const SizedBox(height: 12),
+
+        // زر الإلغاء للطلبات النشطة
+        if (['PENDING', 'HR_PENDING', 'WAITING_FOR_DRIVER', 'ASSIGNED', 'IN_PROGRESS'].contains(status))
+          ElevatedButton.icon(
+            icon: const Icon(Icons.cancel),
+            label: const Text('إلغاء الطلب'),
+            onPressed: () => _cancelThisRequest(request),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(double.infinity, 50),
+            ),
+          ),
+
+        // موافقة على الطلبات العاجلة
+        if (status == 'HR_PENDING' && request['priority'] == 'Urgent')
+          ElevatedButton.icon(
+            icon: const Icon(Icons.thumb_up),
+            label: const Text('موافقة على الطلب العاجل'),
+            onPressed: () => _approveUrgentRequest(request),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(double.infinity, 50),
+            ),
+          ),
+      ],
+    );
+  }
+
+  // ========== دوال التحكم في الطلبات ==========
+
+  // تعيين سائق يدوياً
+  Future<void> _assignDriverManually(Map<String, dynamic> request) async {
+    try {
+      final availableDrivers = await _getAvailableDriversList();
+
+      if (availableDrivers.isEmpty) {
+        _showErrorSnackBar('لا يوجد سائقين متاحين حالياً');
+        return;
+      }
+
+      _showDriverSelectionDialog(request, availableDrivers);
+    } catch (error) {
+      _showErrorSnackBar('خطأ في جلب السائقين: $error');
+    }
+  }
+
+  // التوزيع التلقائي
+  Future<void> _autoAssignRequest(Map<String, dynamic> request) async {
+    try {
+      _showLoadingDialog('جاري التوزيع التلقائي...');
+
+      await _dispatchService.approveUrgentRequest(
+        widget.companyId,
+        request['id'],
+        'hr_user',
+        'مسؤول الموارد البشرية',
+      );
+
+      Navigator.pop(context); // إغلاق dialog التحميل
+      Navigator.pop(context); // إغلاق صفحة التفاصيل
+
+      _showSuccessSnackBar('تم التوزيع التلقائي بنجاح');
+      _loadRequestsData();
+    } catch (error) {
+      Navigator.pop(context); // إغلاق dialog التحميل
+      _showErrorSnackBar('خطأ في التوزيع التلقائي: $error');
+    }
+  }
+
+  // تحويل لسائق آخر
+  Future<void> _reassignToAnotherDriver(Map<String, dynamic> request) async {
+    if (request['assignedDriverId'] == null) {
+      _showErrorSnackBar('هذا الطلب غير معين لأي سائق');
+      return;
+    }
+
+    try {
+      final allDrivers = await _getAllActiveDrivers();
+      final otherDrivers = allDrivers.where((driver) =>
+      driver['id'] != request['assignedDriverId']).toList();
+
+      if (otherDrivers.isEmpty) {
+        _showErrorSnackBar('لا يوجد سائقين آخرين متاحين');
+        return;
+      }
+
+      _showReassignmentDialog(request, otherDrivers);
+    } catch (error) {
+      _showErrorSnackBar('خطأ في التحويل: $error');
+    }
+  }
+
+  // إلغاء الطلب
+  Future<void> _cancelThisRequest(Map<String, dynamic> request) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('تأكيد الإلغاء'),
+        content: const Text('هل أنت متأكد من إلغاء هذا الطلب؟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('تراجع'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('نعم، إلغاء'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        await _cancelRequestImplementation(request);
+        Navigator.pop(context); // إغلاق صفحة التفاصيل
+        _showSuccessSnackBar('تم إلغاء الطلب بنجاح');
+        _loadRequestsData();
+      } catch (error) {
+        _showErrorSnackBar('خطأ في الإلغاء: $error');
+      }
+    }
+  }
+
+  // موافقة على طلب عاجل
+  Future<void> _approveUrgentRequest(Map<String, dynamic> request) async {
+    try {
+      _showLoadingDialog('جاري الموافقة...');
+
+      await _dispatchService.approveUrgentRequest(
+        widget.companyId,
+        request['id'],
+        'hr_user',
+        'مسؤول الموارد البشرية',
+      );
+
+      Navigator.pop(context); // إغلاق dialog التحميل
+      Navigator.pop(context); // إغلاق صفحة التفاصيل
+
+      _showSuccessSnackBar('تمت الموافقة على الطلب العاجل');
+      _loadRequestsData();
+    } catch (error) {
+      Navigator.pop(context); // إغلاق dialog التحميل
+      _showErrorSnackBar('خطأ في الموافقة: $error');
+    }
+  }
+
+  // ========== دوال مساعدة ==========
+
+  // جلب السائقين المتاحين
+  Future<List<Map<String, dynamic>>> _getAvailableDriversList() async {
+    try {
+      final driversSnapshot = await _firestore
+          .collection('companies')
+          .doc(widget.companyId)
+          .collection('drivers')
+          .where('isActive', isEqualTo: true)
+          .where('isAvailable', isEqualTo: true)
+          .get();
+
+      return driversSnapshot.docs.map((doc) {
+        final data = doc.data();
+        return {
+          'id': doc.id,
+          'name': data['name'] ?? 'غير معروف',
+          'vehicleType': data['vehicleInfo']?['type'] ?? 'سيارة',
+          'completedRides': (data['completedRides'] as num?)?.toInt() ?? 0,
+        };
+      }).toList();
+    } catch (error) {
+      print('❌ خطأ في جلب السائقين: $error');
+      return [];
+    }
+  }
+
+  // جلب جميع السائقين النشطين
+  Future<List<Map<String, dynamic>>> _getAllActiveDrivers() async {
+    try {
+      final driversSnapshot = await _firestore
+          .collection('companies')
+          .doc(widget.companyId)
+          .collection('drivers')
+          .where('isActive', isEqualTo: true)
+          .get();
+
+      return driversSnapshot.docs.map((doc) {
+        final data = doc.data();
+        return {
+          'id': doc.id,
+          'name': data['name'] ?? 'غير معروف',
+          'isAvailable': data['isAvailable'] ?? true,
+          'vehicleType': data['vehicleInfo']?['type'] ?? 'سيارة',
+          'completedRides': (data['completedRides'] as num?)?.toInt() ?? 0,
+        };
+      }).toList();
+    } catch (error) {
+      print('❌ خطأ في جلب السائقين: $error');
+      return [];
+    }
+  }
+
+  // عرض dialog اختيار السائق
+  void _showDriverSelectionDialog(Map<String, dynamic> request, List<Map<String, dynamic>> drivers) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('اختر السائق'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: drivers.length,
+            itemBuilder: (context, index) {
+              final driver = drivers[index];
+              return ListTile(
+                leading: const Icon(Icons.person),
+                title: Text(driver['name']),
+                subtitle: Text('${driver['vehicleType']} - ${driver['completedRides']} مشاوير'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _assignDriverToRequest(request, driver);
+                },
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  // عرض dialog التحويل
+  void _showReassignmentDialog(Map<String, dynamic> request, List<Map<String, dynamic>> drivers) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('تحويل المشوار'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: drivers.length,
+            itemBuilder: (context, index) {
+              final driver = drivers[index];
+              final isAvailable = driver['isAvailable'] == true;
+
+              return ListTile(
+                leading: Icon(
+                  isAvailable ? Icons.check_circle : Icons.schedule,
+                  color: isAvailable ? Colors.green : Colors.orange,
+                ),
+                title: Text(driver['name']),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('${driver['vehicleType']} - ${driver['completedRides']} مشاوير'),
+                    Text(
+                      isAvailable ? 'متاح' : 'مشغول',
+                      style: TextStyle(
+                        color: isAvailable ? Colors.green : Colors.orange,
+                      ),
+                    ),
+                  ],
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _performDriverReassignment(request, driver);
+                },
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  // تعيين السائق للطلب
+  Future<void> _assignDriverToRequest(Map<String, dynamic> request, Map<String, dynamic> driver) async {
+    try {
+      _showLoadingDialog('جاري التعيين...');
+
+      await _dispatchService.assignToSpecificDriver(
+        widget.companyId,
+        request['id'],
+        driver['id'],
+        driver['name'],
+        'hr_user',
+        'مسؤول الموارد البشرية',
+      );
+
+      Navigator.pop(context); // إغلاق dialog التحميل
+      Navigator.pop(context); // إغلاق صفحة التفاصيل
+
+      _showSuccessSnackBar('تم تعيين السائق ${driver['name']}');
+      _loadRequestsData();
+    } catch (error) {
+      Navigator.pop(context); // إغلاق dialog التحميل
+      _showErrorSnackBar('خطأ في التعيين: $error');
+    }
+  }
+
+  // تنفيذ تحويل السائق
+  Future<void> _performDriverReassignment(Map<String, dynamic> request, Map<String, dynamic> newDriver) async {
+    try {
+      _showLoadingDialog('جاري التحويل...');
+
+      await _dispatchService.reassignDriver(
+          widget.companyId,
+          request['id'],
+          newDriver['id'],
+          newDriver['name'],
+          'hr_user',
+          'مسؤول الموارد البشرية',
+          'تحويل من قبل الموارد البشرية'
+      );
+
+      Navigator.pop(context); // إغلاق dialog التحميل
+      Navigator.pop(context); // إغلاق صفحة التفاصيل
+
+      _showSuccessSnackBar('تم التحويل إلى السائق ${newDriver['name']}');
+      _loadRequestsData();
+    } catch (error) {
+      Navigator.pop(context); // إغلاق dialog التحميل
+      _showErrorSnackBar('خطأ في التحويل: $error');
+    }
+  }
+
+  // تنفيذ إلغاء الطلب
+  Future<void> _cancelRequestImplementation(Map<String, dynamic> request) async {
+    final assignedDriverId = request['assignedDriverId'] as String?;
+
+    // تحرير السائق إذا كان معيناً
+    if (assignedDriverId != null && assignedDriverId.isNotEmpty) {
+      await _firestore
+          .collection('companies')
+          .doc(widget.companyId)
+          .collection('drivers')
+          .doc(assignedDriverId)
+          .update({
+        'isAvailable': true,
+        'currentRequestId': null,
+      });
+    }
+
+    // تحديث حالة الطلب
+    await _firestore
+        .collection('companies')
+        .doc(widget.companyId)
+        .collection('requests')
+        .doc(request['id'])
+        .update({
+      'status': 'CANCELLED',
+      'cancelledBy': 'HR',
+      'cancelledAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  // عرض dialog تحميل
+  void _showLoadingDialog(String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        content: Row(
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(width: 16),
+            Text(message),
+          ],
+        ),
       ),
     );
   }

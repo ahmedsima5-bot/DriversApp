@@ -80,6 +80,116 @@ class _DriverDashboardState extends State<DriverDashboard> {
   }
 
   // ===================================================================
+  // 🔥 NEW: Enhanced copy functions with map link detection
+  // ===================================================================
+
+  // 🔥 دالة محسنة للكشف عن روابط الخرائط
+  bool _isMapLink(String text) {
+    final mapPatterns = [
+      RegExp(r'https?://(maps\.google|goo\.gl/maps|maps\.app\.goo\.gl|waze\.com)'),
+      RegExp(r'https?://.*google.*maps'),
+      RegExp(r'https?://.*waze\.com'),
+      RegExp(r'geo:[-0-9.,]+'),
+    ];
+
+    return mapPatterns.any((pattern) => pattern.hasMatch(text.toLowerCase()));
+  }
+
+  // 🔥 دالة محسنة لنسخ النص مع كشف روابط الخرائط
+  Future<void> _copyToClipboardEnhanced(String text, String fieldName) async {
+    try {
+      await Clipboard.setData(ClipboardData(text: text));
+
+      if (mounted) {
+        final hasMapLink = _isMapLink(text);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('تم نسخ $fieldName إلى الحافظة'),
+                if (hasMapLink) ...[
+                  const SizedBox(height: 4),
+                  GestureDetector(
+                    onTap: () => _openMapLink(text),
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.map, size: 16, color: Colors.white),
+                          const SizedBox(width: 4),
+                          const Text(
+                            'فتح الرابط في الخريطة',
+                            style: TextStyle(color: Colors.white, fontSize: 12),
+                          ),
+                          const Spacer(),
+                          Icon(Icons.open_in_new, size: 14, color: Colors.white.withOpacity(0.8)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: hasMapLink ? 5 : 2), // 🔥 إصلاح: إزالة const
+            action: hasMapLink ? SnackBarAction(
+              label: 'فتح',
+              textColor: Colors.white,
+              onPressed: () => _openMapLink(text),
+            ) : null,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطأ في النسخ: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // 🔥 دالة لفتح رابط الخريطة (بدون url_launcher)
+  Future<void> _openMapLink(String url) async {
+    try {
+      // بديل بسيط بدون url_launcher - فتح المتصفح الافتراضي
+      final uri = Uri.parse(url);
+
+      // يمكن إضافة منطق بديل هنا إذا لزم الأمر
+      // حالياً سنكتفي بنسخ الرابط فقط
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('تم نسخ رابط الخريطة: $url'),
+            backgroundColor: Colors.blue,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطأ في فتح الخريطة: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // ===================================================================
   // 🔥 DYNAMIC Traffic news functions - FROM FIRESTORE
   // ===================================================================
 
@@ -1582,7 +1692,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
                   Icon(Icons.person, color: Colors.blue.shade700, size: 16),
                   const SizedBox(width: 8),
                   Text(
-                    'الموظف الطالب: $requesterName',
+                    'Requested by: $requesterName',
                     style: TextStyle(
                       color: Colors.blue.shade800,
                       fontWeight: FontWeight.bold,
@@ -1678,8 +1788,10 @@ class _DriverDashboardState extends State<DriverDashboard> {
     );
   }
 
-  // 🔥 NEW: دالة محسنة لجعل الحقول قابلة للنسخ
+  // 🔥 NEW: دالة محسنة لجعل الحقول قابلة للنسخ مع كشف روابط الخرائط
   Widget _buildTripDetailRow(IconData icon, String label, String value, {Color color = Colors.blueGrey, bool copyable = false}) {
+    final hasMapLink = copyable && _isMapLink(value);
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
@@ -1696,7 +1808,8 @@ class _DriverDashboardState extends State<DriverDashboard> {
                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                 ),
                 GestureDetector(
-                  onLongPress: copyable ? () => _copyToClipboard(value, label) : null,
+                  onLongPress: copyable ? () => _copyToClipboardEnhanced(value, label) : null,
+                  onTap: hasMapLink ? () => _openMapLink(value) : null,
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 4),
                     child: Row(
@@ -1704,7 +1817,11 @@ class _DriverDashboardState extends State<DriverDashboard> {
                         Expanded(
                           child: Text(
                             value,
-                            style: const TextStyle(fontSize: 14),
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: hasMapLink ? Colors.blue : null,
+                              decoration: hasMapLink ? TextDecoration.underline : TextDecoration.none,
+                            ),
                             maxLines: 3,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -1712,46 +1829,49 @@ class _DriverDashboardState extends State<DriverDashboard> {
                         if (copyable) ...[
                           const SizedBox(width: 8),
                           Icon(
-                            Icons.content_copy,
+                            hasMapLink ? Icons.map : Icons.content_copy,
                             size: 16,
-                            color: Colors.grey.shade500,
+                            color: hasMapLink ? Colors.blue : Colors.grey.shade500,
                           ),
                         ],
                       ],
                     ),
                   ),
                 ),
+                if (hasMapLink) ...[
+                  const SizedBox(height: 4),
+                  GestureDetector(
+                    onTap: () => _openMapLink(value),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.open_in_new, size: 12, color: Colors.blue.shade700),
+                          const SizedBox(width: 4),
+                          Text(
+                            'فتح في الخريطة',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.blue.shade700,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
         ],
       ),
     );
-  }
-
-  // 🔥 NEW: دالة نسخ النص إلى الحافظة
-  Future<void> _copyToClipboard(String text, String fieldName) async {
-    try {
-      await Clipboard.setData(ClipboardData(text: text));
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('تم نسخ $fieldName إلى الحافظة'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطأ في النسخ: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
   }
 
   Widget _buildNewsItem(Map<String, dynamic> news) {

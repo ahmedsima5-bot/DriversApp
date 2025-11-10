@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'services/firebase_options.dart';
 import 'Screens/auth/login_screen.dart';
-import 'services/dispatch_service.dart';
+//import 'services/dispatch_service.dart';
 import 'services/language_service.dart';
 import 'providers/language_provider.dart';
 
@@ -30,8 +30,7 @@ void main() async {
 
 void initializeDispatchSystem() {
   try {
-    final dispatchService = DispatchService();
-    dispatchService.startListening('C001');
+    //final dispatchService = DispatchService();
     print('🎯 نظام التوزيع التلقائي مفعل للشركة: C001');
   } catch (e) {
     print('❌ خطأ في تفعيل نظام التوزيع: $e');

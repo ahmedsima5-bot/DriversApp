@@ -12,6 +12,7 @@ dependencies:
         sdk: flutter
 
     # 🔥 الحزم الأساسية
+    url_launcher: ^6.1.11
     http: ^1.1.0
     flutter_localizations:
         sdk: flutter
