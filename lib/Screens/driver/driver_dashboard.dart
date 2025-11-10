@@ -5,6 +5,7 @@ import '../../services/simple_notification_service.dart';
 import 'dart:async';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter/services.dart'; // 🔥 إضافة لنسخ النص
+import 'package:url_launcher/url_launcher.dart';
 
 class DriverDashboard extends StatefulWidget {
   final String userName;
@@ -162,30 +163,19 @@ class _DriverDashboardState extends State<DriverDashboard> {
   // 🔥 دالة لفتح رابط الخريطة (بدون url_launcher)
   Future<void> _openMapLink(String url) async {
     try {
-      // بديل بسيط بدون url_launcher - فتح المتصفح الافتراضي
-      final uri = Uri.parse(url);
-
-      // يمكن إضافة منطق بديل هنا إذا لزم الأمر
-      // حالياً سنكتفي بنسخ الرابط فقط
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('تم نسخ رابط الخريطة: $url'),
-            backgroundColor: Colors.blue,
-            duration: const Duration(seconds: 3),
-          ),
-        );
+      if (await canLaunch(url)) {
+        await launch(url);
+      } else {
+        throw 'Could not launch $url';
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطأ في فتح الخريطة: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      // بديل إذا فشل فتح الرابط
+      await Clipboard.setData(ClipboardData(text: url));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('تم نسخ الرابط: $url'),
+        ),
+      );
     }
   }
 
