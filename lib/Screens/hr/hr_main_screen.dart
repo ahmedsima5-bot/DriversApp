@@ -4,7 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'hr_requests_screen.dart';
 import 'hr_drivers_management.dart';
 import 'hr_reports_screen.dart';
-import 'hr_dashboard.dart';
+import 'hr_control_panel.dart';
 // 💡 استيراد شاشة طلب جديد (يجب التأكد من المسار الصحيح لديك)
 import '../requester/new_request_screen.dart';
 
@@ -215,7 +215,7 @@ class _HRMainScreenState extends State<HRMainScreen> {
               const SizedBox(height: 20),
               Text(
                 // 💡 ترحيب باسم المستخدم
-                'مرحباً بك يا ${_currentUserName}',
+                'مرحباً بك يا $_currentUserName',
                 style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                 textAlign: TextAlign.center,
               ),
