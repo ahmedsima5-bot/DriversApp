@@ -4,7 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../../services/simple_notification_service.dart';
 import 'dart:async';
 import 'package:geolocator/geolocator.dart';
-import 'package:flutter/services.dart'; // 🔥 إضافة لنسخ النص
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class DriverDashboard extends StatefulWidget {
@@ -27,35 +27,35 @@ class _DriverDashboardState extends State<DriverDashboard> {
   bool _driverProfileExists = false;
   StreamSubscription? _requestsSubscription;
 
-  // 🔥 Location tracking variables
+  // Location tracking variables
   StreamSubscription<Position>? _positionStreamSubscription;
   bool _isLocationServiceEnabled = true;
 
-  // 🔥 Vehicles system
+  // Vehicles system
   List<Map<String, dynamic>> _availableVehicles = [];
   bool _loadingVehicles = false;
 
-  // 🔥 Ride timers
+  // Ride timers
   final Map<String, Timer> _activeTimers = {};
   final Map<String, Duration> _rideDurations = {};
   final Map<String, DateTime> _rideStartTimes = {};
 
-  // 🔥 New overall statistics
+  // Overall statistics
   int _totalCompletedRides = 0;
   int _totalAssignedRides = 0;
   bool _loadingStatistics = false;
 
-  // 🔥 Traffic news - NOW DYNAMIC
+  // Traffic news
   List<Map<String, dynamic>> _trafficNews = [];
   bool _loadingNews = false;
   StreamSubscription? _trafficNewsSubscription;
 
-  // 🔥 Manual vehicle input controllers
+  // Manual vehicle input controllers
   final TextEditingController _manualModelController = TextEditingController();
   final TextEditingController _manualPlateController = TextEditingController();
   final TextEditingController _manualTypeController = TextEditingController(text: 'Car');
 
-  // 🔥 NEW: Transfer request variables
+  // Transfer request variables
   bool _transferringRequest = false;
 
   @override
@@ -80,11 +80,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
     super.dispose();
   }
 
-  // ===================================================================
-  // 🔥 NEW: Enhanced copy functions with map link detection
-  // ===================================================================
-
-  // 🔥 دالة محسنة للكشف عن روابط الخرائط
+  // Enhanced copy functions with map link detection
   bool _isMapLink(String text) {
     final mapPatterns = [
       RegExp(r'https?://(maps\.google|goo\.gl/maps|maps\.app\.goo\.gl|waze\.com)'),
@@ -92,25 +88,21 @@ class _DriverDashboardState extends State<DriverDashboard> {
       RegExp(r'https?://.*waze\.com'),
       RegExp(r'geo:[-0-9.,]+'),
     ];
-
     return mapPatterns.any((pattern) => pattern.hasMatch(text.toLowerCase()));
   }
 
-  // 🔥 دالة محسنة لنسخ النص مع كشف روابط الخرائط
   Future<void> _copyToClipboardEnhanced(String text, String fieldName) async {
     try {
       await Clipboard.setData(ClipboardData(text: text));
-
       if (mounted) {
         final hasMapLink = _isMapLink(text);
-
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('تم نسخ $fieldName إلى الحافظة'),
+                Text('Copied $fieldName to clipboard'),
                 if (hasMapLink) ...[
                   const SizedBox(height: 4),
                   GestureDetector(
@@ -126,7 +118,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
                           const Icon(Icons.map, size: 16, color: Colors.white),
                           const SizedBox(width: 4),
                           const Text(
-                            'فتح الرابط في الخريطة',
+                            'Open in Maps',
                             style: TextStyle(color: Colors.white, fontSize: 12),
                           ),
                           const Spacer(),
@@ -139,9 +131,9 @@ class _DriverDashboardState extends State<DriverDashboard> {
               ],
             ),
             backgroundColor: Colors.green,
-            duration: Duration(seconds: hasMapLink ? 5 : 2), // 🔥 إصلاح: إزالة const
+            duration: Duration(seconds: hasMapLink ? 5 : 2),
             action: hasMapLink ? SnackBarAction(
-              label: 'فتح',
+              label: 'Open',
               textColor: Colors.white,
               onPressed: () => _openMapLink(text),
             ) : null,
@@ -152,7 +144,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('خطأ في النسخ: $e'),
+            content: Text('Copy error: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -160,7 +152,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
     }
   }
 
-  // 🔥 دالة لفتح رابط الخريطة (بدون url_launcher)
   Future<void> _openMapLink(String url) async {
     try {
       if (await canLaunch(url)) {
@@ -169,20 +160,16 @@ class _DriverDashboardState extends State<DriverDashboard> {
         throw 'Could not launch $url';
       }
     } catch (e) {
-      // بديل إذا فشل فتح الرابط
       await Clipboard.setData(ClipboardData(text: url));
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('تم نسخ الرابط: $url'),
+          content: Text('Link copied: $url'),
         ),
       );
     }
   }
 
-  // ===================================================================
-  // 🔥 DYNAMIC Traffic news functions - FROM FIRESTORE
-  // ===================================================================
-
+  // Traffic news functions
   void _startTrafficNewsListener() {
     _trafficNewsSubscription = _firestore
         .collection('trafficNews')
@@ -207,7 +194,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
         });
       }
     }, onError: (error) {
-      debugPrint('❌ Error listening to traffic news: $error');
+      debugPrint('Error listening to traffic news: $error');
       _loadMockTrafficNews();
     });
   }
@@ -231,22 +218,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
           'priority': 'medium',
           'region': 'Central'
         },
-        {
-          'id': '3',
-          'title': 'Road Closure',
-          'description': 'Temporary closure on Exit 12 for maintenance until 6 PM.',
-          'timestamp': Timestamp.now(),
-          'priority': 'high',
-          'region': 'Riyadh'
-        },
-        {
-          'id': '4',
-          'title': 'Accident Reported',
-          'description': 'Minor accident on Northern Ring Road. Use alternative routes.',
-          'timestamp': Timestamp.now(),
-          'priority': 'medium',
-          'region': 'Riyadh'
-        },
       ];
       _loadingNews = false;
     });
@@ -256,7 +227,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
     final now = DateTime.now();
     final time = timestamp.toDate();
     final difference = now.difference(time);
-
     if (difference.inMinutes < 1) return 'Just now';
     if (difference.inMinutes < 60) return '${difference.inMinutes} min ago';
     if (difference.inHours < 24) return '${difference.inHours} hours ago';
@@ -265,34 +235,23 @@ class _DriverDashboardState extends State<DriverDashboard> {
 
   Color _getPriorityColor(String priority) {
     switch (priority) {
-      case 'high':
-        return Colors.red;
-      case 'medium':
-        return Colors.orange;
-      case 'low':
-        return Colors.blue;
-      default:
-        return Colors.grey;
+      case 'high': return Colors.red;
+      case 'medium': return Colors.orange;
+      case 'low': return Colors.blue;
+      default: return Colors.grey;
     }
   }
 
   IconData _getPriorityIcon(String priority) {
     switch (priority) {
-      case 'high':
-        return Icons.warning;
-      case 'medium':
-        return Icons.info;
-      case 'low':
-        return Icons.traffic;
-      default:
-        return Icons.traffic;
+      case 'high': return Icons.warning;
+      case 'medium': return Icons.info;
+      case 'low': return Icons.traffic;
+      default: return Icons.traffic;
     }
   }
 
-  // ===================================================================
-  // 🔥 Location tracking functions
-  // ===================================================================
-
+  // Location tracking functions
   Future<void> _checkLocationPermissionsAndStart() async {
     bool serviceEnabled;
     LocationPermission permission;
@@ -329,18 +288,17 @@ class _DriverDashboardState extends State<DriverDashboard> {
 
     _positionStreamSubscription = Geolocator.getPositionStream(locationSettings: locationSettings).listen(
           (Position position) {
-        debugPrint('🌍 Location Updated: ${position.latitude}, ${position.longitude}');
+        debugPrint('Location Updated: ${position.latitude}, ${position.longitude}');
         _updateDriverLocationInFirestore(position);
       },
       onError: (e) {
-        debugPrint('❌ Location Stream Error: $e');
+        debugPrint('Location Stream Error: $e');
       },
     );
   }
 
   Future<void> _updateDriverLocationInFirestore(Position position) async {
     if (_driverId == null || _companyId == null) return;
-
     try {
       await _firestore
           .collection('companies')
@@ -356,21 +314,15 @@ class _DriverDashboardState extends State<DriverDashboard> {
         'lastUpdated': FieldValue.serverTimestamp(),
       });
     } catch (e) {
-      debugPrint('❌ Error updating driver location: $e');
+      debugPrint('Error updating driver location: $e');
     }
   }
 
-  // ===================================================================
-  // 🔥 Overall statistics functions
-  // ===================================================================
-
+  // Overall statistics functions
   Future<void> _loadTotalStatistics() async {
     if (_companyId == null || _driverId == null) return;
-
     try {
-      setState(() {
-        _loadingStatistics = true;
-      });
+      setState(() { _loadingStatistics = true; });
 
       final completedSnapshot = await _firestore
           .collection('companies')
@@ -393,27 +345,17 @@ class _DriverDashboardState extends State<DriverDashboard> {
         _totalAssignedRides = assignedSnapshot.docs.length;
         _loadingStatistics = false;
       });
-
-      debugPrint('✅ Total Statistics - Completed: $_totalCompletedRides, Assigned: $_totalAssignedRides');
     } catch (e) {
-      setState(() {
-        _loadingStatistics = false;
-      });
-      debugPrint('❌ Error loading total statistics: $e');
+      setState(() { _loadingStatistics = false; });
+      debugPrint('Error loading total statistics: $e');
     }
   }
 
-  // ===================================================================
-  // 🔥 Other functions
-  // ===================================================================
-
+  // Vehicle functions
   Future<void> _loadAvailableVehicles() async {
     if (_companyId == null) return;
     try {
-      setState(() {
-        _loadingVehicles = true;
-      });
-
+      setState(() { _loadingVehicles = true; });
       final vehiclesSnapshot = await _firestore
           .collection('companies')
           .doc(_companyId)
@@ -433,20 +375,15 @@ class _DriverDashboardState extends State<DriverDashboard> {
         }).toList();
         _loadingVehicles = false;
       });
-
-      debugPrint('✅ Loaded ${_availableVehicles.length} available vehicles');
     } catch (e) {
-      setState(() {
-        _loadingVehicles = false;
-      });
-      debugPrint('❌ Error loading vehicles: $e');
+      setState(() { _loadingVehicles = false; });
+      debugPrint('Error loading vehicles: $e');
     }
   }
 
   void _startRideTimer(String requestId, DateTime startTime) {
     _activeTimers[requestId]?.cancel();
     _rideStartTimes[requestId] = startTime;
-
     _activeTimers[requestId] = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (mounted) {
         setState(() {
@@ -468,14 +405,9 @@ class _DriverDashboardState extends State<DriverDashboard> {
     final hours = duration.inHours;
     final minutes = duration.inMinutes.remainder(60);
     final seconds = duration.inSeconds.remainder(60);
-
-    if (hours > 0) {
-      return '${hours}h ${minutes}m ${seconds}s';
-    } else if (minutes > 0) {
-      return '${minutes}m ${seconds}s';
-    } else {
-      return '${seconds}s';
-    }
+    if (hours > 0) return '${hours}h ${minutes}m ${seconds}s';
+    if (minutes > 0) return '${minutes}m ${seconds}s';
+    return '${seconds}s';
   }
 
   void _startRequestsListener() {
@@ -492,7 +424,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
           final requestId = change.doc.id;
           final assignedDriverId = request['assignedDriverId'] as String?;
           final status = request['status'] as String?;
-
           if (assignedDriverId == _driverId) {
             _handleRequestNotification(requestId, request, status ?? 'ASSIGNED', change.type);
           }
@@ -512,7 +443,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
             ? (request['rideStartTime'] as Timestamp).toDate()
             : DateTime.now();
         _startRideTimer(requestId, rideStartTime);
-
         SimpleNotificationService.notifyRideStarted(context, requestId);
       } else if (status == 'COMPLETED') {
         _stopRideTimer(requestId);
@@ -527,8 +457,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
     try {
       final user = _auth.currentUser;
       if (user != null) {
-        debugPrint('👤 Checking driver existence...');
-
         const companyId = 'C001';
         final driversSnapshot = await _firestore
             .collection('companies')
@@ -542,22 +470,15 @@ class _DriverDashboardState extends State<DriverDashboard> {
           _driverId = driverDoc.id;
           _companyId = companyId;
           _driverProfileExists = true;
-
           _loadAvailableVehicles();
           _loadTotalStatistics();
-
           _checkLocationPermissionsAndStart();
-
-          debugPrint('✅ Driver found: $_driverId');
         } else {
-          setState(() {
-            _driverProfileExists = false;
-          });
-          debugPrint('❌ No driver record found - needs activation');
+          setState(() { _driverProfileExists = false; });
         }
       }
     } catch (e) {
-      debugPrint('❌ Error checking driver: $e');
+      debugPrint('Error checking driver: $e');
     }
   }
 
@@ -594,17 +515,13 @@ class _DriverDashboardState extends State<DriverDashboard> {
 
         _loadAvailableVehicles();
         _loadTotalStatistics();
-
         SimpleNotificationService.notifySuccess(context, 'Driver account activated successfully');
-
-        debugPrint('✅ Driver record created: $driverId');
         _loadDriverRequests();
         _startRequestsListener();
-
         _checkLocationPermissionsAndStart();
       }
     } catch (e) {
-      debugPrint('❌ Error creating driver record: $e');
+      debugPrint('Error creating driver record: $e');
       SimpleNotificationService.notifyError(context, 'Error activating account: $e');
     }
   }
@@ -613,201 +530,79 @@ class _DriverDashboardState extends State<DriverDashboard> {
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.directions_car, color: Colors.blue),
-            SizedBox(width: 8),
-            Text('Select Vehicle'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Choose vehicle for the ride',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            if (_loadingVehicles)
-              const CircularProgressIndicator()
-            else if (_availableVehicles.isEmpty)
-              const Column(
-                children: [
-                  Icon(Icons.car_repair, size: 50, color: Colors.grey),
-                  SizedBox(height: 8),
-                  Text(
-                    'No available vehicles',
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              )
-            else
-              Column(
-                children: [
-                  ..._availableVehicles
-                      .map((vehicle) => ListTile(
-                    leading: const Icon(Icons.directions_car, color: Colors.green),
-                    title: Text(vehicle['model'] ?? 'N/A'),
-                    subtitle: Text('${vehicle['plateNumber'] ?? 'N/A'} - ${vehicle['type'] ?? 'N/A'}'),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _startRideWithVehicle(requestId, vehicle);
-                    },
-                  ))
-                      .toList(),
-                  const SizedBox(height: 8),
-                  const Divider(),
-                ],
-              ),
-            const SizedBox(height: 8),
-            ListTile(
-              leading: const Icon(Icons.add, color: Colors.orange),
-              title: const Text('Other vehicle'),
-              onTap: () {
-                Navigator.pop(context);
-                _showManualVehicleDialog(requestId);
-              },
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+        title: const Row(children: [Icon(Icons.directions_car, color: Colors.blue), SizedBox(width: 8), Text('Select Vehicle')]),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text('Choose vehicle for the ride', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 16),
+          if (_loadingVehicles) const CircularProgressIndicator()
+          else if (_availableVehicles.isEmpty) const Column(children: [
+            Icon(Icons.car_repair, size: 50, color: Colors.grey), SizedBox(height: 8), Text('No available vehicles', textAlign: TextAlign.center),
+          ])
+          else Column(children: [
+              ..._availableVehicles.map((vehicle) => ListTile(
+                leading: const Icon(Icons.directions_car, color: Colors.green),
+                title: Text(vehicle['model'] ?? 'N/A'),
+                subtitle: Text('${vehicle['plateNumber'] ?? 'N/A'} - ${vehicle['type'] ?? 'N/A'}'),
+                onTap: () { Navigator.pop(context); _startRideWithVehicle(requestId, vehicle); },
+              )).toList(), const SizedBox(height: 8), const Divider(),
+            ]),
+          const SizedBox(height: 8),
+          ListTile(
+            leading: const Icon(Icons.add, color: Colors.orange),
+            title: const Text('Other vehicle'),
+            onTap: () { Navigator.pop(context); _showManualVehicleDialog(requestId); },
           ),
-        ],
+        ]),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel'))],
       ),
     );
   }
 
   Future<void> _showManualVehicleDialog(String requestId) async {
-    await showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          return AlertDialog(
-            title: const Row(
-              children: [
-                Icon(Icons.directions_car, color: Colors.orange),
-                SizedBox(width: 8),
-                Text('Enter Vehicle Information'),
-              ],
-            ),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextFormField(
-                    controller: _manualModelController,
-                    decoration: const InputDecoration(
-                      labelText: 'Vehicle Model',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.directions_car),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _manualPlateController,
-                    decoration: const InputDecoration(
-                      labelText: 'Plate Number',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.confirmation_number),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _manualTypeController,
-                    decoration: const InputDecoration(
-                      labelText: 'Vehicle Type',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.category),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  _manualModelController.clear();
-                  _manualPlateController.clear();
-                  _manualTypeController.text = 'Car';
-                },
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  if (_manualModelController.text.isEmpty || _manualPlateController.text.isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Please enter vehicle information'),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
-                    return;
-                  }
-
-                  Navigator.pop(context);
-                  _startRideWithManualVehicle(requestId);
-                },
-                child: const Text('Start Ride'),
-              ),
-            ],
-          );
-        },
-      ),
-    );
+    await showDialog(context: context, builder: (context) => StatefulBuilder(builder: (context, setDialogState) {
+      return AlertDialog(
+        title: const Row(children: [Icon(Icons.directions_car, color: Colors.orange), SizedBox(width: 8), Text('Enter Vehicle Information')]),
+        content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextFormField(controller: _manualModelController, decoration: const InputDecoration(labelText: 'Vehicle Model', border: OutlineInputBorder(), prefixIcon: Icon(Icons.directions_car))),
+          const SizedBox(height: 12),
+          TextFormField(controller: _manualPlateController, decoration: const InputDecoration(labelText: 'Plate Number', border: OutlineInputBorder(), prefixIcon: Icon(Icons.confirmation_number))),
+          const SizedBox(height: 12),
+          TextFormField(controller: _manualTypeController, decoration: const InputDecoration(labelText: 'Vehicle Type', border: OutlineInputBorder(), prefixIcon: Icon(Icons.category))),
+        ])),
+        actions: [
+          TextButton(onPressed: () { Navigator.pop(context); _manualModelController.clear(); _manualPlateController.clear(); _manualTypeController.text = 'Car'; }, child: const Text('Cancel')),
+          ElevatedButton(onPressed: () { if (_manualModelController.text.isEmpty || _manualPlateController.text.isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter vehicle information'), backgroundColor: Colors.red)); return; } Navigator.pop(context); _startRideWithManualVehicle(requestId); }, child: const Text('Start Ride')),
+        ],
+      );
+    }));
   }
 
   Future<void> _startRideWithVehicle(String requestId, Map<String, dynamic> vehicle) async {
     if (_companyId == null) return;
     try {
       final startTime = DateTime.now();
-
       final vehicleId = vehicle['id'] ?? 'N/A';
       final model = vehicle['model'] ?? 'Not specified';
       final plateNumber = vehicle['plateNumber'] ?? 'Not specified';
       final type = vehicle['type'] ?? 'Car';
 
-      await _firestore
-          .collection('companies')
-          .doc(_companyId)
-          .collection('requests')
-          .doc(requestId)
-          .update({
-        'status': 'IN_PROGRESS',
-        'rideStartTime': FieldValue.serverTimestamp(),
-        'vehicleInfo': {
-          'vehicleId': vehicleId,
-          'model': model,
-          'plateNumber': plateNumber,
-          'type': type,
-          'source': 'fleet',
-        },
-        'lastUpdated': FieldValue.serverTimestamp(),
+      await _firestore.collection('companies').doc(_companyId).collection('requests').doc(requestId).update({
+        'status': 'IN_PROGRESS', 'rideStartTime': FieldValue.serverTimestamp(), 'lastUpdated': FieldValue.serverTimestamp(),
+        'vehicleInfo': {'vehicleId': vehicleId, 'model': model, 'plateNumber': plateNumber, 'type': type, 'source': 'fleet'},
       });
 
       if (vehicleId != 'N/A' && !vehicleId.startsWith('manual_')) {
-        await _firestore
-            .collection('companies')
-            .doc(_companyId)
-            .collection('vehicles')
-            .doc(vehicleId)
-            .update({
-          'isAvailable': false,
-          'currentRequestId': requestId,
+        await _firestore.collection('companies').doc(_companyId).collection('vehicles').doc(vehicleId).update({
+          'isAvailable': false, 'currentRequestId': requestId,
         });
       }
 
       _startRideTimer(requestId, startTime);
       SimpleNotificationService.notifyRideStarted(context, requestId);
-
-      debugPrint('🚗 Ride started: $requestId with vehicle: $plateNumber');
       _loadDriverRequests();
       _loadAvailableVehicles();
     } catch (e) {
-      debugPrint('❌ Error starting ride: $e');
+      debugPrint('Error starting ride: $e');
       SimpleNotificationService.notifyError(context, 'Error starting ride: $e');
     }
   }
@@ -816,93 +611,48 @@ class _DriverDashboardState extends State<DriverDashboard> {
     if (_companyId == null) return;
     try {
       final startTime = DateTime.now();
-
-      await _firestore
-          .collection('companies')
-          .doc(_companyId)
-          .collection('requests')
-          .doc(requestId)
-          .update({
-        'status': 'IN_PROGRESS',
-        'rideStartTime': FieldValue.serverTimestamp(),
-        'vehicleInfo': {
-          'vehicleId': 'manual_${DateTime.now().millisecondsSinceEpoch}',
-          'model': _manualModelController.text,
-          'plateNumber': _manualPlateController.text,
-          'type': _manualTypeController.text,
-          'source': 'manual',
-        },
-        'lastUpdated': FieldValue.serverTimestamp(),
+      await _firestore.collection('companies').doc(_companyId).collection('requests').doc(requestId).update({
+        'status': 'IN_PROGRESS', 'rideStartTime': FieldValue.serverTimestamp(), 'lastUpdated': FieldValue.serverTimestamp(),
+        'vehicleInfo': {'vehicleId': 'manual_${DateTime.now().millisecondsSinceEpoch}', 'model': _manualModelController.text, 'plateNumber': _manualPlateController.text, 'type': _manualTypeController.text, 'source': 'manual'},
       });
 
       _startRideTimer(requestId, startTime);
       SimpleNotificationService.notifyRideStarted(context, requestId);
-
-      _manualModelController.clear();
-      _manualPlateController.clear();
-      _manualTypeController.text = 'Car';
-
-      debugPrint('🚗 Ride started: $requestId with manual vehicle');
+      _manualModelController.clear(); _manualPlateController.clear(); _manualTypeController.text = 'Car';
       _loadDriverRequests();
     } catch (e) {
-      debugPrint('❌ Error starting ride with manual vehicle: $e');
+      debugPrint('Error starting ride with manual vehicle: $e');
       SimpleNotificationService.notifyError(context, 'Error starting ride: $e');
     }
   }
 
-  Future<void> _startRide(String requestId) async {
-    await _showVehicleSelectionDialog(requestId);
-  }
+  Future<void> _startRide(String requestId) async { await _showVehicleSelectionDialog(requestId); }
 
   Future<void> _loadDriverRequests() async {
     try {
-      setState(() {
-        _loading = true;
-        _requests = [];
-      });
-
+      setState(() { _loading = true; _requests = []; });
       final user = _auth.currentUser;
-      if (user == null) {
-        setState(() {
-          _loading = false;
-        });
-        return;
-      }
+      if (user == null) { setState(() { _loading = false; }); return; }
 
       const companyId = 'C001';
-      final driversSnapshot = await _firestore
-          .collection('companies')
-          .doc(companyId)
-          .collection('drivers')
-          .where('email', isEqualTo: user.email)
-          .get();
+      final driversSnapshot = await _firestore.collection('companies').doc(companyId).collection('drivers').where('email', isEqualTo: user.email).get();
 
       if (driversSnapshot.docs.isNotEmpty) {
         final driverDoc = driversSnapshot.docs.first;
-        final driverId = driverDoc.id;
-
-        _driverId = driverId;
-        _companyId = companyId;
-
-        if (_companyId == null) {
-          setState(() { _loading = false; });
-          return;
-        }
+        _driverId = driverDoc.id; _companyId = companyId;
+        if (_companyId == null) { setState(() { _loading = false; }); return; }
 
         final now = DateTime.now();
         final todayStart = DateTime(now.year, now.month, now.day);
         final todayEnd = DateTime(now.year, now.month, now.day, 23, 59, 59);
 
         final requestsSnapshot = await _firestore
-            .collection('companies')
-            .doc(_companyId)
-            .collection('requests')
-            .where('assignedDriverId', isEqualTo: driverId)
+            .collection('companies').doc(_companyId).collection('requests')
+            .where('assignedDriverId', isEqualTo: _driverId)
             .where('status', whereIn: ['ASSIGNED', 'IN_PROGRESS', 'COMPLETED'])
             .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(todayStart))
             .where('createdAt', isLessThanOrEqualTo: Timestamp.fromDate(todayEnd))
-            .orderBy('createdAt', descending: true)
-            .get();
+            .orderBy('createdAt', descending: true).get();
 
         for (var doc in requestsSnapshot.docs) {
           final data = doc.data() as Map<String, dynamic>? ?? {};
@@ -912,34 +662,11 @@ class _DriverDashboardState extends State<DriverDashboard> {
           }
         }
 
-        setState(() {
-          _requests = requestsSnapshot.docs;
-          _loading = false;
-        });
-
-        debugPrint('✅ Today\'s assigned requests count: ${_requests.length}');
-      } else {
-        setState(() {
-          _loading = false;
-          _requests = [];
-        });
-        debugPrint('❌ Driver data not found in company C001');
-      }
+        setState(() { _requests = requestsSnapshot.docs; _loading = false; });
+      } else { setState(() { _loading = false; _requests = []; }); }
     } catch (e) {
-      setState(() {
-        _loading = false;
-        _requests = [];
-      });
-      debugPrint('❌ Error loading requests: $e');
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error loading requests: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      setState(() { _loading = false; _requests = []; });
+      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error loading requests: $e'), backgroundColor: Colors.red)); }
     }
   }
 
@@ -947,1484 +674,486 @@ class _DriverDashboardState extends State<DriverDashboard> {
     if (_companyId == null || _driverId == null) return;
     try {
       _stopRideTimer(requestId);
-
       final endTime = DateTime.now();
       final startTime = _rideStartTimes[requestId];
       final totalDuration = startTime != null ? endTime.difference(startTime) : Duration.zero;
 
-      final requestDoc = await _firestore
-          .collection('companies')
-          .doc(_companyId)
-          .collection('requests')
-          .doc(requestId)
-          .get();
-
+      final requestDoc = await _firestore.collection('companies').doc(_companyId).collection('requests').doc(requestId).get();
       final requestData = requestDoc.data() ?? {};
       final vehicleInfo = requestData['vehicleInfo'] as Map<String, dynamic>? ?? {};
-      final vehicleId = vehicleInfo['vehicleId'] as String?;
-      final source = vehicleInfo['source'] as String?;
+      final vehicleId = vehicleInfo['vehicleId'] as String?; final source = vehicleInfo['source'] as String?;
 
-      await _firestore
-          .collection('companies')
-          .doc(_companyId)
-          .collection('requests')
-          .doc(requestId)
-          .update({
-        'status': 'COMPLETED',
-        'rideEndTime': FieldValue.serverTimestamp(),
-        'rideDuration': totalDuration.inSeconds,
-        'lastUpdated': FieldValue.serverTimestamp(),
+      await _firestore.collection('companies').doc(_companyId).collection('requests').doc(requestId).update({
+        'status': 'COMPLETED', 'rideEndTime': FieldValue.serverTimestamp(), 'rideDuration': totalDuration.inSeconds, 'lastUpdated': FieldValue.serverTimestamp(),
       });
 
       if (source == 'fleet' && vehicleId != null && !vehicleId.startsWith('manual_')) {
-        await _firestore
-            .collection('companies')
-            .doc(_companyId)
-            .collection('vehicles')
-            .doc(vehicleId)
-            .update({
-          'isAvailable': true,
-          'currentRequestId': null,
+        await _firestore.collection('companies').doc(_companyId).collection('vehicles').doc(vehicleId).update({
+          'isAvailable': true, 'currentRequestId': null,
         });
       }
 
-      await _firestore
-          .collection('companies')
-          .doc(_companyId)
-          .collection('drivers')
-          .doc(_driverId)
-          .update({
-        'isAvailable': true,
-        'completedRides': FieldValue.increment(1),
-        'lastStatusUpdate': FieldValue.serverTimestamp(),
+      await _firestore.collection('companies').doc(_companyId).collection('drivers').doc(_driverId).update({
+        'isAvailable': true, 'completedRides': FieldValue.increment(1), 'lastStatusUpdate': FieldValue.serverTimestamp(),
       });
 
       SimpleNotificationService.notifyRideCompleted(context, requestId);
-
-      debugPrint('✅ Ride completed: $requestId - Duration: ${totalDuration.inMinutes} minutes');
-      _loadDriverRequests();
-      _loadAvailableVehicles();
-      _loadTotalStatistics();
+      _loadDriverRequests(); _loadAvailableVehicles(); _loadTotalStatistics();
     } catch (e) {
-      debugPrint('❌ Error completing ride: $e');
+      debugPrint('Error completing ride: $e');
       SimpleNotificationService.notifyError(context, 'Error completing ride: $e');
     }
   }
 
-  // ===================================================================
-  // 🔥 NEW: Transfer request functions - MODIFIED
-  // ===================================================================
-
+  // Transfer request functions
   Future<void> _transferRequestToAnotherDriver(String requestId, Map<String, dynamic> requestData) async {
     if (_companyId == null || _driverId == null) return;
-
     try {
-      setState(() {
-        _transferringRequest = true;
-      });
-
-      // 🔥 MODIFIED: جلب جميع السائقين النشطين (بغض النظر عن حالتهم)
+      setState(() { _transferringRequest = true; });
       final availableDrivers = await _getAllActiveDriversForTransfer();
-
       if (availableDrivers.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('لا يوجد سائقين آخرين في النظام'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
-        setState(() {
-          _transferringRequest = false;
-        });
-        return;
+        if (mounted) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No other drivers in system'), backgroundColor: Colors.orange)); }
+        setState(() { _transferringRequest = false; }); return;
       }
-
-      // عرض قائمة السائقين للتحويل
       await _showDriverTransferDialog(requestId, requestData, availableDrivers);
-
     } catch (e) {
-      debugPrint('❌ Error in transfer request: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطأ في تحويل الطلب: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      setState(() {
-        _transferringRequest = false;
-      });
-    }
+      debugPrint('Error in transfer request: $e');
+      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Transfer error: $e'), backgroundColor: Colors.red)); }
+    } finally { setState(() { _transferringRequest = false; }); }
   }
 
-  // 🔥 NEW: دالة محسنة لجلب جميع السائقين النشطين (بما فيهم المشغولين)
   Future<List<Map<String, dynamic>>> _getAllActiveDriversForTransfer() async {
     try {
       final driversSnapshot = await _firestore
-          .collection('companies')
-          .doc(_companyId)
-          .collection('drivers')
-          .where('isActive', isEqualTo: true)
-          .where('driverId', isNotEqualTo: _driverId) // استبعاد السائق الحالي
-          .get();
-
+          .collection('companies').doc(_companyId).collection('drivers')
+          .where('isActive', isEqualTo: true).where('driverId', isNotEqualTo: _driverId).get();
       return driversSnapshot.docs.map((doc) {
         final data = doc.data() as Map<String, dynamic>? ?? {};
         return {
-          'id': doc.id,
-          'name': data['name'] ?? 'غير معروف',
-          'email': data['email'] ?? '',
-          'phone': data['phone'] ?? '',
-          'isAvailable': data['isAvailable'] ?? false,
-          'isOnline': data['isOnline'] ?? false,
-          'completedRides': data['completedRides'] ?? 0,
-          'rating': (data['rating'] as num?)?.toDouble() ?? 5.0,
-          'currentRequestId': data['currentRequestId'],
+          'id': doc.id, 'name': data['name'] ?? 'Unknown', 'email': data['email'] ?? '', 'phone': data['phone'] ?? '',
+          'isAvailable': data['isAvailable'] ?? false, 'isOnline': data['isOnline'] ?? false, 'completedRides': data['completedRides'] ?? 0,
+          'rating': (data['rating'] as num?)?.toDouble() ?? 5.0, 'currentRequestId': data['currentRequestId'],
         };
       }).toList();
-    } catch (e) {
-      debugPrint('❌ Error loading all active drivers: $e');
-
-      // 🔥 بديل إذا فشل الاستعلام المعقد
-      return await _getSimpleDriversList();
-    }
+    } catch (e) { return await _getSimpleDriversList(); }
   }
 
-  // 🔥 NEW: دالة بديلة بسيطة لجلب السائقين
   Future<List<Map<String, dynamic>>> _getSimpleDriversList() async {
     try {
-      final driversSnapshot = await _firestore
-          .collection('companies')
-          .doc(_companyId)
-          .collection('drivers')
-          .where('driverId', isNotEqualTo: _driverId)
-          .get();
-
+      final driversSnapshot = await _firestore.collection('companies').doc(_companyId).collection('drivers').where('driverId', isNotEqualTo: _driverId).get();
       return driversSnapshot.docs.map((doc) {
         final data = doc.data() as Map<String, dynamic>? ?? {};
         return {
-          'id': doc.id,
-          'name': data['name'] ?? 'غير معروف',
-          'email': data['email'] ?? '',
-          'phone': data['phone'] ?? '',
-          'isAvailable': data['isAvailable'] ?? false,
-          'isOnline': data['isOnline'] ?? false,
-          'completedRides': data['completedRides'] ?? 0,
+          'id': doc.id, 'name': data['name'] ?? 'Unknown', 'email': data['email'] ?? '', 'phone': data['phone'] ?? '',
+          'isAvailable': data['isAvailable'] ?? false, 'isOnline': data['isOnline'] ?? false, 'completedRides': data['completedRides'] ?? 0,
         };
       }).toList();
-    } catch (e) {
-      debugPrint('❌ Error loading simple drivers list: $e');
-      return [];
-    }
+    } catch (e) { return []; }
   }
 
-  Future<void> _showDriverTransferDialog(
-      String requestId,
-      Map<String, dynamic> requestData,
-      List<Map<String, dynamic>> availableDrivers,
-      ) async {
-    await showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.swap_horiz, color: Colors.orange),
-            SizedBox(width: 8),
-            Text('تحويل الطلب لسائق آخر'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'اختر السائق الذي تريد تحويل الطلب إليه:',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            if (availableDrivers.isEmpty)
-              const Text('لا يوجد سائقين متاحين حالياً')
-            else
-              ...availableDrivers.map((driver) => ListTile(
-                leading: _getDriverStatusIcon(driver),
-                title: Text(driver['name']),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('${driver['completedRides']} مشاوير مكتملة'),
-                    Text(
-                      driver['isAvailable'] == true ? '🟢 متاح' : '🔴 مشغول',
-                      style: TextStyle(
-                        color: driver['isAvailable'] == true ? Colors.green : Colors.red,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-                trailing: const Icon(Icons.arrow_forward, color: Colors.blue),
-                onTap: () {
-                  Navigator.pop(context);
-                  _confirmTransfer(requestId, requestData, driver);
-                },
-              )).toList(),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('إلغاء'),
-          ),
-        ],
-      ),
-    );
+  Future<void> _showDriverTransferDialog(String requestId, Map<String, dynamic> requestData, List<Map<String, dynamic>> availableDrivers) async {
+    await showDialog(context: context, builder: (context) => AlertDialog(
+      title: const Row(children: [Icon(Icons.swap_horiz, color: Colors.orange), SizedBox(width: 8), Text('Transfer Request')]),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        const Text('Choose driver to transfer request to:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 16),
+        if (availableDrivers.isEmpty) const Text('No available drivers')
+        else ...availableDrivers.map((driver) => ListTile(
+          leading: _getDriverStatusIcon(driver), title: Text(driver['name']), trailing: const Icon(Icons.arrow_forward, color: Colors.blue),
+          subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${driver['completedRides']} completed rides'),
+            Text(driver['isAvailable'] == true ? '🟢 Available' : '🔴 Busy', style: TextStyle(color: driver['isAvailable'] == true ? Colors.green : Colors.red, fontWeight: FontWeight.bold)),
+          ]), onTap: () { Navigator.pop(context); _confirmTransfer(requestId, requestData, driver); },
+        )).toList(),
+      ]), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel'))],
+    ));
   }
 
-  // 🔥 NEW: دالة للحصول على أيقونة حالة السائق
   Widget _getDriverStatusIcon(Map<String, dynamic> driver) {
-    if (driver['isAvailable'] == true) {
-      return const Icon(Icons.person, color: Colors.green);
-    } else {
-      return const Icon(Icons.person, color: Colors.orange);
-    }
+    return Icon(Icons.person, color: driver['isAvailable'] == true ? Colors.green : Colors.orange);
   }
 
-  Future<void> _confirmTransfer(
-      String requestId,
-      Map<String, dynamic> requestData,
-      Map<String, dynamic> newDriver,
-      ) async {
-    final bool? confirmed = await showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('تأكيد التحويل'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('هل أنت متأكد من تحويل الطلب إلى السائق:'),
-            const SizedBox(height: 8),
-            Text(
-              newDriver['name'],
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-            ),
-            const SizedBox(height: 8),
-            Text('رقم الطلب: ${requestId.substring(0, 8)}'),
-            const SizedBox(height: 8),
-            if (newDriver['isAvailable'] != true)
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.orange.shade100,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Text(
-                  '⚠️ ملاحظة: هذا السائق مشغول حالياً',
-                  style: TextStyle(color: Colors.orange),
-                ),
-              ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('إلغاء'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-            child: const Text('تأكيد التحويل'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true) {
-      await _executeTransfer(requestId, requestData, newDriver);
-    }
+  Future<void> _confirmTransfer(String requestId, Map<String, dynamic> requestData, Map<String, dynamic> newDriver) async {
+    final bool? confirmed = await showDialog(context: context, builder: (context) => AlertDialog(
+      title: const Text('Confirm Transfer'), content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text('Are you sure you want to transfer request to:'), const SizedBox(height: 8),
+      Text(newDriver['name'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), const SizedBox(height: 8),
+      Text('Request ID: ${requestId.substring(0, 8)}'), const SizedBox(height: 8),
+      if (newDriver['isAvailable'] != true) Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.orange.shade100, borderRadius: BorderRadius.circular(8)), child: const Text('⚠️ Note: This driver is currently busy', style: TextStyle(color: Colors.orange))),
+    ]), actions: [
+      TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+      ElevatedButton(onPressed: () => Navigator.pop(context, true), style: ElevatedButton.styleFrom(backgroundColor: Colors.orange), child: const Text('Confirm Transfer')),
+    ],
+    ));
+    if (confirmed == true) { await _executeTransfer(requestId, requestData, newDriver); }
   }
 
-  Future<void> _executeTransfer(
-      String requestId,
-      Map<String, dynamic> requestData,
-      Map<String, dynamic> newDriver,
-      ) async {
+  Future<void> _executeTransfer(String requestId, Map<String, dynamic> requestData, Map<String, dynamic> newDriver) async {
     try {
-      // 🔥 IMPORTANT: منع تحويل الطلبات التي بدأ تنفيذها
       if (requestData['status'] == 'IN_PROGRESS') {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('❌ لا يمكن تحويل الطلب بعد بدء التنفيذ'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-        return;
+        if (mounted) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('❌ Cannot transfer request after starting'), backgroundColor: Colors.red)); } return;
       }
-
-      // تحديث حالة الطلب في Firebase
-      await _firestore
-          .collection('companies')
-          .doc(_companyId)
-          .collection('requests')
-          .doc(requestId)
-          .update({
-        'previousDriverId': _driverId,
-        'previousDriverName': widget.userName,
-        'assignedDriverId': newDriver['id'],
-        'assignedDriverName': newDriver['name'],
-        'status': 'ASSIGNED',
-        'transferReason': 'تم التحويل من قبل السائق',
-        'transferredAt': FieldValue.serverTimestamp(),
-        'transferredBy': _driverId,
-        'lastUpdated': FieldValue.serverTimestamp(),
+      await _firestore.collection('companies').doc(_companyId).collection('requests').doc(requestId).update({
+        'previousDriverId': _driverId, 'previousDriverName': widget.userName, 'assignedDriverId': newDriver['id'], 'assignedDriverName': newDriver['name'],
+        'status': 'ASSIGNED', 'transferReason': 'Transferred by driver', 'transferredAt': FieldValue.serverTimestamp(), 'transferredBy': _driverId, 'lastUpdated': FieldValue.serverTimestamp(),
       });
-
-      // تحرير السائق الحالي
-      await _firestore
-          .collection('companies')
-          .doc(_companyId)
-          .collection('drivers')
-          .doc(_driverId)
-          .update({
-        'isAvailable': true,
-        'currentRequestId': null,
-        'lastStatusUpdate': FieldValue.serverTimestamp(),
+      await _firestore.collection('companies').doc(_companyId).collection('drivers').doc(_driverId).update({
+        'isAvailable': true, 'currentRequestId': null, 'lastStatusUpdate': FieldValue.serverTimestamp(),
       });
-
-      // تعيين السائق الجديد
-      await _firestore
-          .collection('companies')
-          .doc(_companyId)
-          .collection('drivers')
-          .doc(newDriver['id'])
-          .update({
-        'isAvailable': false,
-        'currentRequestId': requestId,
-        'lastStatusUpdate': FieldValue.serverTimestamp(),
+      await _firestore.collection('companies').doc(_companyId).collection('drivers').doc(newDriver['id']).update({
+        'isAvailable': false, 'currentRequestId': requestId, 'lastStatusUpdate': FieldValue.serverTimestamp(),
       });
-
-      // إشعار السائق الجديد
       await _notifyNewDriverAboutTransfer(requestId, newDriver, requestData);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('✅ تم تحويل الطلب بنجاح إلى ${newDriver['name']}'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-
-      debugPrint('✅ Request transferred: $requestId from $_driverId to ${newDriver['id']}');
-
-      // إعادة تحميل البيانات
-      _loadDriverRequests();
-      _loadTotalStatistics();
-
+      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('✅ Request transferred to ${newDriver['name']}'), backgroundColor: Colors.green)); }
+      _loadDriverRequests(); _loadTotalStatistics();
     } catch (e) {
-      debugPrint('❌ Error executing transfer: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطأ في تحويل الطلب: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      debugPrint('Error executing transfer: $e');
+      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Transfer error: $e'), backgroundColor: Colors.red)); }
     }
   }
 
-  Future<void> _notifyNewDriverAboutTransfer(
-      String requestId,
-      Map<String, dynamic> newDriver,
-      Map<String, dynamic> requestData,
-      ) async {
+  Future<void> _notifyNewDriverAboutTransfer(String requestId, Map<String, dynamic> newDriver, Map<String, dynamic> requestData) async {
     try {
       final notificationData = {
-        'type': 'request_transfer',
-        'requestId': requestId,
-        'fromDriver': widget.userName,
-        'fromLocation': requestData['fromLocation'] ?? 'غير محدد',
-        'toLocation': requestData['toLocation'] ?? 'غير محدد',
-        'priority': requestData['priority'] ?? 'Normal',
-        'timestamp': FieldValue.serverTimestamp(),
+        'type': 'request_transfer', 'requestId': requestId, 'fromDriver': widget.userName,
+        'fromLocation': requestData['fromLocation'] ?? 'Not specified', 'toLocation': requestData['toLocation'] ?? 'Not specified',
+        'priority': requestData['priority'] ?? 'Normal', 'timestamp': FieldValue.serverTimestamp(),
       };
-
-      await _firestore
-          .collection('companies')
-          .doc(_companyId)
-          .collection('drivers')
-          .doc(newDriver['id'])
-          .collection('notifications')
-          .add(notificationData);
-
-      debugPrint('📧 Transfer notification sent to ${newDriver['name']}');
-    } catch (e) {
-      debugPrint('❌ Error sending transfer notification: $e');
-    }
+      await _firestore.collection('companies').doc(_companyId).collection('drivers').doc(newDriver['id']).collection('notifications').add(notificationData);
+    } catch (e) { debugPrint('Error sending transfer notification: $e'); }
   }
 
-  // ===================================================================
-  // 🔥 UI Functions
-  // ===================================================================
-
+  // UI Functions
   Future<void> _logout() async {
     try {
       if (_driverId != null && _companyId != null) {
-        await _firestore
-            .collection('companies')
-            .doc(_companyId)
-            .collection('drivers')
-            .doc(_driverId)
-            .update({
-          'isOnline': false,
-          'lastStatusUpdate': FieldValue.serverTimestamp(),
+        await _firestore.collection('companies').doc(_companyId).collection('drivers').doc(_driverId).update({
+          'isOnline': false, 'lastStatusUpdate': FieldValue.serverTimestamp(),
         });
       }
-
       await _auth.signOut();
-
       SimpleNotificationService.notifySuccess(context, 'Logged out successfully');
-
       Navigator.pushReplacementNamed(context, '/login');
     } catch (e) {
-      debugPrint('❌ Error logging out: $e');
+      debugPrint('Error logging out: $e');
       SimpleNotificationService.notifyError(context, 'Error logging out: $e');
     }
   }
 
   void _showProfile() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.person, color: Colors.orange),
-            SizedBox(width: 8),
-            Text('My Profile'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildProfileRow('Name:', widget.userName),
-            _buildProfileRow('Email:', _auth.currentUser?.email ?? ''),
-            _buildProfileRow('Driver ID:', _driverId ?? 'Not specified'),
-            _buildProfileRow('Status:', 'Human Resources'),
-            if (_driverProfileExists) ...[
-              _buildProfileRow(
-                'Today\'s Completed:',
-                _requests
-                    .where((r) {
-                  final data = r.data() as Map<String, dynamic>? ?? {};
-                  return data['status'] == 'COMPLETED';
-                })
-                    .length
-                    .toString(),
-              ),
-              _buildProfileRow(
-                'Total Completed:',
-                _totalCompletedRides.toString(),
-              ),
-            ],
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
+    showDialog(context: context, builder: (context) => AlertDialog(
+      title: const Row(children: [Icon(Icons.person, color: Colors.orange), SizedBox(width: 8), Text('My Profile')]),
+      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _buildProfileRow('Name:', widget.userName), _buildProfileRow('Email:', _auth.currentUser?.email ?? ''),
+        _buildProfileRow('Driver ID:', _driverId ?? 'Not specified'), _buildProfileRow('Status:', 'Human Resources'),
+        if (_driverProfileExists) ...[
+          _buildProfileRow('Today\'s Completed:', _requests.where((r) { final data = r.data() as Map<String, dynamic>? ?? {}; return data['status'] == 'COMPLETED'; }).length.toString()),
+          _buildProfileRow('Total Completed:', _totalCompletedRides.toString()),
         ],
-      ),
-    );
+      ]), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
+    ));
   }
 
   Widget _buildProfileRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          Text('$label ', style: const TextStyle(fontWeight: FontWeight.bold)),
-          Expanded(child: Text(value)),
-        ],
-      ),
-    );
+    return Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Row(children: [
+      Text('$label ', style: const TextStyle(fontWeight: FontWeight.bold)), Expanded(child: Text(value)),
+    ]));
   }
 
   void _showMyRequests() {
-    if (_requests.isEmpty) {
-      _showNoRequestsDialog();
-    } else {
-      _showRequestsBottomSheet();
-    }
+    if (_requests.isEmpty) { _showNoRequestsDialog(); } else { _showRequestsBottomSheet(); }
   }
 
   void _showNoRequestsDialog() {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.inventory_2, color: Colors.orange),
-              SizedBox(width: 8),
-              Text('No Requests'),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('No requests assigned to you currently'),
-              const SizedBox(height: 16),
-              if (!_driverProfileExists)
-                ElevatedButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    _createDriverProfile();
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    foregroundColor: Colors.white,
-                  ),
-                  child: const Text('Activate Driver Account'),
-                ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Close'),
-            ),
-          ],
-        );
-      },
-    );
+    showDialog(context: context, builder: (context) => AlertDialog(
+      title: const Row(children: [Icon(Icons.inventory_2, color: Colors.orange), SizedBox(width: 8), Text('No Requests')]),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        const Text('No requests assigned to you currently'), const SizedBox(height: 16),
+        if (!_driverProfileExists) ElevatedButton(onPressed: () { Navigator.pop(context); _createDriverProfile(); }, style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white), child: const Text('Activate Driver Account')),
+      ]), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+    ));
   }
 
   void _showRequestsBottomSheet() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) {
-        final activeRequests = _requests.where((r) {
-          final data = r.data() as Map<String, dynamic>? ?? {};
-          return data['status'] != 'COMPLETED';
-        }).toList();
-
-        final completedRequests = _requests.where((r) {
-          final data = r.data() as Map<String, dynamic>? ?? {};
-          return data['status'] == 'COMPLETED';
-        }).toList();
-
-        return DefaultTabController(
-          length: 2,
-          child: Container(
-            constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.9),
-            child: Scaffold(
-              appBar: AppBar(
-                title: const Text('My Requests'),
-                automaticallyImplyLeading: false,
-                actions: [
-                  IconButton(
-                    icon: const Icon(Icons.refresh),
-                    onPressed: _loadDriverRequests,
-                    tooltip: 'Refresh',
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(context),
-                    tooltip: 'Close',
-                  ),
-                ],
-                bottom: TabBar(
-                  tabs: [
-                    Tab(text: 'Active Requests (${activeRequests.length})'),
-                    Tab(text: 'Completed Requests (${completedRequests.length})'),
-                  ],
-                ),
-              ),
-              body: TabBarView(
-                children: [
-                  _buildRequestsList(activeRequests),
-                  _buildRequestsList(completedRequests),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
+    showModalBottomSheet(context: context, isScrollControlled: true, builder: (context) {
+      final activeRequests = _requests.where((r) { final data = r.data() as Map<String, dynamic>? ?? {}; return data['status'] != 'COMPLETED'; }).toList();
+      final completedRequests = _requests.where((r) { final data = r.data() as Map<String, dynamic>? ?? {}; return data['status'] == 'COMPLETED'; }).toList();
+      return DefaultTabController(length: 2, child: Container(constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.9), child: Scaffold(
+        appBar: AppBar(title: const Text('My Requests'), automaticallyImplyLeading: false, actions: [
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadDriverRequests, tooltip: 'Refresh'),
+          IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context), tooltip: 'Close'),
+        ], bottom: TabBar(tabs: [
+          Tab(text: 'Active Requests (${activeRequests.length})'), Tab(text: 'Completed Requests (${completedRequests.length})'),
+        ])), body: TabBarView(children: [_buildRequestsList(activeRequests), _buildRequestsList(completedRequests)]),
+      )));
+    });
   }
 
   Widget _buildRequestsList(List<QueryDocumentSnapshot> requests) {
-    if (requests.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(32.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.assignment_turned_in_outlined, size: 60, color: Colors.grey),
-              SizedBox(height: 16),
-              Text(
-                'No requests currently',
-                style: TextStyle(fontSize: 18, color: Colors.grey),
-                textAlign: TextAlign.center,
-              ),
-              SizedBox(height: 8),
-              Text(
-                'Requests will appear here when assigned to you',
-                style: TextStyle(fontSize: 14, color: Colors.grey),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return ListView.builder(
-      itemCount: requests.length,
-      itemBuilder: (context, index) {
-        final doc = requests[index];
-        final data = doc.data() as Map<String, dynamic>? ?? {};
-        return _buildRequestCard(doc.id, data);
-      },
-    );
+    if (requests.isEmpty) return const Center(child: Padding(padding: EdgeInsets.all(32.0), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+      Icon(Icons.assignment_turned_in_outlined, size: 60, color: Colors.grey), SizedBox(height: 16),
+      Text('No requests currently', style: TextStyle(fontSize: 18, color: Colors.grey), textAlign: TextAlign.center), SizedBox(height: 8),
+      Text('Requests will appear here when assigned to you', style: TextStyle(fontSize: 14, color: Colors.grey), textAlign: TextAlign.center),
+    ])));
+    return ListView.builder(itemCount: requests.length, itemBuilder: (context, index) {
+      final doc = requests[index]; final data = doc.data() as Map<String, dynamic>? ?? {};
+      return _buildRequestCard(doc.id, data);
+    });
   }
 
   Widget _buildRequestCard(String requestId, Map<String, dynamic> requestData) {
-    final status = requestData['status'] as String? ?? 'UNKNOWN';
-    final from = requestData['fromLocation'] as String? ?? 'N/A';
-    final to = requestData['toLocation'] as String? ?? 'N/A';
-    final department = requestData['department'] as String? ?? 'N/A';
-    final priority = requestData['priority'] as String? ?? 'Normal';
-    final isUrgent = priority == 'Urgent';
-    final notes = requestData['details'] as String? ?? requestData['additionalDetails'] as String? ?? '';
+    final status = requestData['status'] as String? ?? 'UNKNOWN'; final from = requestData['fromLocation'] as String? ?? 'N/A'; final to = requestData['toLocation'] as String? ?? 'N/A';
+    final department = requestData['department'] as String? ?? 'N/A'; final priority = requestData['priority'] as String? ?? 'Normal'; final isUrgent = priority == 'Urgent';
+    final notes = requestData['details'] as String? ?? requestData['additionalDetails'] as String? ?? ''; final requesterName = requestData['requesterName'] as String? ?? 'Unknown';
+    final isCompleted = status == 'COMPLETED'; final isInProgress = status == 'IN_PROGRESS'; final isAssigned = status == 'ASSIGNED';
 
-    // 🔥 NEW: إضافة اسم الموظف الطالب
-    final requesterName = requestData['requesterName'] as String? ?? 'غير معروف';
-
-    final isCompleted = status == 'COMPLETED';
-    final isInProgress = status == 'IN_PROGRESS';
-    final isAssigned = status == 'ASSIGNED';
-
-    Color statusColor = Colors.grey;
-    IconData statusIcon = Icons.help_outline;
-    String statusText = '';
-
+    Color statusColor = Colors.grey; IconData statusIcon = Icons.help_outline; String statusText = '';
     switch (status) {
-      case 'ASSIGNED':
-        statusColor = Colors.blue.shade600;
-        statusIcon = Icons.assignment_turned_in;
-        statusText = 'Assigned';
-        break;
-      case 'IN_PROGRESS':
-        statusColor = Colors.orange.shade700;
-        statusIcon = Icons.schedule;
-        statusText = 'In Progress';
-        break;
-      case 'COMPLETED':
-        statusColor = Colors.green.shade700;
-        statusIcon = Icons.check_circle;
-        statusText = 'Completed';
-        break;
+      case 'ASSIGNED': statusColor = Colors.blue.shade600; statusIcon = Icons.assignment_turned_in; statusText = 'Assigned'; break;
+      case 'IN_PROGRESS': statusColor = Colors.orange.shade700; statusIcon = Icons.schedule; statusText = 'In Progress'; break;
+      case 'COMPLETED': statusColor = Colors.green.shade700; statusIcon = Icons.check_circle; statusText = 'Completed'; break;
     }
 
-    return Card(
-      margin: const EdgeInsets.all(8),
-      elevation: 4,
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Chip(
-                  label: Text(
-                    statusText,
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                  ),
-                  avatar: Icon(statusIcon, color: Colors.white, size: 18),
-                  backgroundColor: statusColor,
-                ),
-                if (isUrgent)
-                  Chip(
-                    label: const Text('Urgent'),
-                    backgroundColor: Colors.red.shade600,
-                    labelStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text(
-              '#$requestId',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-            ),
-
-            // 🔥 NEW: إضافة اسم الموظف الطالب
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.person, color: Colors.blue.shade700, size: 16),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Requested by: $requesterName',
-                    style: TextStyle(
-                      color: Colors.blue.shade800,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const Divider(),
-            _buildTripDetailRow(Icons.location_on, 'From', from, color: Colors.green),
-            _buildTripDetailRow(Icons.flag, 'To', to, color: Colors.red, copyable: true), // 🔥 قابل للنسخ
-            _buildTripDetailRow(Icons.business, 'Department', department),
-            if (notes.isNotEmpty)
-              _buildTripDetailRow(Icons.notes, 'Notes', notes, copyable: true), // 🔥 قابل للنسخ
-
-            if (isInProgress)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8.0),
-                child: Row(
-                  children: [
-                    const Icon(Icons.timer, color: Colors.purple, size: 20),
-                    const SizedBox(width: 8),
-                    const Text(
-                      'Ride Duration: ',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    Text(
-                      _formatDuration(_rideDurations[requestId] ?? Duration.zero),
-                      style: const TextStyle(color: Colors.purple, fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-              ),
-
-            const SizedBox(height: 10),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                if (status == 'ASSIGNED')
-                  Row(
-                    children: [
-                      // 🔥 NEW: Transfer button (only for ASSIGNED requests)
-                      if (!_transferringRequest)
-                        IconButton(
-                          onPressed: () => _transferRequestToAnotherDriver(requestId, requestData),
-                          icon: const Icon(Icons.swap_horiz, color: Colors.orange),
-                          tooltip: 'Transfer to another driver',
-                        ),
-
-                      ElevatedButton.icon(
-                        onPressed: _loading ? null : () => _startRide(requestId),
-                        icon: const Icon(Icons.play_arrow),
-                        label: const Text('Start Ride'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          foregroundColor: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                if (isInProgress)
-                  ElevatedButton.icon(
-                    onPressed: _loading ? null : () => _completeRide(requestId),
-                    icon: const Icon(Icons.stop),
-                    label: const Text('End Ride'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
-                      foregroundColor: Colors.white,
-                    ),
-                  ),
-                if (isCompleted)
-                  TextButton.icon(
-                    onPressed: null,
-                    icon: const Icon(Icons.history, color: Colors.grey),
-                    label: const Text('Completed'),
-                  ),
-              ],
-            ),
-
-            // 🔥 NEW: Transfer status indicator
-            if (_transferringRequest)
-              const Padding(
-                padding: EdgeInsets.only(top: 8.0),
-                child: LinearProgressIndicator(
-                  backgroundColor: Colors.orangeAccent,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.orange),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
+    return Card(margin: const EdgeInsets.all(8), elevation: 4, child: Padding(padding: const EdgeInsets.all(16.0), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        Chip(label: Text(statusText, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)), avatar: Icon(statusIcon, color: Colors.white, size: 18), backgroundColor: statusColor),
+        if (isUrgent) Chip(label: const Text('Urgent'), backgroundColor: Colors.red.shade600, labelStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+      ]), const SizedBox(height: 10), Text('#$requestId', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+      const SizedBox(height: 8), Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(8)), child: Row(children: [
+        Icon(Icons.person, color: Colors.blue.shade700, size: 16), const SizedBox(width: 8), Text('Requested by: $requesterName', style: TextStyle(color: Colors.blue.shade800, fontWeight: FontWeight.bold)),
+        const Spacer(), Icon(Icons.business, color: Colors.blue.shade700, size: 16), const SizedBox(width: 8), Text('Department: $department', style: TextStyle(color: Colors.blue.shade800, fontWeight: FontWeight.bold)),
+      ])), const Divider(),
+      _buildTripDetailRow(Icons.location_on, 'From', from, color: Colors.green), _buildTripDetailRow(Icons.flag, 'To', to, color: Colors.red, copyable: true),
+      if (notes.isNotEmpty) _buildTripDetailRow(Icons.speaker_notes_outlined, 'Notes', notes, copyable: true),
+      if (isInProgress) Padding(padding: const EdgeInsets.symmetric(vertical: 8.0), child: Row(children: [
+        const Icon(Icons.timer, color: Colors.purple, size: 20), const SizedBox(width: 8), const Text('Ride Duration: ', style: TextStyle(fontWeight: FontWeight.bold)),
+        Text(_formatDuration(_rideDurations[requestId] ?? Duration.zero), style: const TextStyle(color: Colors.purple, fontWeight: FontWeight.bold)),
+      ])), const SizedBox(height: 10), Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+        if (status == 'ASSIGNED') Row(children: [
+          if (!_transferringRequest) IconButton(onPressed: () => _transferRequestToAnotherDriver(requestId, requestData), icon: const Icon(Icons.swap_horiz, color: Colors.orange), tooltip: 'Transfer to another driver'),
+          ElevatedButton.icon(onPressed: _loading ? null : () => _startRide(requestId), icon: const Icon(Icons.play_arrow), label: const Text('Start Ride'), style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white)),
+        ]), if (isInProgress) ElevatedButton.icon(onPressed: _loading ? null : () => _completeRide(requestId), icon: const Icon(Icons.stop), label: const Text('End Ride'), style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white)),
+        if (isCompleted) TextButton.icon(onPressed: null, icon: const Icon(Icons.history, color: Colors.grey), label: const Text('Completed')),
+      ]), if (_transferringRequest) const Padding(padding: EdgeInsets.only(top: 8.0), child: LinearProgressIndicator(backgroundColor: Colors.orangeAccent, valueColor: AlwaysStoppedAnimation<Color>(Colors.orange))),
+    ])));
   }
 
-  // 🔥 NEW: دالة محسنة لجعل الحقول قابلة للنسخ مع كشف روابط الخرائط
   Widget _buildTripDetailRow(IconData icon, String label, String value, {Color color = Colors.blueGrey, bool copyable = false}) {
     final hasMapLink = copyable && _isMapLink(value);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '$label: ',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                ),
-                GestureDetector(
-                  onLongPress: copyable ? () => _copyToClipboardEnhanced(value, label) : null,
-                  onTap: hasMapLink ? () => _openMapLink(value) : null,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            value,
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: hasMapLink ? Colors.blue : null,
-                              decoration: hasMapLink ? TextDecoration.underline : TextDecoration.none,
-                            ),
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (copyable) ...[
-                          const SizedBox(width: 8),
-                          Icon(
-                            hasMapLink ? Icons.map : Icons.content_copy,
-                            size: 16,
-                            color: hasMapLink ? Colors.blue : Colors.grey.shade500,
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-                if (hasMapLink) ...[
-                  const SizedBox(height: 4),
-                  GestureDetector(
-                    onTap: () => _openMapLink(value),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.shade50,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.open_in_new, size: 12, color: Colors.blue.shade700),
-                          const SizedBox(width: 4),
-                          Text(
-                            'فتح في الخريطة',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: Colors.blue.shade700,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
+    return Padding(padding: const EdgeInsets.symmetric(vertical: 4.0), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Icon(icon, color: color, size: 20), const SizedBox(width: 8), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('$label: ', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+        GestureDetector(onLongPress: copyable ? () => _copyToClipboardEnhanced(value, label) : null, onTap: hasMapLink ? () => _openMapLink(value) : null, child: Container(padding: const EdgeInsets.symmetric(vertical: 4), child: Row(children: [
+          Expanded(child: Text(value, style: TextStyle(fontSize: 14, color: hasMapLink ? Colors.blue : null, decoration: hasMapLink ? TextDecoration.underline : TextDecoration.none), maxLines: 3, overflow: TextOverflow.ellipsis)),
+          if (copyable) ...[const SizedBox(width: 8), Icon(hasMapLink ? Icons.map : Icons.content_copy, size: 16, color: hasMapLink ? Colors.blue : Colors.grey.shade500)],
+        ]))), if (hasMapLink) ...[const SizedBox(height: 4), GestureDetector(onTap: () => _openMapLink(value), child: Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(4)), child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.open_in_new, size: 12, color: Colors.blue.shade700), const SizedBox(width: 4), Text('Open in Maps', style: TextStyle(fontSize: 10, color: Colors.blue.shade700, fontWeight: FontWeight.bold)),
+        ])))],
+      ])),
+    ]));
   }
 
   Widget _buildNewsItem(Map<String, dynamic> news) {
-    final priority = news['priority'] ?? 'normal';
-    final color = _getPriorityColor(priority);
-    final icon = _getPriorityIcon(priority);
-    final timeAgo = news['timestamp'] != null
-        ? _getTimeAgo(news['timestamp'] as Timestamp)
-        : 'Recently';
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: color, size: 24),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  news['title'] ?? 'Traffic Update',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: color,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  news['description'] ?? 'No details available',
-                  style: const TextStyle(fontSize: 14),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    const Icon(Icons.location_on, size: 14, color: Colors.grey),
-                    const SizedBox(width: 4),
-                    Text(
-                      news['region'] ?? 'General',
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                    ),
-                    const Spacer(),
-                    Text(
-                      timeAgo,
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
+    final priority = news['priority'] ?? 'normal'; final color = _getPriorityColor(priority); final icon = _getPriorityIcon(priority);
+    final timeAgo = news['timestamp'] != null ? _getTimeAgo(news['timestamp'] as Timestamp) : 'Recently';
+    return Container(margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(8), border: Border.all(color: color.withOpacity(0.3))), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Icon(icon, color: color, size: 24), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(news['title'] ?? 'Traffic Update', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color)), const SizedBox(height: 4),
+        Text(news['description'] ?? 'No details available', style: const TextStyle(fontSize: 14)), const SizedBox(height: 4), Row(children: [
+          const Icon(Icons.location_on, size: 14, color: Colors.grey), const SizedBox(width: 4), Text(news['region'] ?? 'General', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+          const Spacer(), Text(timeAgo, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+        ]),
+      ])),
+    ]));
   }
 
   void _showTrafficNewsDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Row(
-          children: [
-            const Icon(Icons.traffic, color: Colors.red),
-            const SizedBox(width: 8),
-            const Text('Live Traffic News'),
-            const Spacer(),
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              onPressed: _loadMockTrafficNews,
-              tooltip: 'Refresh News',
-            ),
-          ],
-        ),
-        content: _buildTrafficNewsContent(),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
+    showDialog(context: context, builder: (context) => AlertDialog(
+      title: Row(children: [const Icon(Icons.traffic, color: Colors.red), const SizedBox(width: 8), const Text('Live Traffic News'), const Spacer(), IconButton(icon: const Icon(Icons.refresh), onPressed: _loadMockTrafficNews, tooltip: 'Refresh News')]),
+      content: _buildTrafficNewsContent(), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+    ));
   }
 
   Widget _buildTrafficNewsContent() {
-    if (_loadingNews) {
-      return const SizedBox(
-        height: 200,
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text('Loading live traffic news...'),
-            ],
-          ),
-        ),
-      );
-    }
+    if (_loadingNews) return const SizedBox(height: 200, child: Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [CircularProgressIndicator(), SizedBox(height: 16), Text('Loading live traffic news...')])));
+    if (_trafficNews.isEmpty) return SizedBox(height: 200, child: Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+      const Icon(Icons.traffic, color: Colors.grey, size: 50), const SizedBox(height: 16), const Text('No traffic alerts currently', style: TextStyle(fontSize: 16, color: Colors.grey)),
+      const SizedBox(height: 8), TextButton(onPressed: _loadMockTrafficNews, child: const Text('Load Sample Alerts')),
+    ])));
+    return SizedBox(width: double.maxFinite, height: 400, child: Column(children: [
+      Text('Latest Traffic Updates', style: TextStyle(fontSize: 14, color: Colors.grey.shade600, fontWeight: FontWeight.bold)), const SizedBox(height: 8),
+      Expanded(child: ListView.builder(itemCount: _trafficNews.length, itemBuilder: (context, index) { final news = _trafficNews[index]; return _buildNewsItem(news); })),
+    ]));
+  }
 
-    if (_trafficNews.isEmpty) {
-      return SizedBox(
-        height: 200,
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.traffic, color: Colors.grey, size: 50),
-              const SizedBox(height: 16),
-              const Text(
-                'No traffic alerts currently',
-                style: TextStyle(fontSize: 16, color: Colors.grey),
-              ),
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: _loadMockTrafficNews,
-                child: const Text('Load Sample Alerts'),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
+  // NEW: Performance Report Methods
+  void _showTodayRequestsReport() {
+    final todayRequests = _requests;
+    showDialog(context: context, builder: (context) => AlertDialog(
+      title: const Row(children: [Icon(Icons.today, color: Colors.blue), SizedBox(width: 8), Text('Today\'s Requests Report')]),
+      content: SizedBox(width: double.maxFinite, child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Text('Total Requests Today: ${todayRequests.length}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), const SizedBox(height: 16),
+        if (todayRequests.isEmpty) const Text('No requests today') else ...todayRequests.map((request) {
+          final data = request.data() as Map<String, dynamic>? ?? {}; final status = data['status'] ?? 'UNKNOWN'; final from = data['fromLocation'] ?? 'N/A'; final to = data['toLocation'] ?? 'N/A';
+          return ListTile(leading: Icon(_getStatusIcon(status), color: _getStatusColor(status)), title: Text('$from → $to'), subtitle: Text('Status: $status'), trailing: Text('#${request.id.substring(0, 8)}'));
+        }).toList(),
+      ])), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+    ));
+  }
 
-    return SizedBox(
-      width: double.maxFinite,
-      height: 400,
-      child: Column(
-        children: [
-          Text(
-            'Latest Traffic Updates',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey.shade600,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Expanded(
-            child: ListView.builder(
-              itemCount: _trafficNews.length,
-              itemBuilder: (context, index) {
-                final news = _trafficNews[index];
-                return _buildNewsItem(news);
-              },
-            ),
-          ),
-        ],
-      ),
-    );
+  void _showTodayCompletedReport() {
+    final completedToday = _requests.where((r) { final data = r.data() as Map<String, dynamic>? ?? {}; return data['status'] == 'COMPLETED'; }).toList();
+    showDialog(context: context, builder: (context) => AlertDialog(
+      title: const Row(children: [Icon(Icons.check_circle, color: Colors.green), SizedBox(width: 8), Text('Today\'s Completed Rides')]),
+      content: SizedBox(width: double.maxFinite, child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Text('Completed Today: ${completedToday.length}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), const SizedBox(height: 16),
+        if (completedToday.isEmpty) const Text('No completed rides today') else ...completedToday.map((request) {
+          final data = request.data() as Map<String, dynamic>? ?? {}; final from = data['fromLocation'] ?? 'N/A'; final to = data['toLocation'] ?? 'N/A';
+          final duration = data['rideDuration'] != null ? '${(data['rideDuration'] as int) ~/ 60} min' : 'N/A';
+          return ListTile(leading: const Icon(Icons.check_circle, color: Colors.green), title: Text('$from → $to'), subtitle: Text('Duration: $duration'), trailing: Text('#${request.id.substring(0, 8)}'));
+        }).toList(),
+      ])), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+    ));
+  }
+
+  void _showTotalAssignedReport() {
+    showDialog(context: context, builder: (context) => AlertDialog(
+      title: const Row(children: [Icon(Icons.assignment, color: Colors.purple), SizedBox(width: 8), Text('Total Assigned Rides')]),
+      content: SizedBox(width: double.maxFinite, child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Text('Total Assigned: $_totalAssignedRides', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), const SizedBox(height: 16),
+        Text('Total Completed: $_totalCompletedRides', style: const TextStyle(fontSize: 16, color: Colors.green)), const SizedBox(height: 8),
+        Text('Completion Rate: ${_totalAssignedRides > 0 ? ((_totalCompletedRides / _totalAssignedRides) * 100).toStringAsFixed(1) : 0}%', style: const TextStyle(fontSize: 16, color: Colors.blue)),
+        const SizedBox(height: 16), const Text('This includes all rides assigned to you since you started working.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+      ])), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+    ));
+  }
+
+  void _showTotalCompletedReport() {
+    showDialog(context: context, builder: (context) => AlertDialog(
+      title: const Row(children: [Icon(Icons.verified, color: Colors.teal), SizedBox(width: 8), Text('Total Completed Rides')]),
+      content: SizedBox(width: double.maxFinite, child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Text('Total Completed: $_totalCompletedRides', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), const SizedBox(height: 16),
+        Text('Total Assigned: $_totalAssignedRides', style: const TextStyle(fontSize: 16, color: Colors.purple)), const SizedBox(height: 8),
+        Text('Success Rate: ${_totalAssignedRides > 0 ? ((_totalCompletedRides / _totalAssignedRides) * 100).toStringAsFixed(1) : 100}%', style: const TextStyle(fontSize: 16, color: Colors.green)),
+        const SizedBox(height: 16), const Text('Great job! Keep up the good work.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+      ])), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+    ));
+  }
+
+  IconData _getStatusIcon(String status) {
+    switch (status) {
+      case 'ASSIGNED': return Icons.assignment_turned_in;
+      case 'IN_PROGRESS': return Icons.schedule;
+      case 'COMPLETED': return Icons.check_circle;
+      default: return Icons.help_outline;
+    }
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'ASSIGNED': return Colors.blue;
+      case 'IN_PROGRESS': return Colors.orange;
+      case 'COMPLETED': return Colors.green;
+      default: return Colors.grey;
+    }
   }
 
   Widget _buildDashboardContent() {
-    final activeRequestsCount = _requests.where((r) {
-      final data = r.data() as Map<String, dynamic>? ?? {};
-      return data['status'] != 'COMPLETED';
-    }).length;
+    final activeRequestsCount = _requests.where((r) { final data = r.data() as Map<String, dynamic>? ?? {}; return data['status'] != 'COMPLETED'; }).length;
+    final todayCompletedCount = _requests.where((r) { final data = r.data() as Map<String, dynamic>? ?? {}; return data['status'] == 'COMPLETED'; }).length;
 
-    final todayCompletedCount = _requests.where((r) {
-      final data = r.data() as Map<String, dynamic>? ?? {};
-      return data['status'] == 'COMPLETED';
-    }).length;
+    return RefreshIndicator(onRefresh: _loadDriverRequests, child: ListView(padding: const EdgeInsets.all(16), children: [
+      // Welcome card
+      Card(color: Colors.green.shade50, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.green.shade300)), child: Padding(padding: const EdgeInsets.all(16.0), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Welcome', style: TextStyle(fontSize: 14, color: Colors.green)), const SizedBox(height: 4),
+        Text(widget.userName, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.green)), const SizedBox(height: 8),
+        const Row(children: [Icon(Icons.check_circle, color: Colors.green, size: 20), SizedBox(width: 8), Text('Online', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold))]),
+      ]))), const SizedBox(height: 20),
 
-    return RefreshIndicator(
-      onRefresh: _loadDriverRequests,
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // 🔥 Welcome card
-          Card(
-            color: Colors.green.shade50,
-            elevation: 0,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.green.shade300)),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Welcome', style: TextStyle(fontSize: 14, color: Colors.green)),
-                  const SizedBox(height: 4),
-                  Text(
-                    widget.userName,
-                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.green),
-                  ),
-                  const SizedBox(height: 8),
-                  const Row(
-                    children: [
-                      Icon(Icons.check_circle, color: Colors.green, size: 20),
-                      SizedBox(width: 8),
-                      Text(
-                        'Online',
-                        style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
+      // My Requests
+      const Text('My Requests', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueGrey)), const SizedBox(height: 10),
+      ListTile(leading: const Icon(Icons.assignment, color: Colors.blue), title: const Text('View My Requests'), trailing: Chip(label: Text(activeRequestsCount.toString(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)), backgroundColor: activeRequestsCount > 0 ? Colors.orange : Colors.grey), onTap: _showMyRequests, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: Colors.blue.shade100))), const SizedBox(height: 20),
 
-          // 🔥 My Requests
-          const Text(
-            'My Requests',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueGrey),
-          ),
-          const SizedBox(height: 10),
+      // Performance Report
+      const Text('Performance Report', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueGrey)), const SizedBox(height: 10),
 
-          ListTile(
-            leading: const Icon(Icons.assignment, color: Colors.blue),
-            title: const Text('View My Requests'),
-            trailing: Chip(
-              label: Text(
-                activeRequestsCount.toString(),
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-              ),
-              backgroundColor: activeRequestsCount > 0 ? Colors.orange : Colors.grey,
-            ),
-            onTap: _showMyRequests,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-              side: BorderSide(color: Colors.blue.shade100),
-            ),
-          ),
-          const SizedBox(height: 20),
+      // Today's Performance
+      const Text('Today\'s Performance', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.orange)), const SizedBox(height: 8),
+      Row(children: [
+        Expanded(child: InkWell(onTap: () => _showTodayRequestsReport(), child: _buildMetricCard('Today\'s Requests', _requests.length.toString(), Icons.today, Colors.blue.shade700))),
+        const SizedBox(width: 10), Expanded(child: InkWell(onTap: () => _showTodayCompletedReport(), child: _buildMetricCard('Today\'s Completed', todayCompletedCount.toString(), Icons.check_circle, Colors.green.shade700))),
+      ]), const SizedBox(height: 16),
 
-          // 🔥 Performance Report
-          const Text(
-            'Performance Report',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueGrey),
-          ),
-          const SizedBox(height: 10),
-
-          // 🔥 Today's Performance
-          const Text(
-            'Today\'s Performance',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.orange),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: _buildMetricCard(
-                  'Today\'s Requests',
-                  _requests.length.toString(),
-                  Icons.today,
-                  Colors.blue.shade700,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _buildMetricCard(
-                  'Today\'s Completed',
-                  todayCompletedCount.toString(),
-                  Icons.check_circle,
-                  Colors.green.shade700,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-
-          // 🔥 Overall Statistics
-          const Text(
-            'Overall Statistics',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.purple),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: _buildMetricCard(
-                  'Total Assigned',
-                  _loadingStatistics ? '...' : _totalAssignedRides.toString(),
-                  Icons.assignment,
-                  Colors.purple.shade700,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _buildMetricCard(
-                  'Total Completed',
-                  _loadingStatistics ? '...' : _totalCompletedRides.toString(),
-                  Icons.verified,
-                  Colors.teal.shade700,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
+      // Overall Statistics
+      const Text('Overall Statistics', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.purple)), const SizedBox(height: 8),
+      Row(children: [
+        Expanded(child: InkWell(onTap: () => _showTotalAssignedReport(), child: _buildMetricCard('Total Assigned', _loadingStatistics ? '...' : _totalAssignedRides.toString(), Icons.assignment, Colors.purple.shade700))),
+        const SizedBox(width: 10), Expanded(child: InkWell(onTap: () => _showTotalCompletedReport(), child: _buildMetricCard('Total Completed', _loadingStatistics ? '...' : _totalCompletedRides.toString(), Icons.verified, Colors.teal.shade700))),
+      ]),
+    ]));
   }
 
   Widget _buildActivationView() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.person_off, size: 80, color: Colors.red.shade400),
-            const SizedBox(height: 20),
-            const Text(
-              'Driver Account Activation',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.red),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              'Activate your account to start working',
-              style: TextStyle(fontSize: 16, color: Colors.grey),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 30),
-            ElevatedButton.icon(
-              onPressed: _loading ? null : _createDriverProfile,
-              icon: const Icon(Icons.power_settings_new),
-              label: const Text('Activate Driver Account'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green.shade600,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
-                textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    return Center(child: Padding(padding: const EdgeInsets.all(32.0), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+      Icon(Icons.person_off, size: 80, color: Colors.red.shade400), const SizedBox(height: 20),
+      const Text('Driver Account Activation', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.red), textAlign: TextAlign.center), const SizedBox(height: 10),
+      const Text('Activate your account to start working', style: TextStyle(fontSize: 16, color: Colors.grey), textAlign: TextAlign.center), const SizedBox(height: 30),
+      ElevatedButton.icon(onPressed: _loading ? null : _createDriverProfile, icon: const Icon(Icons.power_settings_new), label: const Text('Activate Driver Account'), style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade600, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15), textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)))),
+    ])));
   }
 
   Widget _buildMetricCard(String title, String value, IconData icon, Color color) {
-    return Card(
-      color: color.withOpacity(0.1),
-      elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: color.withOpacity(0.3))),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Icon(icon, color: color, size: 30),
-                Text(
-                  value,
-                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: color),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              title,
-              style: TextStyle(fontSize: 14, color: color),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ),
-      ),
-    );
+    return Card(color: color.withOpacity(0.1), elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: color.withOpacity(0.3))), child: Padding(padding: const EdgeInsets.all(16.0), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Icon(icon, color: color, size: 30), Text(value, style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: color))]), const SizedBox(height: 8),
+      Text(title, style: TextStyle(fontSize: 14, color: color), maxLines: 2, overflow: TextOverflow.ellipsis),
+    ])));
   }
 
-  // 🔥 NEW: Quick transfer dialog for multiple requests
   Future<void> _showQuickTransferDialog(List<QueryDocumentSnapshot> transferableRequests) async {
-    await showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.swap_horiz, color: Colors.orange),
-            SizedBox(width: 8),
-            Text('تحويل الطلبات'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'اختر الطلب الذي تريد تحويله:',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            ...transferableRequests.map((request) {
-              final data = request.data() as Map<String, dynamic>? ?? {};
-              return ListTile(
-                leading: const Icon(Icons.assignment, color: Colors.blue),
-                title: Text('طلب #${request.id.substring(0, 8)}'),
-                subtitle: Text('${data['fromLocation']} → ${data['toLocation']}'),
-                trailing: Chip(
-                  label: Text(data['status'] == 'ASSIGNED' ? 'معين' : 'قيد التنفيذ'),
-                  backgroundColor: data['status'] == 'ASSIGNED' ? Colors.blue : Colors.orange,
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  _transferRequestToAnotherDriver(request.id, data);
-                },
-              );
-            }).toList(),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('إلغاء'),
-          ),
-        ],
-      ),
-    );
+    await showDialog(context: context, builder: (context) => AlertDialog(
+      title: const Row(children: [Icon(Icons.swap_horiz, color: Colors.orange), SizedBox(width: 8), Text('Transfer Requests')]),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        const Text('Choose request to transfer:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)), const SizedBox(height: 16),
+        ...transferableRequests.map((request) {
+          final data = request.data() as Map<String, dynamic>? ?? {};
+          return ListTile(leading: const Icon(Icons.assignment, color: Colors.blue), title: Text('Request #${request.id.substring(0, 8)}'), subtitle: Text('${data['fromLocation']} → ${data['toLocation']}'), trailing: Chip(label: Text(data['status'] == 'ASSIGNED' ? 'Assigned' : 'In Progress'), backgroundColor: data['status'] == 'ASSIGNED' ? Colors.blue : Colors.orange), onTap: () { Navigator.pop(context); _transferRequestToAnotherDriver(request.id, data); });
+        }).toList(),
+      ]), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel'))],
+    ));
   }
 
   @override
   Widget build(BuildContext context) {
-    return Directionality(
-      textDirection: TextDirection.ltr,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Driver Dashboard'),
-          backgroundColor: Colors.blue.shade800,
-          foregroundColor: Colors.white,
-          actions: [
-            // 🔥 NEW: Quick transfer action in app bar (only for ASSIGNED requests)
-            if (_requests.any((r) {
-              final data = r.data() as Map<String, dynamic>? ?? {};
-              return data['status'] == 'ASSIGNED'; // 🔥 فقط الطلبات المعينة
-            }))
-              IconButton(
-                icon: const Icon(Icons.swap_horiz),
-                onPressed: () {
-                  final transferableRequests = _requests.where((r) {
-                    final data = r.data() as Map<String, dynamic>? ?? {};
-                    return data['status'] == 'ASSIGNED'; // 🔥 فقط الطلبات المعينة
-                  }).toList();
-
-                  if (transferableRequests.isNotEmpty) {
-                    _showQuickTransferDialog(transferableRequests);
-                  }
-                },
-                tooltip: 'Quick Transfer',
-              ),
-          ],
-        ),
-        drawer: _buildDrawer(),
-        body: Column(
-          children: [
-            if (!_isLocationServiceEnabled && _driverProfileExists)
-              Container(
-                padding: const EdgeInsets.all(12),
-                color: Colors.yellow.shade800,
-                child: const Row(
-                  children: [
-                    Icon(Icons.warning, color: Colors.white),
-                    SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        '⚠️ Location service is disabled. Manager cannot track you.',
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                        textAlign: TextAlign.start,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            Expanded(
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _driverProfileExists
-                  ? _buildDashboardContent()
-                  : _buildActivationView(),
-            ),
-          ],
-        ),
-      ),
-    );
+    return Directionality(textDirection: TextDirection.ltr, child: Scaffold(
+      appBar: AppBar(title: const Text('Driver Dashboard'), backgroundColor: Colors.blue.shade800, foregroundColor: Colors.white, actions: [
+        if (_requests.any((r) { final data = r.data() as Map<String, dynamic>? ?? {}; return data['status'] == 'ASSIGNED'; })) IconButton(icon: const Icon(Icons.swap_horiz), onPressed: () {
+          final transferableRequests = _requests.where((r) { final data = r.data() as Map<String, dynamic>? ?? {}; return data['status'] == 'ASSIGNED'; }).toList();
+          if (transferableRequests.isNotEmpty) { _showQuickTransferDialog(transferableRequests); }
+        }, tooltip: 'Quick Transfer'),
+      ]),
+      drawer: _buildDrawer(),
+      body: Column(children: [
+        if (!_isLocationServiceEnabled && _driverProfileExists) Container(padding: const EdgeInsets.all(12), color: Colors.yellow.shade800, child: const Row(children: [
+          Icon(Icons.warning, color: Colors.white), SizedBox(width: 8), Expanded(child: Text('⚠️ Location service is disabled. Manager cannot track you.', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold), textAlign: TextAlign.start)),
+        ])),
+        Expanded(child: _loading ? const Center(child: CircularProgressIndicator()) : _driverProfileExists ? _buildDashboardContent() : _buildActivationView()),
+      ]),
+    ));
   }
 
   Drawer _buildDrawer() {
-    return Drawer(
-      child: ListView(
-        padding: EdgeInsets.zero,
-        children: <Widget>[
-          UserAccountsDrawerHeader(
-            accountName: Text(widget.userName, style: const TextStyle(fontWeight: FontWeight.bold)),
-            accountEmail: Text(_auth.currentUser?.email ?? 'N/A'),
-            currentAccountPicture: const CircleAvatar(
-              backgroundColor: Colors.white,
-              child: Icon(Icons.person, color: Colors.blue, size: 40),
-            ),
-            decoration: BoxDecoration(
-              color: Colors.blue.shade800,
-            ),
-          ),
-          ListTile(
-            leading: const Icon(Icons.dashboard),
-            title: const Text('Driver Dashboard'),
-            onTap: () {
-              Navigator.pop(context);
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.person_outline),
-            title: const Text('My Profile'),
-            onTap: () {
-              Navigator.pop(context);
-              _showProfile();
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.assignment),
-            title: const Text('My Requests'),
-            onTap: () {
-              Navigator.pop(context);
-              _showMyRequests();
-            },
-          ),
-          // 🔥 NEW: Transfer requests in drawer (only for ASSIGNED requests)
-          if (_requests.any((r) {
-            final data = r.data() as Map<String, dynamic>? ?? {};
-            return data['status'] == 'ASSIGNED'; // 🔥 فقط الطلبات المعينة
-          }))
-            ListTile(
-              leading: const Icon(Icons.swap_horiz, color: Colors.orange),
-              title: const Text('Transfer Requests'),
-              onTap: () {
-                Navigator.pop(context);
-                final transferableRequests = _requests.where((r) {
-                  final data = r.data() as Map<String, dynamic>? ?? {};
-                  return data['status'] == 'ASSIGNED'; // 🔥 فقط الطلبات المعينة
-                }).toList();
-
-                if (transferableRequests.isNotEmpty) {
-                  _showQuickTransferDialog(transferableRequests);
-                }
-              },
-            ),
-          ListTile(
-            leading: const Icon(Icons.traffic),
-            title: const Text('Traffic News'),
-            onTap: () {
-              Navigator.pop(context);
-              _showTrafficNewsDialog();
-            },
-          ),
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.logout, color: Colors.red),
-            title: const Text('Logout', style: TextStyle(color: Colors.red)),
-            onTap: _logout,
-          ),
-        ],
-      ),
-    );
+    return Drawer(child: ListView(padding: EdgeInsets.zero, children: <Widget>[
+      UserAccountsDrawerHeader(accountName: Text(widget.userName, style: const TextStyle(fontWeight: FontWeight.bold)), accountEmail: Text(_auth.currentUser?.email ?? 'N/A'), currentAccountPicture: const CircleAvatar(backgroundColor: Colors.white, child: Icon(Icons.person, color: Colors.blue, size: 40)), decoration: BoxDecoration(color: Colors.blue.shade800)),
+      ListTile(leading: const Icon(Icons.dashboard), title: const Text('Driver Dashboard'), onTap: () { Navigator.pop(context); }),
+      ListTile(leading: const Icon(Icons.person_outline), title: const Text('My Profile'), onTap: () { Navigator.pop(context); _showProfile(); }),
+      ListTile(leading: const Icon(Icons.assignment), title: const Text('My Requests'), onTap: () { Navigator.pop(context); _showMyRequests(); }),
+      if (_requests.any((r) { final data = r.data() as Map<String, dynamic>? ?? {}; return data['status'] == 'ASSIGNED'; })) ListTile(leading: const Icon(Icons.swap_horiz, color: Colors.orange), title: const Text('Transfer Requests'), onTap: () {
+        Navigator.pop(context); final transferableRequests = _requests.where((r) { final data = r.data() as Map<String, dynamic>? ?? {}; return data['status'] == 'ASSIGNED'; }).toList();
+        if (transferableRequests.isNotEmpty) { _showQuickTransferDialog(transferableRequests); }
+      }),
+      ListTile(leading: const Icon(Icons.traffic), title: const Text('Traffic News'), onTap: () { Navigator.pop(context); _showTrafficNewsDialog(); }),
+      const Divider(),
+      ListTile(leading: const Icon(Icons.logout, color: Colors.red), title: const Text('Logout', style: TextStyle(color: Colors.red)), onTap: _logout),
+    ]));
   }
 }
