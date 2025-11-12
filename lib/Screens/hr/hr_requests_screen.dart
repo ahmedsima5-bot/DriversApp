@@ -80,14 +80,15 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
 
             return {
               'id': doc.id,
-              'department': data['department'] ?? 'غير محدد',
-              'fromLocation': data['fromLocation'] ?? 'غير محدد',
-              'destination': data['toLocation'] ?? 'غير محدد',
-              'status': data['status'] ?? 'PENDING',
-              'priority': data['priority'] ?? 'Normal',
+              'department': data['department'] as String? ?? 'غير محدد',
+              'fromLocation': data['fromLocation'] as String? ?? 'غير محدد',
+              'destination': data['toLocation'] as String? ?? 'غير محدد',
+              'status': data['status'] as String? ?? 'PENDING',
+              'priority': data['priority'] as String? ?? 'Normal',
+              // 💡 تأكد من سلامة نوع البيانات هنا
               'assignedDriverId': data['assignedDriverId'] as String?,
               'assignedDriverName': data['assignedDriverName'] as String?,
-              'requesterName': data['requesterName'] ?? 'غير معروف',
+              'requesterName': data['requesterName'] as String? ?? 'غير معروف',
               'createdAt': createdAt,
               'originalData': data,
             };
@@ -730,8 +731,9 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
         'مسؤول الموارد البشرية',
       );
 
-      Navigator.pop(context); // إغلاق dialog التحميل
-      Navigator.pop(context); // إغلاق صفحة التفاصيل
+      if (mounted) Navigator.pop(context); // إغلاق dialog التحميل
+      if (mounted) Navigator.pop(context); // إغلاق صفحة التفاصيل
+      if (mounted) _showSuccessSnackBar('تمت الموافقة على الطلب العاجل');
 
       _showSuccessSnackBar('تم التوزيع التلقائي بنجاح');
       _loadRequestsData();
