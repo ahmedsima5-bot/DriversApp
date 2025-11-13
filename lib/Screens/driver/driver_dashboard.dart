@@ -51,10 +51,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
   int _totalAssignedRides = 0;
   bool _loadingStatistics = false;
 
-  // 📰 Traffic News
-  List<Map<String, dynamic>> _trafficNews = [];
-  bool _loadingNews = false;
-
   // ✍️ Manual Vehicle Input
   final TextEditingController _manualModelController = TextEditingController();
   final TextEditingController _manualPlateController = TextEditingController();
@@ -65,6 +61,9 @@ class _DriverDashboardState extends State<DriverDashboard> {
 
   // 📡 Stream Subscriptions
   StreamSubscription? _requestsSubscription;
+
+  // إضافة حالة للخطأ
+  String? _errorMessage;
 
   @override
   void initState() {
@@ -286,10 +285,13 @@ class _DriverDashboardState extends State<DriverDashboard> {
     }
   }
 
-  // 📥 Load driver requests
+  // تحسين معالجة الأخطاء
   Future<void> _loadDriverRequests() async {
     try {
       if (_driverId == null) return;
+
+      setState(() => _loading = true);
+      _errorMessage = null;
 
       final requestsSnapshot = await _firestore
           .collection('companies')
@@ -298,19 +300,34 @@ class _DriverDashboardState extends State<DriverDashboard> {
           .where('assignedDriverId', isEqualTo: _driverId)
           .where('status', whereIn: ['ASSIGNED', 'IN_PROGRESS', 'COMPLETED'])
           .orderBy('createdAt', descending: true)
-          .get();
+          .get()
+          .timeout(const Duration(seconds: 30));
 
       _processRequestsSnapshot(requestsSnapshot);
+
+    } on FirebaseException catch (e) {
+      _handleFirebaseError(e);
+    } on TimeoutException catch (e) {
+      _errorMessage = 'Request timeout. Please check your connection.';
     } catch (e) {
-      debugPrint('❌ Error loading driver requests: $e');
+      _errorMessage = 'Failed to load requests: ${e.toString()}';
+    } finally {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error loading requests: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        setState(() => _loading = false);
       }
+    }
+  }
+
+  void _handleFirebaseError(FirebaseException e) {
+    switch (e.code) {
+      case 'permission-denied':
+        _errorMessage = 'Access denied. Please contact administrator.';
+        break;
+      case 'unavailable':
+        _errorMessage = 'Service unavailable. Please try again.';
+        break;
+      default:
+        _errorMessage = 'Database error: ${e.message}';
     }
   }
 
@@ -382,8 +399,178 @@ class _DriverDashboardState extends State<DriverDashboard> {
     }
   }
 
+  // ==============================================
+  // 📅 SCHEDULED REQUESTS VALIDATION
+  // ==============================================
+
+  // التحقق إذا كان الطلب المجدول جاهز للبدء اليوم
+  bool _isScheduledRequestToday(Map<String, dynamic> request) {
+    final isScheduled = request['isScheduled'] as bool? ?? false;
+    final scheduledDate = request['scheduledDate'] as Timestamp?;
+
+    if (!isScheduled || scheduledDate == null) {
+      return true; // الطلبات العادية متاحة دائماً
+    }
+
+    final now = DateTime.now();
+    final scheduledDateTime = scheduledDate.toDate();
+
+    // التحقق إذا كان اليوم هو نفس يوم الجدولة
+    return now.year == scheduledDateTime.year &&
+        now.month == scheduledDateTime.month &&
+        now.day == scheduledDateTime.day;
+  }
+
+  // التحقق إذا كان الطلب مجدول للمستقبل
+  bool _isScheduledForFuture(Map<String, dynamic> request) {
+    final isScheduled = request['isScheduled'] as bool? ?? false;
+    final scheduledDate = request['scheduledDate'] as Timestamp?;
+
+    if (!isScheduled || scheduledDate == null) {
+      return false; // الطلبات العادية ليست مجدولة للمستقبل
+    }
+
+    final now = DateTime.now();
+    final scheduledDateTime = scheduledDate.toDate();
+
+    // التحقق إذا كان تاريخ الجدولة في المستقبل
+    return scheduledDateTime.isAfter(now);
+  }
+
+  // دالة للتحقق من تفعيل زر البدء
+  bool _isStartButtonEnabled(Map<String, dynamic> request) {
+    final status = request['status'] as String? ?? 'UNKNOWN';
+    final isAssigned = status == 'ASSIGNED';
+
+    if (!isAssigned) {
+      return false; // فقط الطلبات المعينة يمكن بدؤها
+    }
+
+    final isScheduled = request['isScheduled'] as bool? ?? false;
+
+    if (!isScheduled) {
+      return true; // الطلبات العادية متاحة دائماً
+    }
+
+    return _isScheduledRequestToday(request);
+  }
+
+  // ويدجت لعرض معلومات الجدولة
+  Widget _buildScheduledDateInfo(DateTime scheduledDate) {
+    final now = DateTime.now();
+    final isToday = now.year == scheduledDate.year &&
+        now.month == scheduledDate.month &&
+        now.day == scheduledDate.day;
+
+    final formattedDate = '${scheduledDate.day}/${scheduledDate.month}/${scheduledDate.year}';
+    final formattedTime = '${scheduledDate.hour.toString().padLeft(2, '0')}:${scheduledDate.minute.toString().padLeft(2, '0')}';
+
+    Color backgroundColor = isToday ? Colors.green.shade50 : Colors.purple.shade50;
+    Color textColor = isToday ? Colors.green.shade800 : Colors.purple.shade800;
+    IconData icon = isToday ? Icons.today : Icons.calendar_today;
+
+    return Container(
+      padding: const EdgeInsets.all(8),
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: textColor.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: textColor, size: 16),
+          const SizedBox(width: 8),
+          Text(
+            isToday ? 'مجدول لليوم - $formattedTime' : 'مجدول لـ $formattedDate - $formattedTime',
+            style: TextStyle(
+              color: textColor,
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // دالة لعرض رسالة الخطأ للطلبات المجدولة
+  void _showScheduledDateError(DateTime scheduledDate) {
+    final formattedDate = '${scheduledDate.day}/${scheduledDate.month}/${scheduledDate.year}';
+    final formattedTime = '${scheduledDate.hour.toString().padLeft(2, '0')}:${scheduledDate.minute.toString().padLeft(2, '0')}';
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.schedule, color: Colors.orange),
+            SizedBox(width: 8),
+            Text('طلب مجدول'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'لا يمكن بدء هذه الرحلة الآن',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            const Text('هذا الطلب مجدول لـ:'),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.calendar_today, color: Colors.orange.shade700),
+                  const SizedBox(width: 8),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('التاريخ: $formattedDate', style: TextStyle(fontWeight: FontWeight.bold)),
+                      Text('الوقت: $formattedTime', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'يمكنك بدء الرحلة فقط في التاريخ المحدد',
+              style: TextStyle(color: Colors.grey, fontSize: 12),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('حسناً'),
+          ),
+        ],
+      ),
+    );
+  }
+
   // 🚀 Start ride with vehicle selection
   Future<void> _startRide(String requestId) async {
+    // البحث عن الطلب
+    final request = _activeRequests.firstWhere((req) => req['id'] == requestId);
+
+    // التحقق إذا كان الطلب مجدول ولم يحن موعده بعد
+    if (!_isStartButtonEnabled(request)) {
+      final scheduledDate = request['scheduledDate'] as Timestamp?;
+      if (scheduledDate != null) {
+        _showScheduledDateError(scheduledDate.toDate());
+      }
+      return;
+    }
+
     await _showVehicleSelectionDialog(requestId);
   }
 
@@ -967,7 +1154,23 @@ class _DriverDashboardState extends State<DriverDashboard> {
     try {
       setState(() => _loadingStatistics = true);
 
-      final completedSnapshot = await _firestore
+      // إحصائيات اليوم
+      final now = DateTime.now();
+      final startOfDay = DateTime(now.year, now.month, now.day);
+      final endOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59);
+
+      final completedTodaySnapshot = await _firestore
+          .collection('companies')
+          .doc(widget.companyId)
+          .collection('requests')
+          .where('assignedDriverId', isEqualTo: _driverId)
+          .where('status', isEqualTo: 'COMPLETED')
+          .where('rideEndTime', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+          .where('rideEndTime', isLessThanOrEqualTo: Timestamp.fromDate(endOfDay))
+          .get();
+
+      // إحصائيات كل الوقت
+      final totalCompletedSnapshot = await _firestore
           .collection('companies')
           .doc(widget.companyId)
           .collection('requests')
@@ -984,7 +1187,14 @@ class _DriverDashboardState extends State<DriverDashboard> {
           .get();
 
       setState(() {
-        _totalCompletedRides = completedSnapshot.docs.length;
+        _totalCompletedRides = totalCompletedSnapshot.docs.length;
+        _completedRequests = completedTodaySnapshot.docs.map((doc) {
+          final data = doc.data() as Map<String, dynamic>? ?? {};
+          return {
+            'id': doc.id,
+            ...data,
+          };
+        }).toList();
         _totalAssignedRides = assignedSnapshot.docs.length;
         _loadingStatistics = false;
       });
@@ -1057,8 +1267,12 @@ class _DriverDashboardState extends State<DriverDashboard> {
     final isAssigned = status == 'ASSIGNED';
     final createdAt = request['createdAt'] as Timestamp?;
     final requestDateTime = createdAt != null ? createdAt.toDate() : DateTime.now();
-    final formattedDate = '${requestDateTime.day}/${requestDateTime.month}/${requestDateTime.year}';
-    final formattedTime = '${requestDateTime.hour}:${requestDateTime.minute.toString().padLeft(2, '0')}';
+
+    // التحقق من الجدولة
+    final isScheduled = request['isScheduled'] as bool? ?? false;
+    final scheduledDate = request['scheduledDate'] as Timestamp?;
+    final isToday = _isScheduledRequestToday(request);
+    final isFutureScheduled = _isScheduledForFuture(request);
 
     Color statusColor = Colors.blue.shade600;
     IconData statusIcon = Icons.assignment_turned_in;
@@ -1068,6 +1282,10 @@ class _DriverDashboardState extends State<DriverDashboard> {
       statusColor = Colors.orange.shade700;
       statusIcon = Icons.schedule;
       statusText = 'In Progress';
+    } else if (isScheduled) {
+      statusColor = Colors.purple.shade600;
+      statusIcon = Icons.calendar_today;
+      statusText = isToday ? 'Scheduled Today' : 'Scheduled';
     }
 
     return Card(
@@ -1097,6 +1315,10 @@ class _DriverDashboardState extends State<DriverDashboard> {
                   ),
               ],
             ),
+
+            // عرض معلومات الجدولة إذا كان الطلب مجدول
+            if (isScheduled && scheduledDate != null)
+              _buildScheduledDateInfo(scheduledDate.toDate()),
 
             const SizedBox(height: 10),
             Text('#${requestId.substring(0, 8)}', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
@@ -1166,11 +1388,11 @@ class _DriverDashboardState extends State<DriverDashboard> {
                           tooltip: 'Transfer to another driver',
                         ),
                       ElevatedButton.icon(
-                        onPressed: _loading ? null : () => _startRide(requestId),
+                        onPressed: _isStartButtonEnabled(request) && !_loading ? () => _startRide(requestId) : null,
                         icon: const Icon(Icons.play_arrow),
                         label: const Text('Start Ride'),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
+                          backgroundColor: _isStartButtonEnabled(request) ? Colors.green : Colors.grey,
                           foregroundColor: Colors.white,
                         ),
                       ),
