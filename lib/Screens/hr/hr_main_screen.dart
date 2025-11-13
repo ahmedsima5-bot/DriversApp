@@ -7,6 +7,8 @@ import 'hr_reports_screen.dart';
 import 'hr_control_panel.dart';
 // 💡 استيراد شاشة طلب جديد (يجب التأكد من المسار الصحيح لديك)
 import '../requester/new_request_screen.dart';
+// 💡 استيراد شاشة طلباتي
+import '../requester/my_requests_screen.dart';
 
 
 class HRMainScreen extends StatefulWidget {
@@ -131,6 +133,19 @@ class _HRMainScreenState extends State<HRMainScreen> {
           companyId: widget.companyId,
           userId: _currentUserId, // نمرر الـ ID
           userName: _currentUserName, // نمرر الاسم
+        ),
+      ),
+    );
+  }
+
+  // 💡 دالة جديدة لفتح شاشة طلباتي
+  void _navigateToMyRequestsScreen() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => MyRequestsScreen(
+          companyId: widget.companyId,
+          userId: _currentUserId,
+          userName: _currentUserName,
         ),
       ),
     );
@@ -395,20 +410,41 @@ class _HRMainScreenState extends State<HRMainScreen> {
           ),
         ),
       ),
-      // 💡 إضافة الزر العائم في أسفل يسار الشاشة (Floating Action Button)
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _navigateToNewRequestScreen,
-        tooltip: 'إنشاء طلب جديد', // الإيحاء النصي
-        backgroundColor: Colors.green[600],
-        foregroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), // شكل مربع خفيف
-        icon: const Icon(Icons.add), // علامة +
-        label: const Text(
-          'طلب جديد', // النص المكتوب
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-        ),
+      // 💡 إضافة الأزرار العائمة في أسفل الشاشة
+      floatingActionButton: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          // زر طلباتي
+          FloatingActionButton.extended(
+            onPressed: _navigateToMyRequestsScreen,
+            tooltip: 'عرض طلباتي',
+            backgroundColor: Colors.blue[600],
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            icon: const Icon(Icons.list_alt),
+            label: const Text(
+              'طلباتي',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+          ),
+          const SizedBox(height: 16),
+          // زر طلب جديد
+          FloatingActionButton.extended(
+            onPressed: _navigateToNewRequestScreen,
+            tooltip: 'إنشاء طلب جديد',
+            backgroundColor: Colors.green[600],
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            icon: const Icon(Icons.add),
+            label: const Text(
+              'طلب جديد',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+          ),
+        ],
       ),
-      // 💡 وضع الزر في أسفل يسار الشاشة (EndDocked/End) ليتناسب مع التصميم العربي
+      // 💡 وضع الأزرار في أسفل يسار الشاشة ليتناسب مع التصميم العربي
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
