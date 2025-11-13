@@ -196,7 +196,10 @@ class _RoleRouterScreenState extends State<RoleRouterScreen> {
       case 'Driver':
         return Consumer<LanguageProvider>(
           builder: (context, languageProvider, child) {
-            return DriverDashboard(userName: userName);
+            return DriverDashboard(
+              userName: userName,
+              companyId: 'C001', // أو احصل عليها من الـ user data
+            );;
           },
         );
 

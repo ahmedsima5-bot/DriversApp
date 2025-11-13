@@ -58,23 +58,30 @@ class _HRMainScreenState extends State<HRMainScreen> {
           .where('status', whereIn: ['PENDING', 'HR_PENDING'])
           .get();
 
-      setState(() {
-        _pendingRequestsCount = requestsSnapshot.docs.length;
-        _loadingPendingCount = false;
-      });
+      // 💡 إضافة فحص mounted قبل setState
+      if (mounted) {
+        setState(() {
+          _pendingRequestsCount = requestsSnapshot.docs.length;
+          _loadingPendingCount = false;
+        });
+      }
     } catch (e) {
       print('❌ خطأ في جلب عدد الطلبات المعلقة: $e');
-      setState(() {
-        _loadingPendingCount = false;
-      });
+      // 💡 إضافة فحص mounted قبل setState
+      if (mounted) {
+        setState(() {
+          _loadingPendingCount = false;
+        });
+      }
     }
   }
 
   Future<void> _logout() async {
     try {
       await _auth.signOut();
-      // تأكد من وجود مسار '/login' في ملف main.dart
+      // 💡 إضافة فحص mounted قبل استخدام Navigator
       if (mounted) {
+        // تأكد من وجود مسار '/login' في ملف main.dart
         Navigator.pushReplacementNamed(context, '/login');
       }
     } catch (e) {
@@ -174,7 +181,7 @@ class _HRMainScreenState extends State<HRMainScreen> {
           const SizedBox(height: 12),
           TextButton(
             onPressed: () {
-              Navigator.of(context).pushReplacement(
+              Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (context) => HRDashboard(companyId: widget.companyId),
                 ),
@@ -257,8 +264,6 @@ class _HRMainScreenState extends State<HRMainScreen> {
 
               const SizedBox(height: 20),
 
-              // ❌ تم حذف الزر القديم لإنشاء طلب نقل جديد من هنا
-
               // زر إدارة الطلبات مع إشعار
               Stack(
                 alignment: AlignmentDirectional.centerEnd, // تعديل المحاذاة ليكون الإشعار على اليسار في التصميم العربي
@@ -269,7 +274,13 @@ class _HRMainScreenState extends State<HRMainScreen> {
                         MaterialPageRoute(
                           builder: (context) => HRRequestsScreen(companyId: widget.companyId),
                         ),
-                      ).then((_) => _loadPendingRequestsCount());
+                      )
+                      // ❌ تم حذف .then((_) => _loadPendingRequestsCount()) لضمان استقرار الشاشة
+                          .then((_) {
+                        if (mounted) {
+                          _loadPendingRequestsCount();
+                        }
+                      });
                     },
                     style: ElevatedButton.styleFrom(
                       minimumSize: const Size(280, 60), // توحيد الحجم
@@ -316,7 +327,7 @@ class _HRMainScreenState extends State<HRMainScreen> {
 
               const SizedBox(height: 15),
 
-              // زر إدارة السائقينh
+              // زر إدارة السائقين
               ElevatedButton(
                 onPressed: () {
                   Navigator.of(context).push(
