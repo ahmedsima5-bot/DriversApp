@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:clipboard/clipboard.dart';
 import '../../services/dispatch_service.dart';
 import 'dart:async';
+import 'package:flutter/scheduler.dart';
 
 class HRRequestsScreen extends StatefulWidget {
   final String companyId;
@@ -23,6 +24,9 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
   bool _isLoading = true;
   final DispatchService _dispatchService = DispatchService();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final Map<String, Timer> _activeRideTimers = {};
+  final Map<String, Duration> _activeRideDurations = {};
+  final Map<String, DateTime> _activeRideStartTimes = {};
   Timer? _autoRefreshTimer;
 
   // قائمة الفلاتر المتاحة
@@ -50,6 +54,9 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
   @override
   void dispose() {
     _autoRefreshTimer?.cancel();
+    // تنظيف مؤقتات الرحلة
+    _activeRideTimers.forEach((key, timer) => timer.cancel());
+    _activeRideTimers.clear();
     super.dispose();
   }
 
@@ -63,6 +70,7 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
   }
 
   // تحميل بيانات الطلبات
+// تحميل بيانات الطلبات
   Future<void> _loadRequestsData() async {
     try {
       if (mounted) {
@@ -99,6 +107,9 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
           }).toList();
           _isLoading = false;
         });
+
+        // ✅ تهيئة المؤقتات بعد تحميل البيانات
+        _initializeActiveRideTimers();
       }
 
     } catch (error) {
@@ -108,8 +119,79 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
         _showErrorSnackBar('فشل في تحميل البيانات: $error');
       }
     }
+  }// ========== دوال مؤقت الرحلة قيد التنفيذ ==========
+
+// بدء مؤقت للرحلة قيد التنفيذ
+  void _startRideTimer(String requestId, DateTime startTime) {
+    _activeRideTimers[requestId]?.cancel();
+    _activeRideStartTimes[requestId] = startTime;
+
+    _activeRideTimers[requestId] = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) {
+        setState(() {
+          final now = DateTime.now();
+          _activeRideDurations[requestId] = now.difference(startTime);
+        });
+      }
+    });
   }
 
+// إيقاف مؤقت الرحلة
+  void _stopRideTimer(String requestId) {
+    _activeRideTimers[requestId]?.cancel();
+    _activeRideTimers.remove(requestId);
+    _activeRideDurations.remove(requestId);
+    _activeRideStartTimes.remove(requestId);
+  }
+
+// تنسيق مدة الرحلة بشكل مقروء
+  String _formatActiveDuration(Duration duration) {
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes.remainder(60);
+    final seconds = duration.inSeconds.remainder(60);
+
+    if (hours > 0) {
+      return '${hours} س ${minutes} د ${seconds} ث';
+    } else if (minutes > 0) {
+      return '${minutes} د ${seconds} ث';
+    } else {
+      return '${seconds} ث';
+    }
+  }
+
+// الحصول على مدة الرحلة النشطة
+  String _getActiveRideDuration(String requestId) {
+    final duration = _activeRideDurations[requestId];
+    if (duration != null) {
+      return _formatActiveDuration(duration);
+    }
+    return 'بدء الرحلة...';
+  }
+
+// تهيئة المؤقتات للطلبات قيد التنفيذ
+  void _initializeActiveRideTimers() {
+    // إيقاف جميع المؤقتات القديمة
+    _activeRideTimers.forEach((key, timer) => timer.cancel());
+    _activeRideTimers.clear();
+    _activeRideDurations.clear();
+    _activeRideStartTimes.clear();
+
+    // بدء مؤقتات جديدة للطلبات قيد التنفيذ
+    for (final request in _allRequests) {
+      final status = request['status'] as String;
+      if (status == 'IN_PROGRESS') {
+        final originalData = request['originalData'];
+        final startTime = originalData['rideStartTime'] as Timestamp?;
+
+        if (startTime != null) {
+          _startRideTimer(request['id'], startTime.toDate());
+        } else {
+          // إذا لم يكن هناك وقت بدء محفوظ، استخدم وقت الإنشاء
+          _startRideTimer(request['id'], request['createdAt'] as DateTime);
+        }
+      }
+    }
+  }
   // معالجة التاريخ من أنواع مختلفة
   DateTime _parseDateTime(dynamic dateData) {
     if (dateData is Timestamp) {
@@ -694,7 +776,44 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
       ),
     );
   }
+// حساب مدة الرحلة وعرضها
+  String _getRideDuration(Map<String, dynamic> request) {
+    try {
+      final originalData = request['originalData'];
 
+      // إذا كانت المدة محفوظة مباشرة
+      if (originalData['rideDuration'] != null) {
+        final durationInSeconds = originalData['rideDuration'] as int;
+        final duration = Duration(seconds: durationInSeconds);
+        return _formatDuration(duration);
+      }
+
+      // إذا كان هناك وقت بدء وانتهاء
+      final startTime = originalData['rideStartTime'] as Timestamp?;
+      final endTime = originalData['rideEndTime'] as Timestamp?;
+
+      if (startTime != null && endTime != null) {
+        final duration = endTime.toDate().difference(startTime.toDate());
+        return _formatDuration(duration);
+      }
+
+      return 'غير محسوبة';
+    } catch (e) {
+      return 'خطأ في الحساب';
+    }
+  }
+
+// تنسيق المدة بشكل مقروء
+  String _formatDuration(Duration duration) {
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes.remainder(60);
+
+    if (hours > 0) {
+      return '${hours} س ${minutes} د';
+    } else {
+      return '${minutes} دقيقة';
+    }
+  }
   // تعيين سائق مشغول (مع تحرير طلبه الحالي)
   Future<void> _assignBusyDriverToRequest(Map<String, dynamic> request, Map<String, dynamic> driver) async {
     try {
@@ -929,6 +1048,8 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
   }
 
   // عنصر طلب فردي
+// عنصر طلب فردي
+// عنصر طلب فردي
   Widget _buildRequestItem(Map<String, dynamic> request) {
     final status = request['status'] as String;
     final priority = request['priority'] as String;
@@ -936,6 +1057,14 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     final statusColor = _getStatusColor(status);
     final statusIcon = _getStatusIcon(status);
     final assignedDriver = request['assignedDriverName'];
+
+    // التحقق إذا كان الطلب مكتملاً وعرض المدة
+    final bool isCompleted = status == 'COMPLETED';
+    final String rideDuration = isCompleted ? _getRideDuration(request) : '';
+
+    // التحقق إذا كان الطلب قيد التنفيذ وعرض المؤقت النشط
+    final bool isInProgress = status == 'IN_PROGRESS';
+    final String activeDuration = isInProgress ? _getActiveRideDuration(request['id']) : '';
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -1026,20 +1155,69 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
                     style: const TextStyle(fontSize: 12, color: Colors.grey),
                   ),
                 ],
+                // عرض مدة الرحلة للطلبات المكتملة
+                if (isCompleted && rideDuration.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  const Icon(Icons.timer, size: 12, color: Colors.green),
+                  const SizedBox(width: 4),
+                  Text(
+                    rideDuration,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.green,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+                // عرض المؤقت النشط للطلبات قيد التنفيذ
+                if (isInProgress && activeDuration.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  Icon(Icons.timer, size: 12, color: Colors.orange.shade700),
+                  const SizedBox(width: 4),
+                  Text(
+                    activeDuration,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.orange.shade700,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
               ],
             ),
           ],
         ),
-        trailing: Text(
-          DateFormat('HH:mm').format(request['createdAt'] as DateTime),
-          style: const TextStyle(color: Colors.grey, fontSize: 12),
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              DateFormat('HH:mm').format(request['createdAt'] as DateTime),
+              style: const TextStyle(color: Colors.grey, fontSize: 12),
+            ),
+            if (isCompleted && rideDuration.isNotEmpty)
+              Text(
+                rideDuration,
+                style: const TextStyle(
+                  color: Colors.green,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            if (isInProgress && activeDuration.isNotEmpty)
+              Text(
+                activeDuration,
+                style: TextStyle(
+                  color: Colors.orange.shade700,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+          ],
         ),
         onTap: () => _showRequestDetails(request),
       ),
     );
-  }
-
-  // عرض تفاصيل الطلب
+  }  // عرض تفاصيل الطلب
   void _showRequestDetails(Map<String, dynamic> request) {
     showModalBottomSheet(
       context: context,
@@ -1160,7 +1338,25 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
                 ),
               ],
             ),
-
+// عرض المؤقت النشط للرحلة قيد التنفيذ
+            if (status == 'IN_PROGRESS')
+              _buildDetailSection(
+                title: 'معلومات الرحلة النشطة',
+                children: [
+                  _buildDetailRow('المدة المنقضية:', _getActiveRideDuration(request['id'])),
+                  if (request['originalData']['rideStartTime'] != null)
+                    _buildDetailRow(
+                      'وقت البدء:',
+                      DateFormat('yyyy-MM-dd HH:mm').format(
+                          (request['originalData']['rideStartTime'] as Timestamp).toDate()
+                      ),
+                    ),
+                  _buildDetailRow(
+                    'الوقت الحالي:',
+                    DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now()),
+                  ),
+                ],
+              ),
             const SizedBox(height: 20),
 
             // معلومات الأساسية
@@ -1215,6 +1411,28 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
             ),
 
             const SizedBox(height: 30),
+// عرض مدة الرحلة في التفاصيل للطلبات المكتملة
+            if (status == 'COMPLETED')
+              _buildDetailSection(
+                title: 'معلومات الرحلة',
+                children: [
+                  _buildDetailRow('مدة الرحلة:', _getRideDuration(request)),
+                  if (request['originalData']['rideStartTime'] != null)
+                    _buildDetailRow(
+                      'وقت البدء:',
+                      DateFormat('yyyy-MM-dd HH:mm').format(
+                          (request['originalData']['rideStartTime'] as Timestamp).toDate()
+                      ),
+                    ),
+                  if (request['originalData']['rideEndTime'] != null)
+                    _buildDetailRow(
+                      'وقت الانتهاء:',
+                      DateFormat('yyyy-MM-dd HH:mm').format(
+                          (request['originalData']['rideEndTime'] as Timestamp).toDate()
+                      ),
+                    ),
+                ],
+              ),
 
             // أزرار التحكم
             _buildActionButtons(request, status),

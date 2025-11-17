@@ -436,6 +436,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
     await _showVehicleSelectionDialog(requestId);
   }
 
+// ❌ هذا مكرر - احذف السطور المكررة
   Future<void> _completeRide(String requestId) async {
     if (_driverId == null) return;
 
@@ -451,6 +452,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
       final vehicleId = vehicleInfo['vehicleId'] as String?;
       final source = vehicleInfo['source'] as String?;
 
+      // ✅ الكود الصحيح بدون تكرار
       await _firestore.collection('companies').doc(widget.companyId).collection('requests').doc(requestId).update({
         'status': 'COMPLETED',
         'rideEndTime': FieldValue.serverTimestamp(),
@@ -472,16 +474,13 @@ class _DriverDashboardState extends State<DriverDashboard> {
       });
 
       _showSuccessSnackBar('Ride completed successfully!');
-
       await _refreshData();
 
     } catch (e) {
       debugPrint('❌ Error completing ride: $e');
       _showErrorSnackBar('Error completing ride: $e');
     }
-  }
-
-  // ==============================================
+  }  // ==============================================
   // 🔄 REQUEST TRANSFER
   // ==============================================
 
@@ -1594,9 +1593,10 @@ class _DriverDashboardState extends State<DriverDashboard> {
       final plateNumber = vehicle['plateNumber'] ?? 'Not specified';
       final type = vehicle['type'] ?? 'Car';
 
+      // ✅ استخدم Timestamp.fromDate بدلاً من FieldValue.serverTimestamp()
       await _firestore.collection('companies').doc(widget.companyId).collection('requests').doc(requestId).update({
         'status': 'IN_PROGRESS',
-        'rideStartTime': FieldValue.serverTimestamp(),
+        'rideStartTime': Timestamp.fromDate(startTime), // ✅ تغيير مهم
         'lastUpdated': FieldValue.serverTimestamp(),
         'vehicleInfo': {
           'vehicleId': vehicleId,
@@ -1623,14 +1623,14 @@ class _DriverDashboardState extends State<DriverDashboard> {
       _showErrorSnackBar('Error starting ride: $e');
     }
   }
-
   Future<void> _startRideWithManualVehicle(String requestId) async {
     try {
       final startTime = DateTime.now();
 
+      // ✅ استخدم Timestamp.fromDate هنا أيضاً
       await _firestore.collection('companies').doc(widget.companyId).collection('requests').doc(requestId).update({
         'status': 'IN_PROGRESS',
-        'rideStartTime': FieldValue.serverTimestamp(),
+        'rideStartTime': Timestamp.fromDate(startTime), // ✅ تغيير مهم
         'lastUpdated': FieldValue.serverTimestamp(),
         'vehicleInfo': {
           'vehicleId': 'manual_${DateTime.now().millisecondsSinceEpoch}',
@@ -1655,7 +1655,6 @@ class _DriverDashboardState extends State<DriverDashboard> {
       _showErrorSnackBar('Error starting ride: $e');
     }
   }
-
   // ==============================================
   // 🔧 UTILITY METHODS
   // ==============================================

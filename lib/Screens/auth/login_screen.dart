@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/auth_service.dart';
+import '../../services/biometric_service.dart';
+import '../../services/storage_service.dart';
 import '../../providers/language_provider.dart';
 import '../../locales/app_localizations.dart';
 import '../role_router_screen.dart';
@@ -18,9 +21,61 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final AuthService _authService = AuthService();
+  final BiometricService _biometricService = BiometricService();
 
   bool _isLoading = false;
+  bool _rememberMe = false;
+  bool _biometricEnabled = false;
+  bool _biometricAvailable = false;
   String? _errorMessage;
+  StorageService? _storageService;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeStorage();
+  }
+
+  Future<void> _initializeStorage() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _storageService = StorageService(prefs);
+      _rememberMe = _storageService!.rememberMe;
+      _biometricEnabled = _storageService!.isBiometricEnabled;
+    });
+
+    // التحقق من دعم البصمة
+    final canUseBiometric = await _biometricService.isBiometricSupported();
+    setState(() {
+      _biometricAvailable = canUseBiometric;
+    });
+
+    // تحميل البيانات المحفوظة إذا كان "تذكرني" مفعل
+    if (_rememberMe && _storageService != null) {
+      final credentials = await _storageService!.getSavedCredentials();
+      if (credentials['email'] != null) {
+        _emailController.text = credentials['email']!;
+      }
+      // لا نحمل كلمة المرور تلقائياً لأسباب أمنية
+    }
+
+    // محاولة الدخول بالبصمة إذا كانت مفعلة
+    if (_biometricEnabled && _biometricAvailable && _storageService != null) {
+      _tryBiometricLogin();
+    }
+  }
+
+  Future<void> _tryBiometricLogin() async {
+    final credentials = await _storageService!.getSavedCredentials();
+    if (credentials['email'] != null && credentials['password'] != null) {
+      final authenticated = await _biometricService.authenticate();
+      if (authenticated && mounted) {
+        _emailController.text = credentials['email']!;
+        _passwordController.text = credentials['password']!;
+        _login(); // الدخول تلقائياً
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -50,6 +105,14 @@ class _LoginScreenState extends State<LoginScreen> {
         _emailController.text.trim(),
         _passwordController.text.trim(),
       );
+
+      // حفظ بيانات الدخول إذا تم تفعيل "تذكرني"
+      if (_rememberMe && _storageService != null) {
+        await _storageService!.saveLoginCredentials(
+          _emailController.text.trim(),
+          _passwordController.text.trim(),
+        );
+      }
 
       // ✅ التوجيه بعد تسجيل الدخول الناجح
       if (mounted) {
@@ -87,6 +150,30 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Widget _buildBiometricButton(String currentLanguage) {
+    if (!_biometricAvailable) return const SizedBox();
+
+    return Column(
+      children: [
+        const SizedBox(height: 15),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _isLoading ? null : _tryBiometricLogin,
+            icon: const Icon(Icons.fingerprint),
+            label: Text(_translate('login_with_biometric', currentLanguage)),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(double.infinity, 50),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Consumer<LanguageProvider>(
@@ -104,7 +191,6 @@ class _LoginScreenState extends State<LoginScreen> {
               PopupMenuButton<String>(
                 icon: const Icon(Icons.language, color: Colors.white),
                 onSelected: (String newLanguage) async {
-                  // 🔥 التعديل: استخدام setLanguage بدل changeLanguage
                   await languageProvider.setLanguage(newLanguage);
                 },
                 itemBuilder: (BuildContext context) => [
@@ -202,7 +288,43 @@ class _LoginScreenState extends State<LoginScreen> {
                           return null;
                         },
                       ),
-                      const SizedBox(height: 25),
+                      const SizedBox(height: 15),
+
+                      // خيارات التذكر والمصادقة
+                      Row(
+                        children: [
+                          // تذكرني
+                          Checkbox(
+                            value: _rememberMe,
+                            onChanged: (value) {
+                              setState(() {
+                                _rememberMe = value!;
+                              });
+                            },
+                          ),
+                          Text(_translate('remember_me', currentLanguage)),
+
+                          const Spacer(),
+
+                          // البصمة/الوجه
+                          if (_biometricAvailable) ...[
+                            Checkbox(
+                              value: _biometricEnabled,
+                              onChanged: _rememberMe ? (value) {
+                                setState(() {
+                                  _biometricEnabled = value!;
+                                });
+                                if (_storageService != null) {
+                                  _storageService!.setBiometricEnabled(value!);
+                                }
+                              } : null,
+                            ),
+                            Text(_translate('enable_biometric', currentLanguage)),
+                          ],
+                        ],
+                      ),
+
+                      const SizedBox(height: 10),
 
                       if (_errorMessage != null)
                         Padding(
@@ -259,6 +381,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
 
+                      // زر البصمة
+                      _buildBiometricButton(currentLanguage),
+
                       const SizedBox(height: 15),
 
                       TextButton(
@@ -272,31 +397,6 @@ class _LoginScreenState extends State<LoginScreen> {
                         child: Text(
                           _translate('register', currentLanguage),
                           style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 16),
-                        ),
-                      ),
-
-                      const SizedBox(height: 20),
-
-                      // 🔥 قسم معلومات الترجمة (للتطوير فقط - يمكن حذفه لاحقاً)
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Column(
-                          children: [
-                            Text(
-                              _translate('language_info', currentLanguage),
-                              style: const TextStyle(fontSize: 12, color: Colors.grey),
-                              textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: 5),
-                            Text(
-                              'Current: $currentLanguage',
-                              style: const TextStyle(fontSize: 10, color: Colors.grey),
-                            ),
-                          ],
                         ),
                       ),
                     ],
