@@ -938,13 +938,13 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
       color: Colors.grey.shade50,
       child: Row(
         children: [
-          _buildStatCard('طلبات اليوم', stats['today']!, Colors.blue, Icons.today),
+          _buildStatCard('Today requests', stats['today']!, Colors.blue, Icons.today),
           const SizedBox(width: 12),
-          _buildStatCard('عاجلة', stats['urgent']!, Colors.orange, Icons.warning),
+          _buildStatCard('Urgent', stats['urgent']!, Colors.orange, Icons.warning),
           const SizedBox(width: 12),
-          _buildStatCard('قيد الانتظار', stats['pending']!, Colors.red, Icons.pending),
+          _buildStatCard('Pending', stats['pending']!, Colors.red, Icons.pending),
           const SizedBox(width: 12),
-          _buildStatCard('مكتملة اليوم', stats['completed']!, Colors.green, Icons.check_circle),
+          _buildStatCard('Today completed', stats['completed']!, Colors.green, Icons.check_circle),
         ],
       ),
     );
