@@ -7,6 +7,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+
 class DriverDashboard extends StatefulWidget {
   final String userName;
   final String companyId;
@@ -1172,7 +1173,78 @@ class _DriverDashboardState extends State<DriverDashboard> {
       ],
     );
   }
+// دالة نسخ النص إلى الحافظة
+  void _copyToClipboard(String text, String message) {
+    Clipboard.setData(ClipboardData(text: text));
+    _showCopySnackBar(message);
+  }
 
+// دالة لعرض تأكيد النسخ
+  void _showCopyDialog(String text, String label) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Copy $label'),
+        content: SelectableText(
+          text,
+          style: const TextStyle(fontSize: 16),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              _copyToClipboard(text, '$label copied to clipboard');
+              Navigator.pop(context);
+            },
+            child: const Text('Copy'),
+          ),
+        ],
+      ),
+    );
+  }
+
+// دالة لعرض رسالة النسخ
+  void _showCopySnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(Icons.check, color: Colors.white, size: 20),
+            const SizedBox(width: 8),
+            Text(message),
+          ],
+        ),
+        backgroundColor: _successColor,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    );
+  }
+
+// دالة فتح رابط الخرائط
+  Future<void> _openMapLink(String url) async {
+    try {
+      // تنظيف الرابط إذا كان يحتوي على مسافات
+      String cleanUrl = url.trim();
+
+      // إضافة https:// إذا لم يكن موجوداً
+      if (!cleanUrl.startsWith('http')) {
+        cleanUrl = 'https://$cleanUrl';
+      }
+
+      if (await canLaunchUrl(Uri.parse(cleanUrl))) {
+        await launchUrl(Uri.parse(cleanUrl));
+      } else {
+        _copyToClipboard(url, 'Map link copied to clipboard');
+      }
+    } catch (e) {
+      _copyToClipboard(url, 'Map link copied to clipboard');
+    }
+  }
   Widget _buildTripDetails(String from, String to, String notes) {
     return Column(
       children: [
@@ -1185,6 +1257,43 @@ class _DriverDashboardState extends State<DriverDashboard> {
   }
 
   Widget _buildLocationRow(IconData icon, String label, String value, Color color) {
+    if (value.isEmpty || value == 'N/A') {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: color, size: 16),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '$label:',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.bold),
+                  ),
+                  Text(
+                    value,
+                    style: const TextStyle(fontSize: 14),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // تحقق إذا النص يحتوي على رابط خرائط
+    final bool isMapLink = value.toLowerCase().contains('maps.') ||
+        value.toLowerCase().contains('google.') ||
+        value.toLowerCase().contains('goo.gl') ||
+        value.toLowerCase().contains('openstreetmap') ||
+        value.toLowerCase().startsWith('http');
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -1200,11 +1309,48 @@ class _DriverDashboardState extends State<DriverDashboard> {
                   '$label:',
                   style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.bold),
                 ),
-                Text(
-                  value,
-                  style: const TextStyle(fontSize: 14),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                GestureDetector(
+                  onLongPress: () {
+                    _copyToClipboard(value, '$label copied to clipboard');
+                  },
+                  onTap: isMapLink ? () => _openMapLink(value) : () {
+                    _showCopyDialog(value, label);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+                    margin: const EdgeInsets.only(top: 2),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(6),
+                      color: isMapLink ? Colors.blue.shade50 : Colors.grey.shade50,
+                      border: Border.all(
+                        color: isMapLink ? Colors.blue.shade200 : Colors.grey.shade300,
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            value,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: isMapLink ? Colors.blue.shade700 : Colors.black87,
+                              decoration: isMapLink ? TextDecoration.underline : TextDecoration.none,
+                              fontWeight: isMapLink ? FontWeight.w500 : FontWeight.normal,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Icon(
+                          isMapLink ? Icons.open_in_new : Icons.content_copy,
+                          size: 16,
+                          color: isMapLink ? Colors.blue.shade600 : Colors.grey.shade600,
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -1212,9 +1358,7 @@ class _DriverDashboardState extends State<DriverDashboard> {
         ],
       ),
     );
-  }
-
-  Widget _buildRideTimer(String requestId) {
+  }  Widget _buildRideTimer(String requestId) {
     return Container(
       margin: const EdgeInsets.only(top: 8),
       padding: const EdgeInsets.all(8),
