@@ -57470,16 +57470,16 @@ l=A.kf(A.b([A.eP(n,n,n,B.l5,n,n,o.gaAz(),n,n,n,"\u062a\u062d\u062f\u064a\u062b")
 if(o.f)k=B.ka
 else{s=m.h(0,"today")
 s.toString
-s=o.E1("\u0637\u0644\u0628\u0627\u062a \u0627\u0644\u064a\u0648\u0645",s,B.b8,B.Wr)
+s=o.E1("Today requests",s,B.b8,B.Wr)
 r=m.h(0,"urgent")
 r.toString
-r=o.E1("\u0639\u0627\u062c\u0644\u0629",r,B.aj,B.l3)
+r=o.E1("Urgent",r,B.aj,B.l3)
 q=m.h(0,"pending")
 q.toString
-q=o.E1("\u0642\u064a\u062f \u0627\u0644\u0627\u0646\u062a\u0638\u0627\u0631",q,B.a7,B.pq)
+q=o.E1("Pending",q,B.a7,B.pq)
 p=m.h(0,"completed")
 p.toString
-p=A.bF(n,A.b6(A.b([s,B.bt,r,B.bt,q,B.bt,o.E1("\u0645\u0643\u062a\u0645\u0644\u0629 \u0627\u0644\u064a\u0648\u0645",p,B.al,B.cN)],k),B.n,B.j,B.k,0,n),B.q,B.c6,n,n,n,n,n,B.ao,n,n,n)
+p=A.bF(n,A.b6(A.b([s,B.bt,r,B.bt,q,B.bt,o.E1("Today completed",p,B.al,B.cN)],k),B.n,B.j,B.k,0,n),B.q,B.c6,n,n,n,n,n,B.ao,n,n,n)
 q=o.aou()
 k=A.aL(A.b([p,q,A.c_(o.gNf().length===0?B.RC:o.aoR(),1)],k),B.n,B.j,B.k,0,B.o)}return A.hp(l,n,k,n,n,n)},
 E1(a,b,c,d){var s=null,r=A.cM(B.c.bt(25.5),c.au()>>>16&255,c.au()>>>8&255,c.au()&255),q=A.bv(12),p=A.hc(A.cM(B.c.bt(76.5),c.au()>>>16&255,c.au()>>>8&255,c.au()&255),1),o=t.p
