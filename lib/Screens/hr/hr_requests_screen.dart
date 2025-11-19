@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import 'package:clipboard/clipboard.dart';
 import '../../services/dispatch_service.dart';
 import 'dart:async';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
 
 class HRRequestsScreen extends StatefulWidget {
   final String companyId;
@@ -28,6 +28,9 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
   final Map<String, Duration> _activeRideDurations = {};
   final Map<String, DateTime> _activeRideStartTimes = {};
   Timer? _autoRefreshTimer;
+
+  // 🆕 إضافة cache لتحسين أداء حساب مدة الرحلة
+  final Map<String, String> _rideDurationCache = {};
 
   // قائمة الفلاتر المتاحة
   final List<String> _filters = [
@@ -60,6 +63,12 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     // تنظيف مؤقتات الرحلة
     _activeRideTimers.forEach((key, timer) => timer.cancel());
     _activeRideTimers.clear();
+    _activeRideDurations.clear();
+    _activeRideStartTimes.clear();
+
+    // 🆕 تنظيف cache
+    _rideDurationCache.clear();
+
     super.dispose();
   }
 
@@ -78,6 +87,10 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
       if (mounted) {
         setState(() { _isLoading = true; });
       }
+
+      // 🆕 تنظيف cache قبل تحميل البيانات الجديدة
+      _rideDurationCache.clear();
+      print('🧹 تنظيف cache مدة الرحلة');
 
       final requestsSnapshot = await _firestore
           .collection('companies')
@@ -325,9 +338,10 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
   }
 
   // ✅ دالة النسخ الفعلية
+  // ✅ دالة النسخ الفعلية - المعدلة
   Future<void> _copyRequestId(String requestId) async {
     try {
-      await FlutterClipboard.copy(requestId);
+      await Clipboard.setData(ClipboardData(text: requestId)); // ⬅️ استخدم هذا
       _showSuccessSnackBar('تم نسخ رقم الطلب: $requestId');
     } catch (error) {
       _showErrorSnackBar('فشل في نسخ الرقم: $error');
@@ -782,9 +796,16 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     );
   }
 
-  // حساب مدة الرحلة وعرضها
-// حساب مدة الرحلة - النسخة المحسنة
+  // حساب مدة الرحلة - النسخة المحسنة مع cache
   String _getRideDuration(Map<String, dynamic> request) {
+    final requestId = request['id'];
+
+    // التحقق من الـ cache أولاً
+    if (_rideDurationCache.containsKey(requestId)) {
+      print('💾 استخدام cache لمدة الرحلة: $requestId');
+      return _rideDurationCache[requestId]!;
+    }
+
     try {
       final originalData = request['originalData'];
       print('🔍 فحص مدة الرحلة للطلب: ${request['id']}');
@@ -800,34 +821,40 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
       print('   ⏰ وقت التعيين: $assignedTime');
       print('   ⏰ وقت الإكمال: $completedTime');
 
+      String result = 'غير محسوبة';
+
       // الأولوية: استخدام rideStartTime و rideEndTime
       if (startTime != null && endTime != null) {
         final duration = endTime.difference(startTime);
         if (!duration.isNegative) {
           print('   ✅ استخدام أوقات الرحلة - المدة: ${duration.inMinutes} دقيقة');
-          return _formatDuration(duration);
+          result = _formatDuration(duration);
         }
       }
-
       // البديل: استخدام assignedTime و completedTime
-      if (assignedTime != null && completedTime != null) {
+      else if (assignedTime != null && completedTime != null) {
         final duration = completedTime.difference(assignedTime);
         if (!duration.isNegative) {
           print('   ✅ استخدام أوقات التعيين والإكمال - المدة: ${duration.inMinutes} دقيقة');
-          return _formatDuration(duration);
+          result = _formatDuration(duration);
         }
       }
-
       // إذا كانت المدة محفوظة مباشرة
-      if (originalData['rideDuration'] != null) {
+      else if (originalData['rideDuration'] != null) {
         final durationInSeconds = originalData['rideDuration'] as int;
         final duration = Duration(seconds: durationInSeconds);
         print('   ✅ استخدام المدة المحفوظة: $durationInSeconds ثانية');
-        return _formatDuration(duration);
+        result = _formatDuration(duration);
+      } else {
+        print('   ❌ لا توجد بيانات كافية لحساب المدة');
+        result = 'غير محسوبة';
       }
 
-      print('   ❌ لا توجد بيانات كافية لحساب المدة');
-      return 'غير محسوبة';
+      // حفظ في الـ cache
+      _rideDurationCache[requestId] = result;
+      print('💾 حفظ في cache: $requestId -> $result');
+
+      return result;
 
     } catch (e) {
       print('❌ خطأ في حساب مدة الرحلة: $e');
@@ -835,7 +862,7 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     }
   }
 
-// دالة مساعدة لتحليل الوقت من البيانات
+  // دالة مساعدة لتحليل الوقت من البيانات
   DateTime? _parseTimeFromData(Map<String, dynamic> data, String field) {
     try {
       if (data[field] is Timestamp) {
@@ -851,6 +878,7 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
       return null;
     }
   }
+
   // تنسيق المدة بشكل مقروء
   String _formatDuration(Duration duration) {
     final hours = duration.inHours;
