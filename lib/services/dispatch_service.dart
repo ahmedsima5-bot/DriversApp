@@ -5,6 +5,7 @@ import 'dart:async';
 
 class DispatchService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  StreamSubscription<QuerySnapshot>? _requestsSubscription;
 
   // ✅ دالة التوزيع التلقائي للطلب المحدد
   Future<void> autoAssignSingleRequest(String companyId, String requestId) async {
@@ -31,11 +32,164 @@ class DispatchService {
     }
   }
 
-  // ✨ نظام التوزيع العادل - النسخة المرنة
+  // 🆕 دالة التشخيص التفصيلي
+  Future<void> debugSystem(String companyId) async {
+    print('\n🔍 === بدء التشخيص التفصيلي للنظام ===');
+
+    try {
+      // 1. التحقق من جميع الطلبات
+      final allRequests = await _firestore
+          .collection('companies')
+          .doc(companyId)
+          .collection('requests')
+          .orderBy('createdAt', descending: true)
+          .limit(10)
+          .get();
+
+      print('📋 آخر 10 طلبات في النظام:');
+      for (var doc in allRequests.docs) {
+        final data = doc.data();
+        print('   ├─ ${doc.id}');
+        print('   │  - الحالة: ${data['status']}');
+        print('   │  - الأولوية: ${data['priority']}');
+        print('   │  - السائق: ${data['assignedDriverId'] ?? "غير مخصص"}');
+        print('   │  - القسم: ${data['department']}');
+        print('   └─ الوقت: ${data['createdAt']}');
+      }
+
+      // 2. التحقق من السائقين
+      final driversSnapshot = await _firestore
+          .collection('companies')
+          .doc(companyId)
+          .collection('drivers')
+          .where('isActive', isEqualTo: true)
+          .get();
+
+      print('\n👥 السائقين النشطين: ${driversSnapshot.docs.length}');
+      for (var doc in driversSnapshot.docs) {
+        final data = doc.data();
+        final driverId = doc.id;
+
+        // حساب الطلبات النشطة لكل سائق
+        final activeRequests = await _firestore
+            .collection('companies')
+            .doc(companyId)
+            .collection('requests')
+            .where('assignedDriverId', isEqualTo: driverId)
+            .where('status', whereIn: ['ASSIGNED', 'IN_PROGRESS'])
+            .get();
+
+        print('   ├─ ${data['name']} (${doc.id})');
+        print('   │  - أونلاين: ${data['isOnline'] ?? false}');
+        print('   │  - متاح: ${data['isAvailable'] ?? true}');
+        print('   │  - معطل: ${data['isBlocked'] ?? false}');
+        print('   │  - مشاوير: ${data['completedRides'] ?? 0}');
+        print('   │  - طلبات نشطة: ${activeRequests.docs.length}');
+        print('   │  - قابل للتوزيع: ${activeRequests.docs.length < 3 && data['isBlocked'] != true}');
+      }
+
+      // 3. البحث عن الطلبات المعلقة
+      final pendingRequests = await _firestore
+          .collection('companies')
+          .doc(companyId)
+          .collection('requests')
+          .where('status', whereIn: ['PENDING', 'HR_APPROVED'])
+          .get();
+
+      print('\n📊 الطلبات المعلقة للتوزيع: ${pendingRequests.docs.length}');
+      for (var doc in pendingRequests.docs) {
+        final data = doc.data();
+        print('   ├─ ${doc.id}');
+        print('   │  - الحالة: ${data['status']}');
+        print('   │  - الأولوية: ${data['priority']}');
+        print('   │  - السائق: ${data['assignedDriverId'] ?? "غير مخصص"}');
+
+        if (data['priority'] == 'Normal' && data['assignedDriverId'] == null) {
+          print('   │  🎯 قابل للتوزيع التلقائي');
+          // توزيع فوري أثناء التشخيص
+          await autoAssignSingleRequest(companyId, doc.id);
+        } else {
+          print('   │  ⏸️ غير قابل للتوزيع');
+        }
+      }
+
+      // 4. التحقق من إعدادات النظام
+      print('\n⚙️ إعدادات النظام:');
+      print('   - النظام التلقائي مفعل: ${_requestsSubscription != null}');
+      print('   - عدد الطلبات الكلي: ${allRequests.docs.length}');
+      print('   - طلبات قابلة للتوزيع: ${pendingRequests.docs.where((doc) => doc.data()['priority'] == 'Normal' && doc.data()['assignedDriverId'] == null).length}');
+
+    } catch (e) {
+      print('❌ خطأ في التشخيص: $e');
+    }
+
+    print('✅ انتهى التشخيص التفصيلي\n');
+  }
+
+  // 🆕 نظام الاستماع التلقائي المحسن
+  void startAutoDispatchListener(String companyId) {
+    print('🎯 تفعيل النظام التلقائي للشركة: $companyId');
+
+    // إيقاف أي اشتراك سابق
+    _requestsSubscription?.cancel();
+
+    _requestsSubscription = _firestore
+        .collection('companies')
+        .doc(companyId)
+        .collection('requests')
+        .snapshots()
+        .listen((snapshot) async {
+      print('📡 حدث جديد في الطلبات: ${snapshot.docChanges.length} تغيير');
+
+      for (var change in snapshot.docChanges) {
+        final requestData = change.doc.data() as Map<String, dynamic>? ?? {};
+        final requestId = change.doc.id;
+        final status = requestData['status'] as String?;
+        final priority = requestData['priority'] as String?;
+        final assignedDriverId = requestData['assignedDriverId'] as String?;
+
+        print('   📝 الطلب: $requestId');
+        print('   ├─ الحالة: $status');
+        print('   ├─ الأولوية: $priority');
+        print('   └─ السائق: $assignedDriverId');
+
+        // شروط التوزيع التلقائي
+        final bool isEligibleForAutoAssign =
+            assignedDriverId == null &&
+                (status == 'PENDING' || status == 'HR_APPROVED') &&
+                priority == 'Normal';
+
+        if (isEligibleForAutoAssign) {
+          print('   🚀 ينطبق عليه التوزيع التلقائي - جاري التوزيع...');
+          await Future.delayed(const Duration(seconds: 3));
+          await autoAssignSingleRequest(companyId, requestId);
+        } else {
+          print('   ⏸️ لا ينطبق عليه التوزيع التلقائي');
+        }
+      }
+    }, onError: (error) {
+      print('❌ خطأ في النظام التلقائي: $error');
+    });
+  }
+
+  // 🆕 إيقاف النظام التلقائي
+  void stopAutoDispatchListener() {
+    _requestsSubscription?.cancel();
+    _requestsSubscription = null;
+    print('⏹️ إيقاف النظام التلقائي للتوزيع');
+  }
+
+  // ✨ نظام التوزيع العادل - النسخة المحسنة
   Future<void> _fairAutoAssign(String companyId, String requestId, Map<String, dynamic> requestData) async {
     try {
       print('🎯 بدء التوزيع العادل للطلب: $requestId');
       print('📋 بيانات الطلب: ${requestData['priority']} - ${requestData['status']}');
+
+      // التحقق إذا كان الطلب مخصصاً مسبقاً
+      if (requestData['assignedDriverId'] != null) {
+        print('⚠️ الطلب مخصص مسبقاً للسائق: ${requestData['assignedDriverName']}');
+        return;
+      }
 
       // 1. جلب جميع السائقين النشطين
       final allDrivers = await _getAllDriversForAssignment(companyId);
@@ -63,7 +217,7 @@ class DispatchService {
     }
   }
 
-  // ✨ جلب جميع السائقين مع بيانات مفصلة - النسخة المرنة
+  // ✨ جلب جميع السائقين مع بيانات مفصلة
   Future<List<Map<String, dynamic>>> _getAllDriversForAssignment(String companyId) async {
     try {
       print('🔍 جلب السائقين للشركة: $companyId');
@@ -85,7 +239,7 @@ class DispatchService {
 
         print('👤 فحص السائق: ${data['name']}');
 
-        // ✅ التحقق المرن من حالة السائق
+        // ✅ التحقق من حالة السائق
         final driverStatus = await _checkDriverFlexibleStatus(companyId, driverId, data);
 
         print('   - متاح فعلياً: ${driverStatus['isActuallyAvailable']}');
@@ -94,20 +248,22 @@ class DispatchService {
         print('   - أونلاين: ${driverStatus['isOnline']}');
         print('   - قابل للتوزيع: ${driverStatus['canAcceptRides']}');
 
-        drivers.add({
-          'id': driverId,
-          'name': data['name'] ?? 'غير معروف',
-          'isAvailable': driverStatus['isActuallyAvailable'],
-          'isOnline': driverStatus['isOnline'],
-          'completedRides': driverStatus['completedRides'],
-          'activeRequests': driverStatus['activeRequestsCount'],
-          'totalWorkload': driverStatus['completedRides'] + driverStatus['activeRequestsCount'],
-          'fairnessScore': _calculateFairnessScore(driverStatus['completedRides'], driverStatus['activeRequestsCount']),
-          'canAcceptRides': driverStatus['canAcceptRides'], // ✅ معيار جديد
-        });
+        if (driverStatus['canAcceptRides']) {
+          drivers.add({
+            'id': driverId,
+            'name': data['name'] ?? 'غير معروف',
+            'isAvailable': driverStatus['isActuallyAvailable'],
+            'isOnline': driverStatus['isOnline'],
+            'completedRides': driverStatus['completedRides'],
+            'activeRequests': driverStatus['activeRequestsCount'],
+            'totalWorkload': driverStatus['completedRides'] + driverStatus['activeRequestsCount'],
+            'fairnessScore': _calculateFairnessScore(driverStatus['completedRides'], driverStatus['activeRequestsCount']),
+            'canAcceptRides': driverStatus['canAcceptRides'],
+          });
+        }
       }
 
-      print('✅ عدد السائقين القابلين للتوزيع: ${drivers.where((d) => d['canAcceptRides'] == true).length}');
+      print('✅ عدد السائقين القابلين للتوزيع: ${drivers.length}');
       return drivers;
     } catch (e) {
       print('❌ خطأ في جلب السائقين للتوزيع: $e');
@@ -115,10 +271,9 @@ class DispatchService {
     }
   }
 
-  // ✅ التحقق المرن من حالة السائق
+  // ✅ التحقق من حالة السائق
   Future<Map<String, dynamic>> _checkDriverFlexibleStatus(String companyId, String driverId, Map<String, dynamic> driverData) async {
-    // القيم الأساسية
-    bool isActuallyAvailable = driverData['isAvailable'] ?? true;
+    final bool isActuallyAvailable = driverData['isAvailable'] ?? true;
     final int completedRides = (driverData['completedRides'] as num?)?.toInt() ?? 0;
     final bool isOnline = driverData['isOnline'] ?? false;
 
@@ -133,22 +288,14 @@ class DispatchService {
 
     final int activeRequestsCount = activeRequests.docs.length;
 
-    // ✅ الشروط المرنة للقبول:
-    // 1. السائق نشط (isActive = true) - هذا شرط أساسي
-    // 2. لا يشترط أن يكون أونلاين
-    // 3. يمكن أن يكون لديه طلبات نشطة (للسائقين المتمرسين)
-    // 4. يمكن أن يكون غير متاح مؤقتاً لكن يقبل الطلبات الجديدة
-
     bool canAcceptRides = true;
 
     // ❌ الشروط التي تمنع التوزيع:
-    // 1. إذا كان السائق لديه أكثر من 3 طلبات نشطة (لتجنب الإرهاق)
     if (activeRequestsCount >= 3) {
       canAcceptRides = false;
       print('   ⚠️ السائق لديه $activeRequestsCount طلبات نشطة - تجاوز الحد المسموح');
     }
 
-    // 2. إذا كان السائق معطل من النظام
     if (driverData['isBlocked'] == true) {
       canAcceptRides = false;
       print('   ⚠️ السائق معطل من النظام');
@@ -163,21 +310,16 @@ class DispatchService {
     };
   }
 
-  // ✨ اختيار السائق بناءً على قواعد العدالة - النسخة المرنة
+  // ✨ اختيار السائق بناءً على قواعد العدالة
   Map<String, dynamic>? _selectDriverByFairRules(
       List<Map<String, dynamic>> drivers,
       Map<String, dynamic> requestData
       ) {
     final String priority = requestData['priority'] ?? 'Normal';
 
-    // ✅ الفلترة المرنة: نأخذ السائقين الذين يمكنهم قبول الطلبات
-    final eligibleDrivers = drivers.where((driver) =>
-    driver['canAcceptRides'] == true // ✅ الشرط الأساسي الجديد
-    ).toList();
+    print('📊 عدد السائقين المؤهلين: ${drivers.length}');
 
-    print('📊 عدد السائقين المؤهلين: ${eligibleDrivers.length}');
-
-    if (eligibleDrivers.isEmpty) {
+    if (drivers.isEmpty) {
       print('⚠️ لا يوجد سائقين مؤهلين حالياً');
       return null;
     }
@@ -185,40 +327,33 @@ class DispatchService {
     Map<String, dynamic>? selectedDriver;
 
     if (priority == 'Urgent') {
-      // 🚨 للطلبات العاجلة: الأفضلية للسائقين بدون طلبات نشطة
-      final candidatesWithoutActive = eligibleDrivers.where((driver) => driver['activeRequests'] == 0).toList();
+      final candidatesWithoutActive = drivers.where((driver) => driver['activeRequests'] == 0).toList();
 
       if (candidatesWithoutActive.isNotEmpty) {
-        // إذا وجد سائقين بدون طلبات نشطة، نأخذ الأقل في المشاوير
         candidatesWithoutActive.sort((a, b) => (a['completedRides'] ?? 0).compareTo(b['completedRides'] ?? 0));
         selectedDriver = candidatesWithoutActive.first;
         print('🚨 طلب عاجل - تم اختيار سائق بدون طلبات نشطة: ${selectedDriver['name']}');
       } else {
-        // إذا كل السائقين لديهم طلبات نشطة، نأخذ الأقل مشاوير
-        eligibleDrivers.sort((a, b) => (a['completedRides'] ?? 0).compareTo(b['completedRides'] ?? 0));
-        selectedDriver = eligibleDrivers.first;
+        drivers.sort((a, b) => (a['completedRides'] ?? 0).compareTo(b['completedRides'] ?? 0));
+        selectedDriver = drivers.first;
         print('🚨 طلب عاجل - تم اختيار سائق بأقل مشاوير: ${selectedDriver['name']}');
       }
     } else {
-      // 📊 للطلبات العادية: ترتيب حسب درجة العدالة (الأعلى أولاً)
-      eligibleDrivers.sort((a, b) {
+      drivers.sort((a, b) {
         final scoreA = a['fairnessScore'] ?? 0;
         final scoreB = b['fairnessScore'] ?? 0;
-        return scoreB.compareTo(scoreA); // ترتيب تنازلي
+        return scoreB.compareTo(scoreA);
       });
 
-      selectedDriver = eligibleDrivers.first;
+      selectedDriver = drivers.first;
       print('📊 طلب عادي - تم اختيار السائق: ${selectedDriver['name']}');
     }
 
-    // طباعة تفاصيل التوزيع
     print('🎯 تفاصيل التوزيع:');
     print('   - السائق: ${selectedDriver['name']}');
     print('   - المشاوير المكتملة: ${selectedDriver['completedRides']}');
     print('   - الطلبات النشطة: ${selectedDriver['activeRequests']}');
     print('   - درجة العدالة: ${selectedDriver['fairnessScore']?.toStringAsFixed(2)}');
-    print('   - متاح: ${selectedDriver['isAvailable']}');
-    print('   - أونلاين: ${selectedDriver['isOnline']}');
 
     return selectedDriver;
   }
@@ -234,7 +369,6 @@ class DispatchService {
       print('🔄 تعيين الطلب $requestId للسائق ${driver['name']}');
 
       await _firestore.runTransaction((transaction) async {
-        // تحديث الطلب
         transaction.update(
           _firestore
               .collection('companies')
@@ -252,7 +386,6 @@ class DispatchService {
           },
         );
 
-        // ✅ تحديث حالة السائق - لا نغير isAvailable لأنه قد يكون مشغولاً ولكن يقبل طلبات جديدة
         transaction.update(
           _firestore
               .collection('companies')
@@ -262,7 +395,6 @@ class DispatchService {
           {
             'lastStatusUpdate': FieldValue.serverTimestamp(),
             'currentRequestId': requestId,
-            // ❌ لا نغير isAvailable هنا
           },
         );
       });
@@ -275,7 +407,7 @@ class DispatchService {
     }
   }
 
-  // باقي الدوال...
+  // الدوال المساعدة
   double _calculateFairnessScore(int completedRides, int activeRequests) {
     final completedScore = completedRides == 0 ? 1.0 : 1.0 / (completedRides + 1);
     final activeScore = activeRequests == 0 ? 1.0 : 1.0 / (activeRequests + 1);
@@ -304,6 +436,7 @@ class DispatchService {
     }
   }
 
+  // دالة الموافقة المحسنة
   Future<void> approveUrgentRequest(
       String companyId,
       String requestId,
@@ -326,7 +459,7 @@ class DispatchService {
           print('🚀 طلب عادي - توزيع فوري بعد الموافقة');
           await _fairAutoAssign(companyId, requestId, requestData);
         } else if (priority == 'Urgent') {
-          print('⏸️ طلب عاجل - تغيير الحالة فقط');
+          print('🚀 طلب عاجل - توزيع فوري بعد الموافقة');
           await _firestore
               .collection('companies')
               .doc(companyId)
@@ -338,6 +471,8 @@ class DispatchService {
             'hrApprovalTime': FieldValue.serverTimestamp(),
             'status': 'HR_APPROVED',
           });
+          await Future.delayed(const Duration(seconds: 2));
+          await _fairAutoAssign(companyId, requestId, requestData);
         }
       }
     } catch (e) {
@@ -346,7 +481,6 @@ class DispatchService {
     }
   }
 }
-
 // باقي كود الصفحة...
 class HRRequestsScreen extends StatefulWidget {
   final String companyId;

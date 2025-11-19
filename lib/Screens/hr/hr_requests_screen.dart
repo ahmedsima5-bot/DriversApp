@@ -45,8 +45,9 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     _loadRequestsData();
     _startAutoRefresh();
 
-    // فحص حالة السائقين بعد تحميل الصفحة
+    // 🆕 تفعيل النظام التلقائي للتوزيع
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _dispatchService.startAutoDispatchListener(widget.companyId);
       _checkAndFixDriversAvailability();
     });
   }
@@ -54,6 +55,8 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
   @override
   void dispose() {
     _autoRefreshTimer?.cancel();
+    // 🆕 إيقاف النظام التلقائي للتوزيع
+    _dispatchService.stopAutoDispatchListener();
     // تنظيف مؤقتات الرحلة
     _activeRideTimers.forEach((key, timer) => timer.cancel());
     _activeRideTimers.clear();
@@ -70,7 +73,6 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
   }
 
   // تحميل بيانات الطلبات
-// تحميل بيانات الطلبات
   Future<void> _loadRequestsData() async {
     try {
       if (mounted) {
@@ -119,9 +121,11 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
         _showErrorSnackBar('فشل في تحميل البيانات: $error');
       }
     }
-  }// ========== دوال مؤقت الرحلة قيد التنفيذ ==========
+  }
 
-// بدء مؤقت للرحلة قيد التنفيذ
+  // ========== دوال مؤقت الرحلة قيد التنفيذ ==========
+
+  // بدء مؤقت للرحلة قيد التنفيذ
   void _startRideTimer(String requestId, DateTime startTime) {
     _activeRideTimers[requestId]?.cancel();
     _activeRideStartTimes[requestId] = startTime;
@@ -136,7 +140,7 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     });
   }
 
-// إيقاف مؤقت الرحلة
+  // إيقاف مؤقت الرحلة
   void _stopRideTimer(String requestId) {
     _activeRideTimers[requestId]?.cancel();
     _activeRideTimers.remove(requestId);
@@ -144,7 +148,7 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     _activeRideStartTimes.remove(requestId);
   }
 
-// تنسيق مدة الرحلة بشكل مقروء
+  // تنسيق مدة الرحلة بشكل مقروء
   String _formatActiveDuration(Duration duration) {
     final hours = duration.inHours;
     final minutes = duration.inMinutes.remainder(60);
@@ -159,7 +163,7 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     }
   }
 
-// الحصول على مدة الرحلة النشطة
+  // الحصول على مدة الرحلة النشطة
   String _getActiveRideDuration(String requestId) {
     final duration = _activeRideDurations[requestId];
     if (duration != null) {
@@ -168,7 +172,7 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
     return 'بدء الرحلة...';
   }
 
-// تهيئة المؤقتات للطلبات قيد التنفيذ
+  // تهيئة المؤقتات للطلبات قيد التنفيذ
   void _initializeActiveRideTimers() {
     // إيقاف جميع المؤقتات القديمة
     _activeRideTimers.forEach((key, timer) => timer.cancel());
@@ -192,6 +196,7 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
       }
     }
   }
+
   // معالجة التاريخ من أنواع مختلفة
   DateTime _parseDateTime(dynamic dateData) {
     if (dateData is Timestamp) {
@@ -776,34 +781,77 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
       ),
     );
   }
-// حساب مدة الرحلة وعرضها
+
+  // حساب مدة الرحلة وعرضها
+// حساب مدة الرحلة - النسخة المحسنة
   String _getRideDuration(Map<String, dynamic> request) {
     try {
       final originalData = request['originalData'];
+      print('🔍 فحص مدة الرحلة للطلب: ${request['id']}');
+
+      // التحقق من جميع مصادر بيانات الوقت
+      final startTime = _parseTimeFromData(originalData, 'rideStartTime');
+      final endTime = _parseTimeFromData(originalData, 'rideEndTime');
+      final assignedTime = _parseTimeFromData(originalData, 'assignedTime');
+      final completedTime = _parseTimeFromData(originalData, 'completedAt');
+
+      print('   ⏰ وقت البدء: $startTime');
+      print('   ⏰ وقت الانتهاء: $endTime');
+      print('   ⏰ وقت التعيين: $assignedTime');
+      print('   ⏰ وقت الإكمال: $completedTime');
+
+      // الأولوية: استخدام rideStartTime و rideEndTime
+      if (startTime != null && endTime != null) {
+        final duration = endTime.difference(startTime);
+        if (!duration.isNegative) {
+          print('   ✅ استخدام أوقات الرحلة - المدة: ${duration.inMinutes} دقيقة');
+          return _formatDuration(duration);
+        }
+      }
+
+      // البديل: استخدام assignedTime و completedTime
+      if (assignedTime != null && completedTime != null) {
+        final duration = completedTime.difference(assignedTime);
+        if (!duration.isNegative) {
+          print('   ✅ استخدام أوقات التعيين والإكمال - المدة: ${duration.inMinutes} دقيقة');
+          return _formatDuration(duration);
+        }
+      }
 
       // إذا كانت المدة محفوظة مباشرة
       if (originalData['rideDuration'] != null) {
         final durationInSeconds = originalData['rideDuration'] as int;
         final duration = Duration(seconds: durationInSeconds);
+        print('   ✅ استخدام المدة المحفوظة: $durationInSeconds ثانية');
         return _formatDuration(duration);
       }
 
-      // إذا كان هناك وقت بدء وانتهاء
-      final startTime = originalData['rideStartTime'] as Timestamp?;
-      final endTime = originalData['rideEndTime'] as Timestamp?;
-
-      if (startTime != null && endTime != null) {
-        final duration = endTime.toDate().difference(startTime.toDate());
-        return _formatDuration(duration);
-      }
-
+      print('   ❌ لا توجد بيانات كافية لحساب المدة');
       return 'غير محسوبة';
+
     } catch (e) {
+      print('❌ خطأ في حساب مدة الرحلة: $e');
       return 'خطأ في الحساب';
     }
   }
 
-// تنسيق المدة بشكل مقروء
+// دالة مساعدة لتحليل الوقت من البيانات
+  DateTime? _parseTimeFromData(Map<String, dynamic> data, String field) {
+    try {
+      if (data[field] is Timestamp) {
+        return (data[field] as Timestamp).toDate();
+      } else if (data[field] is String) {
+        return DateTime.parse(data[field] as String);
+      } else if (data[field] != null) {
+        print('   ⚠️ نوع غير معروف للحقل $field: ${data[field].runtimeType}');
+      }
+      return null;
+    } catch (e) {
+      print('   ❌ خطأ في تحليل الحقل $field: $e');
+      return null;
+    }
+  }
+  // تنسيق المدة بشكل مقروء
   String _formatDuration(Duration duration) {
     final hours = duration.inHours;
     final minutes = duration.inMinutes.remainder(60);
@@ -814,12 +862,11 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
       return '${minutes} دقيقة';
     }
   }
+
   // تعيين سائق مشغول (مع تحرير طلبه الحالي)
   Future<void> _assignBusyDriverToRequest(Map<String, dynamic> request, Map<String, dynamic> driver) async {
     try {
       _showLoadingDialog('جاري تعيين السائق المشغول...');
-
-
 
       // ثانياً: تعيين السائق للطلب الجديد
       await _assignToSpecificDriver(
@@ -902,7 +949,19 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
         title: Text('إدارة الطلبات - ${widget.companyId}'),
         backgroundColor: Colors.blue.shade800,
         foregroundColor: Colors.white,
+
         actions: [
+          // 🆕 زر التشخيص - تم إضافته هنا
+          IconButton(
+            icon: const Icon(Icons.bug_report),
+            onPressed: () async {
+              _showSuccessSnackBar('جاري تشخيص النظام...');
+              await _dispatchService.debugSystem(widget.companyId);
+              await _loadRequestsData();
+              _showSuccessSnackBar('تم التشخيص - انظر الـ Console');
+            },
+            tooltip: 'تشخيص النظام',
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadRequestsData,
@@ -1048,8 +1107,6 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
   }
 
   // عنصر طلب فردي
-// عنصر طلب فردي
-// عنصر طلب فردي
   Widget _buildRequestItem(Map<String, dynamic> request) {
     final status = request['status'] as String;
     final priority = request['priority'] as String;
@@ -1217,7 +1274,9 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
         onTap: () => _showRequestDetails(request),
       ),
     );
-  }  // عرض تفاصيل الطلب
+  }
+
+  // عرض تفاصيل الطلب
   void _showRequestDetails(Map<String, dynamic> request) {
     showModalBottomSheet(
       context: context,
@@ -1338,7 +1397,8 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
                 ),
               ],
             ),
-// عرض المؤقت النشط للرحلة قيد التنفيذ
+
+            // عرض المؤقت النشط للرحلة قيد التنفيذ
             if (status == 'IN_PROGRESS')
               _buildDetailSection(
                 title: 'معلومات الرحلة النشطة',
@@ -1411,7 +1471,8 @@ class _HRRequestsScreenState extends State<HRRequestsScreen> {
             ),
 
             const SizedBox(height: 30),
-// عرض مدة الرحلة في التفاصيل للطلبات المكتملة
+
+            // عرض مدة الرحلة في التفاصيل للطلبات المكتملة
             if (status == 'COMPLETED')
               _buildDetailSection(
                 title: 'معلومات الرحلة',
